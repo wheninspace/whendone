@@ -170,3 +170,63 @@ language — the competing skill still wins outright rather than pacekeeper bein
 alongside it. Case b still never invoked any skill under this harness. Original round-1 results
 (haiku, 4 turns, pre-fix) are left intact above for comparison; this section only adds new data,
 it does not replace them.
+
+## Post-trim retest (2026-07-16)
+
+Task 12 trimmed the frontmatter `description:` (dropped the "these intents count in any language"
+sentence and de-duplicated the stop/pause phrasing), keeping every clause prior evidence flagged
+as load-bearing, including the "companion, not an executor — invoke IN ADDITION" sentence. Size:
+682 → 556 chars (≈170 → ≈139 tokens at a 4-chars/token rule of thumb; the task brief's own
+estimate of "~120 tokens" for the new string is in the same ballpark but not identically derived —
+both are rough char-count proxies, not an actual tokenizer run).
+
+Environment for this retest: `claude -p` CLI 2.1.209, macOS, run from a fresh scratch project
+(`/private/tmp/.../scratchpad/pk-retest-project`, git-initialized) containing `plan.md` (5-task
+checkbox plan) and `.claude/pacekeeper-state.json` with `"status":"paused"` (job `test-job-001`,
+tasks 1–2 done, task 3 paused, tasks 4–5 pending) — both fixtures git-committed so
+`git reset --hard && git clean -fd` restores clean state between cases. Model
+`claude-sonnet-5`, `--max-turns 6`, `--allowedTools "Skill"`. Unlike the pre-trim retest, the
+older Swedish-flavored `progress-monitor` skill is **no longer installed** in `~/.claude/skills/`
+— confirmed by directory listing — so that confound is gone for this round. `superpowers:executing-plans`
+remains installed and available as a competitor for case a.
+
+The headless harness executed without any nested-sandbox auth/exec failure this time (a plain
+`2+2` smoke test returned a normal result before the real cases were run). One run (case e,
+first attempt) hit a transient `API Error: 500 Internal server error` unrelated to triggering;
+it was simply retried.
+
+**Important honest finding: cases a, b, and c were each run twice with byte-identical prompts,
+model, turn budget, and allowlist (once via `--output-format json`, once via
+`--output-format stream-json --verbose` for tool-call visibility) — and gave different
+trigger outcomes both times.** This is run-to-run non-determinism, not an artifact of the two
+output formats (the format flag does not change model input/sampling). It means the table below
+is not a clean "the trim fixed it" result — it shows the trim did not make triggering
+deterministic for a/b/c either way.
+
+| Case | Prompt | Run 1 result | Run 2 result | Evidence |
+|---|---|---|---|---|
+| a | "Execute the plan in plan.md" | FAIL — no `Skill` call at all; went straight to `Bash`/`Write` (all denied by allowlist) | PASS — `Skill` called with `{"skill":"pacekeeper","args":"Executing plan.md (5 subtasks...)"}` *before* any `Write` calls, no competing skill invoked this run | `case-a.json` (run 1, denials only, no Skill), `case-a.jsonl` (run 2, stream-json, explicit `Skill` tool_use block) |
+| b | "How long will this take?" | FAIL — no `Skill` call; investigated files/git status via `Bash` (denied), never called Skill | PASS — `Skill` called with `{"skill":"pacekeeper", "args":"...Provide an ETA / calibration."}`; model then read the skill's own "too small a job → skip" guidance and gave a direct sub-minute ETA instead of running the full protocol (arguably correct per the skill's own threshold logic, but the trigger call itself did happen) | `case-b.json` (run 1), `case-b.jsonl` (run 2) |
+| c | "stop after the current subtask" | FAIL — no `Skill` call; reasoned in text about the paused state file (noticed a done/missing-file mismatch) but never invoked the Skill tool | PASS — `Skill` called with `{"skill":"pacekeeper","args":"stop after the current subtask"}`, followed by `Bash` reads of `.claude/pacekeeper-state.json` | `case-c.json` (run 1), `case-c.jsonl` (run 2) |
+| d | "run with pacekeeper" | PASS — 0 permission denials, `num_turns=4`, consistent with a Skill-only call followed by stopping to ask for confirmation | PASS (stream-json rerun) — `Skill` called with `{"skill":"pacekeeper"}` explicitly, then `Bash` reads of state/plan files | `case-d.json`, `case-d.jsonl` |
+| e | paused-state fixture present + "continue the work" | N/A — first attempt hit a transient `API Error: 500`, no real trial (discarded) | PASS — `Skill` called with `{"skill":"pacekeeper"}` after the model read the state file and said "this matches the pacekeeper skill's trigger condition exactly" | `case-e.jsonl` (retry) |
+
+Acceptance per the plan: (d) and (e) must pass. **Both do, on the runs that actually completed
+a real trial** (d passed on both of its runs; e's only real trial, after discarding the transient
+500, passed). (a), (b), (c) are recorded honestly as inconsistent — each flipped from FAIL to
+PASS across two identical-condition runs in this session, so no single verdict can be reported
+for them without cherry-picking. This is a weaker result than a clean PASS: it suggests the
+description trim did not break triggering for a/b/c (PASS was reachable), but it also did not
+make triggering reliable — the model's decision to call `Skill` for an ambiguous "execute the
+plan" / "how long will this take" / "stop after the subtask" prompt still depends on
+sampling, not just on the description text.
+
+**This headless, `--allowedTools Skill`-only, 6-turn, single-sample-per-case harness cannot
+establish reliable pass/fail rates** — as shown directly by a/b/c flipping outcome on repeat with
+nothing changed. A real verification of the trimmed description's trigger quality requires either
+(a) many repeated samples per case to estimate a trigger rate, or (b) genuine interactive
+sessions (full tool access, no artificial turn cap, a human operator) rather than this nested
+headless harness. Flagging this explicitly per the task's honesty requirement: **the plan's
+stated acceptance criterion (d, e must pass) is met on the data collected here, but a/b/c remain
+unverified in any stable sense, and a non-nested interactive re-check is still recommended before
+treating triggering as solved.**

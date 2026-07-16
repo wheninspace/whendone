@@ -1,6 +1,6 @@
 ---
 name: pacekeeper
-description: Use when starting a long autonomous job — executing a plan file, running 4+ subtasks, or fanning out subagents — or when the user asks how long work will take or when it will be done, asks for an ETA, wants live progress visibility, wants to gracefully stop or pause after the current subtask, wants to resume a paused job, or when a .claude/pacekeeper-state.json with status "paused" exists in the project. Also for calibration/accuracy reports ("how accurate is pacekeeper"). Pacekeeper is a companion, not an executor — when a plan-execution or orchestration skill runs the job, invoke pacekeeper IN ADDITION to monitor it. These intents count in any language the user writes in.
+description: Use when starting a long autonomous job — executing a plan file, running 4+ subtasks, or fanning out subagents — or when the user asks for an ETA or how long work will take, wants live progress visibility, wants to stop or pause after the current subtask or resume a paused job, or when .claude/pacekeeper-state.json has status "paused". Also for calibration accuracy reports ("how accurate is pacekeeper"). Pacekeeper is a companion, not an executor — when a plan-execution or orchestration skill runs the job, invoke pacekeeper IN ADDITION to monitor it.
 ---
 
 # Pacekeeper
