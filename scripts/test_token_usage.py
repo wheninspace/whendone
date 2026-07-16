@@ -58,6 +58,32 @@ class TestTokenUsage(unittest.TestCase):
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertEqual(res, {"available": False, "reason": "no transcript found for session ids"})
 
+    def test_tasks_not_a_list_degrades_gracefully(self):
+        # Malformed untrusted state file: "tasks" is a string instead of a list.
+        # Must not raise — must return a valid {"available": ...} dict.
+        json.dump({"sessionIds": ["sess1"], "tasks": "not-a-list"}, open(self.state, "w"))
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertIsInstance(res, dict)
+        self.assertIn("available", res)
+
+    def test_tasks_with_non_dict_item_degrades_gracefully(self):
+        # Malformed untrusted state file: "tasks" is a list, but contains a non-dict item.
+        # Must not raise — must return a valid {"available": ...} dict.
+        json.dump({"sessionIds": ["sess1"], "tasks": ["oops"]}, open(self.state, "w"))
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertIsInstance(res, dict)
+        self.assertIn("available", res)
+
+    def test_task_with_non_string_started_at_degrades_gracefully(self):
+        # Malformed untrusted state file: a task dict has a non-string startedAt
+        # (e.g. an integer timestamp). parse_ts must not raise.
+        json.dump({"sessionIds": ["sess1"],
+                   "tasks": [{"nr": 1, "startedAt": 12345, "finishedAt": None}]},
+                  open(self.state, "w"))
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertIsInstance(res, dict)
+        self.assertIn("available", res)
+
 
 if __name__ == "__main__":
     unittest.main()

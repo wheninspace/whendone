@@ -26,7 +26,7 @@ def parse_ts(s):
         return None
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
-    except ValueError:
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
@@ -59,6 +59,8 @@ def summarize(state_path, projects_dir=None):
         state = json.load(open(state_path, encoding="utf-8"))
         sids = [s for s in state.get("sessionIds", []) if isinstance(s, str) and re.fullmatch(r"[A-Za-z0-9_-]+", s)]
         tasks = state.get("tasks", [])
+        if not isinstance(tasks, list):
+            tasks = []
     except (OSError, json.JSONDecodeError, AttributeError):
         return {"available": False, "reason": "state file unreadable"}
     projects_dir = projects_dir or os.path.expanduser("~/.claude/projects")
@@ -80,6 +82,8 @@ def summarize(state_path, projects_dir=None):
 
     result_tasks = []
     for t in tasks:
+        if not isinstance(t, dict):
+            continue
         s, e = parse_ts(t.get("startedAt")), parse_ts(t.get("finishedAt"))
         if s is None:
             continue
