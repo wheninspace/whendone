@@ -11,15 +11,44 @@ Statistics design (see docs/design.md for provenance):
 - spread = interquartile range of ratios
 Malformed lines are skipped and counted, never fatal.
 """
-import json, statistics, sys
+import json, math, statistics, sys
 from datetime import date
 
 PRIOR = 1.0
-DEFAULTS = {  # frozen anchor estimates, minutes — learning lives in the factor
-    "mechanical-implementation": 5, "judgment-coding": 12, "testing": 8,
-    "debugging": 20, "research": 15, "documentation": 10, "review": 10,
-    "deploy-infra": 15,
-}
+CATEGORIES = frozenset({
+    "mechanical-implementation", "judgment-coding", "testing", "debugging",
+    "research", "documentation", "review", "deploy-infra",
+})
+PARALLEL = "parallel-group"
+
+
+def sanitize(s, maxlen=64):
+    """Model strings come from the jsonl — strip newlines/pipes, cap length."""
+    return str(s).replace("\n", " ").replace("\r", " ").replace("|", "/")[:maxlen]
+
+
+def parse_row(line):
+    """Validate one jsonl line. Returns (status, row): 'ok', 'skipped', or 'malformed'."""
+    try:
+        row = json.loads(line, parse_constant=lambda _: None)  # NaN/Inf -> None -> rejected
+        cat = row["category"]
+        est = row.get("rawEstimateMin", row.get("estimateMin"))
+        act = row["actualMin"]
+    except (json.JSONDecodeError, KeyError, TypeError, RecursionError):
+        return "malformed", None
+    if (not isinstance(cat, str) or (cat not in CATEGORIES and cat != PARALLEL)
+            or not isinstance(est, (int, float)) or isinstance(est, bool)
+            or not math.isfinite(est)
+            or (act is not None and (not isinstance(act, (int, float))
+                                     or isinstance(act, bool) or not math.isfinite(act)))):
+        return "malformed", None
+    if act is None or act <= 0 or est <= 0:
+        return "skipped", None
+    return "ok", {"category": cat, "est": est, "act": act,
+                  "model": sanitize(row.get("model") or "unknown"),
+                  "date": row.get("date", ""),
+                  "project": row.get("project", ""), "job": row.get("job", "")}
+
 
 def trimmed_median(values, trim=0.2):
     vs = sorted(values)
@@ -36,30 +65,26 @@ def confidence(n):
     return "low" if n < 5 else ("medium" if n < 20 else "high")
 
 def main(jsonl_path, out_path):
-    cats, skipped, malformed = {}, 0, 0
     try:
         lines = open(jsonl_path, encoding="utf-8").read().splitlines()
     except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
+
+    cats, skipped, malformed, parallel = {}, 0, 0, []
     for line in lines:
-        if not line.strip(): continue
-        try:
-            row = json.loads(line)
-            cat = row["category"]
-            est, act = row["estimateMin"], row["actualMin"]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        if not line.strip():
+            continue
+        status, r = parse_row(line)
+        if status == "malformed":
             malformed += 1; continue
-        if (not isinstance(cat, str)
-                or not isinstance(est, (int, float)) or isinstance(est, bool)
-                or (act is not None and (not isinstance(act, (int, float)) or isinstance(act, bool)))):
-            malformed += 1; continue
-        if act is None or not est:
+        if status == "skipped":
             skipped += 1; continue
-        cats.setdefault(cat, {"ratios": [], "models": {}})
-        cats[cat]["ratios"].append(act / est)
-        m = row.get("model") or "unknown"
-        cats[cat]["models"][m] = cats[cat]["models"].get(m, 0) + 1
+        if r["category"] == PARALLEL:
+            parallel.append(r["act"] / r["est"]); continue
+        d = cats.setdefault(r["category"], {"ratios": [], "models": {}})
+        d["ratios"].append(r["act"] / r["est"])
+        d["models"][r["model"]] = d["models"].get(r["model"], 0) + 1
 
     total = sum(len(c["ratios"]) for c in cats.values())
     out = [
@@ -75,10 +100,10 @@ def main(jsonl_path, out_path):
         "| Category | Default estimate | Factor (blended) | Data points | Confidence | Spread (IQR) |",
         "|---|---|---|---|---|---|",
     ]
-    for cat in sorted(set(DEFAULTS) | set(cats)):
+    for cat in sorted(CATEGORIES):
         d = cats.get(cat, {"ratios": [], "models": {}})
         n = len(d["ratios"])
-        default = f"{DEFAULTS[cat]} min" if cat in DEFAULTS else "—"
+        default = "—"
         if n == 0:
             out.append(f"| {cat} | {default} | — | 0 | — | — |")
             continue
@@ -97,6 +122,10 @@ def main(jsonl_path, out_path):
                 "These categories mix models with different speeds — factors conflate model and task variance:", ""]
         for cat, mix in sorted(mixes.items()):
             out.append(f"- {cat}: " + ", ".join(f"{m} ×{k}" for m, k in sorted(mix.items())))
+
+    if parallel:
+        out += ["", f"{PARALLEL} rows: {len(parallel)} logged, max-rule ratio median "
+                f"{statistics.median(parallel):.2f} (validation data — never pooled into factors)."]
 
     out += [
         "",
