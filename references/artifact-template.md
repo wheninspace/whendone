@@ -7,9 +7,9 @@ Artifact tool to update the existing artifact. Favicon: `⏱️` — keep it ide
 updates. `<title>`: the job's name.
 
 **Escaping (hard rule):** HTML-escape every interpolated string — job name, project name,
-subtask names, plan-file path (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`).
-Subtask names may originate from untrusted plan files; they must never be able to inject markup
-into the published page.
+subtask names, plan-file path (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`,
+`'` → `&#39;`). Escape before insertion into ANY context, and place untrusted strings in text
+nodes only — never inside attributes.
 
 **Republishing:** at checkpoints, copy the previous artifact file and substitute only the
 variable parts (banner, "last updated", ETA block, table rows) — do not regenerate the whole
