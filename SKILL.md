@@ -155,7 +155,9 @@ result is a checkpoint boundary (artifact republish), even though only the group
    the Artifact tool's url parameter set to the saved `artifactUrl` — banner RUNNING. If the
    URL update fails: publish as a new artifact, update `artifactUrl`, say in chat that the link
    changed.
-5. State: `status: "running"`, record `resumedAt` = now and add the pause length to
+5. Capture this session's id (`echo "${CLAUDE_CODE_SESSION_ID:-}"`) and APPEND it to the state
+   file's `sessionIds` array (empty string → token display just stays unavailable, which is
+   fine). State: `status: "running"`, record `resumedAt` = now and add the pause length to
    `pausedTotalMin` (see references/file-formats.md). Continue the checkpoint protocol from the
    next task not marked done — mark it `running`, `startedAt` = now.
 6. State file missing but a plan file exists? Rebuild the state from the checkboxes; new
@@ -195,7 +197,7 @@ Remote Control").
 | python3/python/py all missing at job end | Skip regeneration, keep the previous summary, tell the user once |
 | Checkpoint(s) missed / subtasks batched | `actualMin: null` for every affected subtask — never reconstruct timestamps from memory; note it in chat; resume the protocol from now |
 | Artifact tool absent entirely (not just a failed publish) | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
-| token_usage.py fails or no session id | Show "tokens: n/a" in the artifact; never block the job |
+| token_usage.py fails or no session id | Show "tokens: n/a" in chat/status and omit the token elements from the published artifact; never block the job |
 
 ## Red flags
 
