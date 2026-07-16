@@ -39,7 +39,7 @@ def main(jsonl_path, out_path):
     cats, skipped, malformed = {}, 0, 0
     try:
         lines = open(jsonl_path, encoding="utf-8").read().splitlines()
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
     for line in lines:
@@ -49,6 +49,8 @@ def main(jsonl_path, out_path):
             cat = row["category"]
             est, act = row["estimateMin"], row["actualMin"]
         except (json.JSONDecodeError, KeyError, TypeError):
+            malformed += 1; continue
+        if not isinstance(cat, str) or not isinstance(est, (int, float)) or (act is not None and not isinstance(act, (int, float))):
             malformed += 1; continue
         if act is None or not est:
             skipped += 1; continue
