@@ -4,3 +4,4 @@ __pycache__/
 
 # Local planning documents — not part of the public release
 docs/plans/
+.superpowers/
