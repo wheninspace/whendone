@@ -50,6 +50,14 @@ class TestTokenUsage(unittest.TestCase):
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertFalse(res["available"])
 
+    def test_path_traversal_sid_rejected(self):
+        # Untrusted state file (e.g. from a cloned repo) ships a malicious sessionId
+        # designed to escape projects_dir via glob. It must be filtered out before
+        # ever reaching glob.glob, so no transcript is found and the job degrades.
+        json.dump({"sessionIds": ["../../../../etc/passwd"], "tasks": []}, open(self.state, "w"))
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertEqual(res, {"available": False, "reason": "no transcript found for session ids"})
+
 
 if __name__ == "__main__":
     unittest.main()

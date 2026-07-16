@@ -15,7 +15,7 @@ The transcript format is undocumented and version-drifty: parse defensively, and
 problem return {"available": false} — token display must never block a job.
 Privacy: only message.usage numbers are read; conversation content is never extracted.
 """
-import glob, json, os, sys
+import glob, json, os, re, sys
 from datetime import datetime, timezone
 
 BUCKETS = ("output", "freshInput", "cacheRead")
@@ -57,7 +57,7 @@ def read_usage(path):
 def summarize(state_path, projects_dir=None):
     try:
         state = json.load(open(state_path, encoding="utf-8"))
-        sids = [s for s in state.get("sessionIds", []) if isinstance(s, str) and s]
+        sids = [s for s in state.get("sessionIds", []) if isinstance(s, str) and re.fullmatch(r"[A-Za-z0-9_-]+", s)]
         tasks = state.get("tasks", [])
     except (OSError, json.JSONDecodeError, AttributeError):
         return {"available": False, "reason": "state file unreadable"}
