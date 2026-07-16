@@ -1,5 +1,10 @@
 # Pacekeeper skill test log
 
+> **Naming note (2026-07-17):** entries dated 2026-07-16 and earlier were recorded when this
+> skill was named `pacekeeper` (renamed to `whendone` on 2026-07-17). Their `pacekeeper` /
+> "run with pacekeeper" wording is preserved as an accurate record of what was run. Trigger
+> behaviour was re-validated under the new name — see "Post-rename trigger retest" below.
+
 Date: 2026-07-16
 
 ## Environment
@@ -230,3 +235,7 @@ headless harness. Flagging this explicitly per the task's honesty requirement: *
 stated acceptance criterion (d, e must pass) is met on the data collected here, but a/b/c remain
 unverified in any stable sense, and a non-nested interactive re-check is still recommended before
 treating triggering as solved.**
+
+## Post-rename trigger retest (whendone) — 2026-07-17
+
+_To be filled by Task 4 of the rename plan._
