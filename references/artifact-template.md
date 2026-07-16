@@ -21,6 +21,11 @@ Content requirements (top to bottom):
    in large type — the reader must see the view updates per checkpoint, not live.
 2. **ETA block:** "Done ~HH:MM ± N min" (NEVER a point time without an interval), start time,
    elapsed time, N of M subtasks done.
+   Below the elapsed line, one dim token line when available: "Tokens: 412k spent (output +
+   fresh input) · 3.1M cache reads" — never sum cache reads into the headline number (they
+   cost ~10x less); job-level only. Per-task tokens go in the Actual column as a second dim
+   line: `<br><span class="dim">38k tok</span>` (output+freshInput for that task's window,
+   subagents included). Omit token elements entirely when unavailable — no error text.
 3. **Task table:** one row per subtask: status icon (✅/🔄/⬜), name, category, estimate, actual,
    deviation baked into the actual column: "11 m (+38 %)". **The actual column is always a
    computed time, never a status word** — correct: `"4 m (−33 %)"` for a finished subtask and
@@ -72,10 +77,11 @@ Skeleton (adapt content, keep structure and theme handling):
 </style>
 <div class="banner running">🔄 RUNNING — last updated 14:35</div>
 <div class="eta"><strong>Done ~16:40 ± 35 min</strong><br>
-  <span class="dim">Started 14:02 · 33 min elapsed · 2 of 6 subtasks done</span></div>
+  <span class="dim">Started 14:02 · 33 min elapsed · 2 of 6 subtasks done</span><br>
+  <span class="dim">Tokens: 412k spent · 3.1M cache reads</span></div>
 <table>
   <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
-  <tr><td>✅</td><td>Failing test read_skill</td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span></td></tr>
+  <tr><td>✅</td><td>Failing test read_skill</td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span><br><span class="dim">38k tok</span></td></tr>
   <tr><td>🔄</td><td>Implement read_skill</td><td class="dim">judgment-coding</td><td>15 m</td><td>—</td></tr>
   <tr><td>⬜</td><td>Cost cap per turn</td><td class="dim">judgment-coding</td><td>20 m</td><td>—</td></tr>
 </table>

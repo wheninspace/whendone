@@ -59,8 +59,11 @@ decline ("run without pacekeeper").
    notes enter the artifact — a link, once shared, keeps showing all future updates. Flag:
    "Acme invoice migration" (client), "Fix Priya's login flow" (person), "rotate prod-db-eu1
    credentials" (internal infrastructure). Fine: "Refactor auth middleware", "Write API tests".
-8. Take the start timestamp from the system clock (`date -Iseconds` / PowerShell
-   `Get-Date -Format o`) — never guess times.
+8. One Bash call takes the start timestamp and the session id:
+   `date -Iseconds; echo "${CLAUDE_CODE_SESSION_ID:-}"` (PowerShell fallback:
+   `Get-Date -Format o`). Never guess times. Store the id in the state file's `sessionIds`
+   array (empty string → token display unavailable, fine). On resume, append the NEW
+   session's id.
 9. Gitignore precondition: ensure the state file is ignored (see file-formats.md) before the
    first write.
 10. Write the artifact HTML per the template and publish; save URL + task list + estimates in
@@ -97,6 +100,10 @@ protocol from memory.
    "last updated", ETA block per the formula in references/file-formats.md, changed table
    rows), then publish the same path — same URL. Never create a new filename mid-session;
    never rewrite the whole file after the first publish.
+   Before editing, refresh token numbers (best-effort): run
+   `python3 <skill-dir>/scripts/token_usage.py .claude/pacekeeper-state.json` (same interpreter
+   fallback chain as at job end) and update the artifact's token figures from its JSON. Any
+   failure → show "tokens: n/a" and continue.
 3. Revised total ETA > 150 % of the original total and `etaAlertSent` is false? → push
    notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
@@ -188,6 +195,7 @@ Remote Control").
 | python3/python/py all missing at job end | Skip regeneration, keep the previous summary, tell the user once |
 | Checkpoint(s) missed / subtasks batched | `actualMin: null` for every affected subtask — never reconstruct timestamps from memory; note it in chat; resume the protocol from now |
 | Artifact tool absent entirely (not just a failed publish) | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
+| token_usage.py fails or no session id | Show "tokens: n/a" in the artifact; never block the job |
 
 ## Red flags
 
