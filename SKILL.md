@@ -73,9 +73,16 @@ protocol from memory.
    log line AND emits the next subtask's start time:
    `printf '%s\n' '{"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}' >> ~/.claude/pacekeeper-data/calibration.jsonl && date -Iseconds`
    `rawEstimateMin` carries the state file's `rawEstimateMin` (see references/file-formats.md).
-   Build the JSON with double quotes only, inside shell single quotes; if a value contains a
-   single quote, emit the line via `python3 -c 'import json; print(json.dumps({...}))' >> …`
-   instead. NEVER touch calibration.jsonl with the Write or Edit tool, and never read it back.
+   Build the JSON with double quotes only, inside shell single quotes. If any value contains a
+   single quote (which would break the outer shell quoting), emit the line with a quoted-heredoc
+   Python instead — the `'PY'` delimiter stops the shell touching the body, and numbers stay
+   numeric:
+   ```
+   python3 <<'PY' >> ~/.claude/pacekeeper-data/calibration.jsonl
+   import json; print(json.dumps({"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}))
+   PY
+   ```
+   NEVER touch calibration.jsonl with the Write or Edit tool, and never read it back.
    Skip the append for subtasks that ran in PARALLEL with others (group rule below). Then
    update the state file with targeted Edit calls on the changed fields only (finishedAt,
    actualMin, status, next task's startedAt) — never rewrite the whole JSON.
