@@ -68,7 +68,9 @@ decline ("run without pacekeeper").
    first write.
 10. Write the artifact HTML per the template and publish; save URL + task list + estimates in
     `.claude/pacekeeper-state.json` (`status: "running"`, `jobId` = compacted start timestamp).
-    Mark the first subtask `status: "running"`, `startedAt` = now.
+    Set `originalTotalMin` = the sum of every subtask's initial (adjusted) `estimateMin` — write
+    it once now and never revise it; it is the fixed baseline for the 150 %-slip check. Mark the
+    first subtask `status: "running"`, `startedAt` = now.
 11. Total ETA over ~2 h? Mention that Claude Code on the web is the alternative if the computer
     must be shut down.
 
@@ -104,7 +106,7 @@ protocol from memory.
    `python3 <skill-dir>/scripts/token_usage.py .claude/pacekeeper-state.json` (same interpreter
    fallback chain as at job end) and update the artifact's token figures from its JSON. Any
    failure → show "tokens: n/a" and continue.
-3. Revised total ETA > 150 % of the original total and `etaAlertSent` is false? → push
+3. Revised total ETA > 150 % of `originalTotalMin` and `etaAlertSent` is false? → push
    notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
    a finished job is not paused).
