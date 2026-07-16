@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Tests for token_usage.py. Run: python3 scripts/test_token_usage.py -v"""
+import json, os, sys, tempfile, unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import token_usage as tu
+
+
+def entry(msg_id, ts, out=100, inp=10, cc=50, cr=1000):
+    return json.dumps({"type": "assistant", "timestamp": ts,
+                       "message": {"id": msg_id, "model": "claude-sonnet-5",
+                                   "usage": {"input_tokens": inp, "output_tokens": out,
+                                             "cache_creation_input_tokens": cc,
+                                             "cache_read_input_tokens": cr}}})
+
+
+STATE = {"sessionIds": ["sess1"], "tasks": [
+    {"nr": 1, "startedAt": "2026-07-16T10:00:00+00:00", "finishedAt": "2026-07-16T10:10:00+00:00"},
+    {"nr": 2, "startedAt": "2026-07-16T10:10:00+00:00", "finishedAt": None},
+]}
+
+
+class TestTokenUsage(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        proj = os.path.join(self.td.name, "projects", "slug")
+        os.makedirs(proj)
+        self.transcript = os.path.join(proj, "sess1.jsonl")
+        with open(self.transcript, "w", encoding="utf-8") as f:
+            f.write(entry("m1", "2026-07-16T10:05:00.000Z", out=50) + "\n")
+            f.write(entry("m1", "2026-07-16T10:05:01.000Z", out=200) + "\n")  # dup: keep last
+            f.write(entry("m2", "2026-07-16T10:15:00.000Z", out=300) + "\n")
+            f.write("garbage line\n")
+        self.state = os.path.join(self.td.name, "state.json")
+        json.dump(STATE, open(self.state, "w"))
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def test_dedup_and_windowing(self):
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertTrue(res["available"])
+        self.assertEqual(res["tasks"][0]["output"], 200)   # dup collapsed, last kept
+        self.assertEqual(res["tasks"][1]["output"], 300)   # open-ended in-flight window
+        self.assertEqual(res["job"]["output"], 500)
+        self.assertEqual(res["job"]["freshInput"], 10 + 50 + 10 + 50)
+
+    def test_missing_transcript_degrades(self):
+        json.dump({"sessionIds": ["nope"], "tasks": []}, open(self.state, "w"))
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertFalse(res["available"])
+
+
+if __name__ == "__main__":
+    unittest.main()
