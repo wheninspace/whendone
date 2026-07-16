@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Report token usage per pacekeeper subtask from Claude Code session transcripts.
+"""Report token usage per whendone subtask from Claude Code session transcripts.
 
-Usage: python3 token_usage.py <pacekeeper-state.json>
+Usage: python3 token_usage.py <whendone-state.json>
 
 Reads sessionIds + task startedAt/finishedAt windows from the state file, locates
 ~/.claude/projects/*/<sessionId>.jsonl (plus <dir>/<sessionId>/subagents/agent-*.jsonl),

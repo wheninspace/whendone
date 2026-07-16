@@ -1,12 +1,12 @@
-# Pacekeeper
+# WhenDone
 
 Live progress and self-calibrating ETAs for long Claude Code runs — one page, updated at
 every subtask boundary, statistics computed outside the model.
 
-![Pacekeeper progress artifact: task table with actual-vs-estimate, ETA with interval, token counts](assets/progress-artifact.png)
+![WhenDone progress artifact: task table with actual-vs-estimate, ETA with interval, token counts](assets/progress-artifact.png)
 
 LLMs misjudge how long their own work will take — [measured at 4–7× off](https://arxiv.org/html/2604.00010v1).
-Pacekeeper closes that loop empirically: every finished subtask logs its raw estimate against
+WhenDone closes that loop empirically: every finished subtask logs its raw estimate against
 its actual duration, per category, and a small stdlib Python script — not the model — turns
 that history into per-category correction factors for the next job's ETA.
 
@@ -30,9 +30,9 @@ rationale and threat model in [docs/design.md](docs/design.md).
   subtasks are excluded from calibration, never guessed).
 - **Token visibility** — output + fresh input vs. cache reads, measured from the session
   transcript by a script, shown in the artifact. No dollar figures: subscribers don't pay per
-  token, so pacekeeper won't pretend to know your bill.
+  token, so whendone won't pretend to know your bill.
 - **Push notifications via Remote Control** — run Claude Code with Remote Control and the
-  session mirrors to the Claude mobile app: pacekeeper's pings (job done, job stopped, ETA
+  session mirrors to the Claude mobile app: whendone's pings (job done, job stopped, ETA
   slipping past 150 %) reach your phone and the artifact link rides along in the mirrored
   session. Best-effort — Claude decides when to push; needs the Claude app signed in with
   `/config` push enabled.
@@ -53,26 +53,26 @@ script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk
 Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~4 subtasks /
 ~20 minutes.
 
-## Usage — say "run with pacekeeper"
+## Usage — say "run with whendone"
 
 Explicit invocation is the reliable path. Auto-triggering exists but is best-effort — in our
 own published tests it loses to plan-execution skills that grab the same moment
 ([docs/test-log.md](docs/test-log.md)). If you run plan executions routinely, add one line to
-your CLAUDE.md: `When executing a plan of 4+ tasks, also invoke the pacekeeper skill to
+your CLAUDE.md: `When executing a plan of 4+ tasks, also invoke the whendone skill to
 monitor progress.`
 
-- "run with pacekeeper" / "run without pacekeeper" — force it on or off for this job
+- "run with whendone" / "run without whendone" — force it on or off for this job
 - "stop after the current subtask" — graceful stop (or create `.claude/STOP` in the project root)
 - "resume the job" — pick a paused or crashed job back up, new session included
-- "how accurate is pacekeeper?" — a script-computed accuracy report from your own history
+- "how accurate is whendone?" — a script-computed accuracy report from your own history
 
 ## What it touches
 
 | Data | Where it goes |
 |---|---|
 | Progress artifact (task names, timings, token counts) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Sensitive-looking names are flagged before first publish and re-checked when the task list changes |
-| State file | `<project>/.claude/pacekeeper-state.json` — gitignore enforced before first write |
-| Calibration log + summary | `~/.claude/pacekeeper-data/` — never leaves your machine, survives skill updates |
+| State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
+| Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
 | Session transcript | read locally by the token script — usage numbers only, never content |
 
 ## Security
@@ -88,31 +88,31 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 ## Requirements
 
 - Claude Code (CLI or desktop) signed in to claude.ai — the live artifact needs the Artifact
-  tool. API-key-only / Bedrock / Vertex setups: pacekeeper degrades to a progress table in
+  tool. API-key-only / Bedrock / Vertex setups: whendone degrades to a progress table in
   chat. Cowork is expected to work but untested.
 - Python 3 (`python3`, `python`, or `py`) for calibration statistics and token display.
-  Without it both degrade off — pacekeeper never does statistics in the model.
+  Without it both degrade off — whendone never does statistics in the model.
 - It does not work in claude.ai chat — there's no file system there.
 
 ## First run — what it will ask you
 
-Expect these prompts the first time: creating `~/.claude/pacekeeper-data/` (outside the
+Expect these prompts the first time: creating `~/.claude/whendone-data/` (outside the
 project), adding the state file to your `.gitignore`, Bash `date` calls, a log append at each
 checkpoint, and the artifact publish to claude.ai. To pre-approve the recurring ones for
 unattended runs, allowlist in `.claude/settings.json`: `Bash(date:*)`,
-`Bash(printf:*)` (append path under `~/.claude/pacekeeper-data/`), and
+`Bash(printf:*)` (append path under `~/.claude/whendone-data/`), and
 `Bash(python3:*)` for the two shipped scripts if you've reviewed them.
 
 ## Install
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/pacekeeper ~/.claude/skills/pacekeeper
+git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/pacekeeper "$env:USERPROFILE\.claude\skills\pacekeeper"
+git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 ## Update
@@ -120,7 +120,7 @@ git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/pacekeeper "$
 A skill update is an instruction update for your agent — look before you merge:
 
 ```bash
-cd ~/.claude/skills/pacekeeper
+cd ~/.claude/skills/whendone
 git fetch --tags
 git log --oneline HEAD..origin/main
 git diff HEAD origin/main -- SKILL.md scripts/
@@ -146,14 +146,14 @@ via hooks but doesn't monitor runs; [task-progress-bar](https://github.com/PRAFU
 renders a terminal bar without recording estimates; [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
 estimates in tool-call rounds without logging actuals. Usage dashboards show telemetry, not
 task ETAs. None of them close the estimate→actual→correction loop for agent runs — that gap is
-why pacekeeper exists ([anthropics/claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)).
+why whendone exists ([anthropics/claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)).
 
 ## Credits
 
 Ideas adapted from three MIT-licensed projects: [pocket-watch](https://github.com/MiguelDotL/pocket-watch)
 (shrinkage-toward-prior, anchoring protection), [task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar)
 (compute outside the model), [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
-(max-of-parallel-group ETA). Pacekeeper deviates deliberately where noted in
+(max-of-parallel-group ETA). WhenDone deviates deliberately where noted in
 [docs/design.md](docs/design.md).
 
 ## License

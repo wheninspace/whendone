@@ -1,6 +1,6 @@
 # Design rationale
 
-Condensed reasoning behind Pacekeeper's design choices, so contributors don't need the original
+Condensed reasoning behind WhenDone's design choices, so contributors don't need the original
 planning session to understand why things are built the way they are.
 
 ## Core principles
@@ -51,7 +51,7 @@ Mirrors the docstring in `scripts/calibration_summary.py`:
   using data from `n = 1` instead of `n = 5`, and converges smoothly toward the observed ratio as
   `n` grows instead of plateauing at `0.3 * prior + 0.7 * observed`.
 - **PRIOR = 1.0.** pocket-watch, the project this scheme is adapted from, uses 1.3 as its prior,
-  because its raw estimates are free-form guesses that empirically skew optimistic. Pacekeeper's
+  because its raw estimates are free-form guesses that empirically skew optimistic. WhenDone's
   raw estimates are different: they start from a frozen, table-anchored default per category, not
   an open guess. There's no equivalent built-in optimism bias to correct for up front, so the
   neutral prior of 1.0 is the right starting point here.
@@ -89,7 +89,7 @@ honestly.
   reports, for example — they're rendered as quoted literals, never treated as instructions to
   act on.
 - **Gitignore is a hard precondition.** The state file lives inside the project at
-  `.claude/pacekeeper-state.json` and must never be committed. Before the first write, the skill
+  `.claude/whendone-state.json` and must never be committed. Before the first write, the skill
   ensures it's covered by the project's `.gitignore` — this is a precondition to the write
   happening at all, not a follow-up step.
 - **Concurrency guard via jobId.** If the state file already exists with `status: "running"` and a
@@ -108,7 +108,7 @@ notifications. There's an open feature request for exactly this combination
 (anthropics/claude-code#24666). The nearest prior art each covers roughly half the loop:
 
 - **pocket-watch** — the calibration math (phased blending, trimmed median, anchoring
-  protection), but no live artifact and no pause/resume. Pacekeeper deviates deliberately from
+  protection), but no live artifact and no pause/resume. WhenDone deviates deliberately from
   pocket-watch's specific math on two points: trimmed median → winsorized mean (the calibrated
   quantity needs to be a mean, not a median — see Calibration statistics above), and phased
   blending → continuous shrinkage (removes the dead zone below `n = 5` and the jumps at the phase
@@ -118,7 +118,7 @@ notifications. There's an open feature request for exactly this combination
 - **agent-estimation** — ETA aggregation across parallel work (max of the group), but no
   self-calibration from outcomes.
 
-Pacekeeper combines the calibration approach from the first with the artifact/compute-outside
+WhenDone combines the calibration approach from the first with the artifact/compute-outside
 philosophy from the second and the parallel-ETA logic from the third, and adds the pause/resume
 and notification layer none of them have.
 

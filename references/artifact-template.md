@@ -1,8 +1,8 @@
-# Pacekeeper artifact template
+# WhenDone artifact template
 
-Write the artifact HTML to a file in the session scratchpad (e.g. `pacekeeper-<job-name>.html`)
+Write the artifact HTML to a file in the session scratchpad (e.g. `whendone-<job-name>.html`)
 and publish with the Artifact tool. Reuse the SAME file path at every checkpoint during the
-session (→ same URL). On resume in a NEW session: pass `url` from pacekeeper-state.json to the
+session (→ same URL). On resume in a NEW session: pass `url` from whendone-state.json to the
 Artifact tool to update the existing artifact. Favicon: `⏱️` — keep it identical across all
 updates. `<title>`: the job's name.
 
@@ -36,7 +36,7 @@ Content requirements (top to bottom):
    the remaining width, so long subtask names stay readable and never collapse to one word per
    line.
 4. **When PAUSED:** a box with the exact resume instruction (project, plan file, next subtask,
-   and that a new session finds the state via `.claude/pacekeeper-state.json`).
+   and that a new session finds the state via `.claude/whendone-state.json`).
 5. **Footer:** how to stop: "Type 'stop after the current subtask' in the chat, or create the
    file `.claude/STOP` in the project root." Plus honest notification status ("Push
    notifications: via Remote Control" when RC is active, otherwise "Push notifications:
@@ -46,7 +46,7 @@ Content requirements (top to bottom):
 Skeleton (adapt content, keep structure and theme handling):
 
 ```html
-<title>Pacekeeper: JOB NAME</title>
+<title>WhenDone: JOB NAME</title>
 <style>
   :root { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0;
           --running:#1e6fd9; --paused:#a66800; --done:#1e8a3c; }

@@ -110,7 +110,7 @@ def report(jsonl_path):
             continue
     if not rows:
         print("No calibration data yet."); return 0
-    print(f"# Pacekeeper accuracy report ({len(rows)} data points)\n")
+    print(f"# WhenDone accuracy report ({len(rows)} data points)\n")
     print("| Category | n | Mean ratio (winsorized) | Lifetime factor | Last-10 factor |")
     print("|---|---|---|---|---|")
     bycat = {}
