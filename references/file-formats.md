@@ -36,9 +36,10 @@ precondition, not a note.
 `rawEstimateMin` = estimate before the category factor (this is what gets logged to the jsonl);
 `estimateMin` = adjusted estimate (shown in the artifact, used for the ETA).
 
-Concurrency guard: at job start, if this file already exists with `status: "running"` and a
-different `jobId`, another session may own it — warn the user and let them decide; never
-silently overwrite.
+Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
+its `planFile`/`job` to the job being started — same job means a crashed or still-live prior
+session (offer resume / discard / abort); a different job means another session may own it
+(warn, let the user decide). Never silently overwrite.
 
 ## calibration.jsonl — global, append-only
 
