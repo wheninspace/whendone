@@ -2,6 +2,7 @@
 """Regenerate calibration-summary.md from calibration.jsonl.
 
 Usage: python3 calibration_summary.py <calibration.jsonl> <calibration-summary.md>
+       python3 calibration_summary.py --report <calibration.jsonl>
 
 Statistics design (see docs/design.md for provenance):
 - ratio = actualMin / estimateMin per completed subtask (rows with actualMin null excluded)
@@ -10,8 +11,13 @@ Statistics design (see docs/design.md for provenance):
 - PRIOR = 1.0 (raw estimates are anchored to the default table, not free-form guesses)
 - spread = interquartile range of ratios, shown once n>=5
 Malformed lines are skipped and counted, never fatal.
+
+Log rotation: main() rotates calibration.jsonl once it exceeds ROTATE_AT (2000) lines,
+moving all but the newest KEEP (1000) to calibration-archive-<year>.jsonl (atomic replace).
+--report prints a markdown accuracy report to stdout, reading the main jsonl plus any
+calibration-archive-*.jsonl siblings — the LLM never reads the jsonl directly.
 """
-import json, math, statistics, sys
+import glob, json, math, os, statistics, sys
 from datetime import date
 
 PRIOR = 1.0
@@ -20,6 +26,7 @@ CATEGORIES = frozenset({
     "research", "documentation", "review", "deploy-infra",
 })
 PARALLEL = "parallel-group"
+ROTATE_AT, KEEP = 2000, 1000
 
 
 def sanitize(s, maxlen=64):
@@ -72,12 +79,65 @@ def blend(observed, n):
 def confidence(n):
     return "low" if n < 5 else ("medium" if n < 20 else "high")
 
+
+def rotate(jsonl_path, lines):
+    """Move all but the newest KEEP lines to calibration-archive-<year>.jsonl. Atomic."""
+    if len(lines) <= ROTATE_AT:
+        return lines
+    archive = os.path.join(os.path.dirname(jsonl_path),
+                           f"calibration-archive-{date.today().year}.jsonl")
+    with open(archive, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines[:-KEEP]) + "\n")
+    tmp = jsonl_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines[-KEEP:]) + "\n")
+    os.replace(tmp, jsonl_path)
+    return lines[-KEEP:]
+
+
+def report(jsonl_path):
+    """Accuracy report on stdout — the LLM must never read the jsonl itself."""
+    paths = sorted(glob.glob(os.path.join(os.path.dirname(jsonl_path),
+                                          "calibration-archive-*.jsonl"))) + [jsonl_path]
+    rows = []
+    for p in paths:
+        try:
+            for line in open(p, encoding="utf-8"):
+                status, r = parse_row(line)
+                if status == "ok" and r["category"] != PARALLEL:
+                    rows.append(r)
+        except OSError:
+            continue
+    if not rows:
+        print("No calibration data yet."); return 0
+    print(f"# Pacekeeper accuracy report ({len(rows)} data points)\n")
+    print("| Category | n | Mean ratio (winsorized) | Lifetime factor | Last-10 factor |")
+    print("|---|---|---|---|---|")
+    bycat = {}
+    for r in rows:
+        bycat.setdefault(r["category"], []).append(r)
+    for cat in sorted(bycat):
+        rs = bycat[cat]
+        ratios = [r["act"] / r["est"] for r in rs]
+        recent = ratios[-10:]
+        print(f"| {cat} | {len(ratios)} | {winsorized_mean(ratios):.2f} "
+              f"| {blend(winsorized_mean(ratios), len(ratios)):.2f} "
+              f"| {blend(winsorized_mean(recent), len(recent)):.2f} |")
+    print("\n## Biggest misses\n")
+    worst = sorted(rows, key=lambda r: abs(math.log(r["act"] / r["est"])), reverse=True)[:5]
+    for r in worst:
+        print(f'- {r["date"]} {r["category"]}: est {r["est"]} min, actual {r["act"]} min '
+              f'(project "{sanitize(r["project"])}", job "{sanitize(r["job"])}")')
+    return 0
+
+
 def main(jsonl_path, out_path):
     try:
         lines = open(jsonl_path, encoding="utf-8").read().splitlines()
     except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
+    lines = rotate(jsonl_path, lines)
 
     cats, skipped, malformed, parallel = {}, 0, 0, []
     for line in lines:
@@ -150,6 +210,8 @@ def main(jsonl_path, out_path):
     return 0
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--report":
+        sys.exit(report(sys.argv[2]))
     if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr); sys.exit(1)
     sys.exit(main(sys.argv[1], sys.argv[2]))

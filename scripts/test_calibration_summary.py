@@ -107,5 +107,35 @@ class TestHardening(unittest.TestCase):
         self.assertIn("parallel-group", out)          # but noted
 
 
+class TestReportAndRotation(unittest.TestCase):
+    def test_report_mode(self):
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                for a in (10, 12, 30, 9, 11, 10):
+                    f.write(row(actual=a) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            txt = buf.getvalue()
+            self.assertIn("testing", txt)
+            self.assertIn("Biggest misses", txt)
+            self.assertIn('"job"', txt)   # job strings rendered as quoted literals
+
+    def test_rotation(self):
+        with tempfile.TemporaryDirectory() as td:
+            jp, op = os.path.join(td, "c.jsonl"), os.path.join(td, "s.md")
+            with open(jp, "w", encoding="utf-8") as f:
+                for _ in range(2500):
+                    f.write(row() + "\n")
+            cs.main(jp, op)
+            main_lines = open(jp, encoding="utf-8").read().splitlines()
+            self.assertEqual(len(main_lines), 1000)
+            archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            self.assertEqual(len(archives), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
