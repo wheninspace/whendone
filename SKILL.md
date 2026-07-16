@@ -64,12 +64,25 @@ decline ("run without pacekeeper").
 
 ## Checkpoint protocol — between EVERY subtask, in this order
 
-1. Timestamp → set the subtask's `finishedAt` = now, `actualMin` = finishedAt − startedAt
-   (whole minutes); append a line to `~/.claude/pacekeeper-data/calibration.jsonl` — its
-   `estimateMin` field carries the RAW value (the state file's `rawEstimateMin`, not the
-   adjusted `estimateMin`; see references/file-formats.md); update the state file.
-2. Republish the artifact (same file/URL): statuses, actual vs estimate, revised total ETA, new
-   "last updated". Copy the previous file and substitute the variable parts.
+If you cannot restate these six steps from context (e.g. after context compaction), re-read
+this section and `.claude/pacekeeper-state.json` once before continuing — never improvise the
+protocol from memory.
+
+1. Timestamp via Bash `date -Iseconds` → the subtask's `finishedAt`; `actualMin` =
+   finishedAt − startedAt in minutes, ONE decimal, minimum 0.5. Then one Bash call appends the
+   log line AND emits the next subtask's start time:
+   `printf '%s\n' '{"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}' >> ~/.claude/pacekeeper-data/calibration.jsonl && date -Iseconds`
+   `rawEstimateMin` carries the state file's `rawEstimateMin` (see references/file-formats.md).
+   Build the JSON with double quotes only, inside shell single quotes; if a value contains a
+   single quote, emit the line via `python3 -c 'import json; print(json.dumps({...}))' >> …`
+   instead. NEVER touch calibration.jsonl with the Write or Edit tool, and never read it back.
+   Skip the append for subtasks that ran in PARALLEL with others (group rule below). Then
+   update the state file with targeted Edit calls on the changed fields only (finishedAt,
+   actualMin, status, next task's startedAt) — never rewrite the whole JSON.
+2. Republish the artifact: update the SAME file in place with targeted Edit calls (banner,
+   "last updated", ETA block per the formula in references/file-formats.md, changed table
+   rows), then publish the same path — same URL. Never create a new filename mid-session;
+   never rewrite the whole file after the first publish.
 3. Revised total ETA > 150 % of the original total and `etaAlertSent` is false? → push
    notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
@@ -80,9 +93,13 @@ decline ("run without pacekeeper").
 
 Subtasks delegated to subagents are measured the same way: `startedAt` = before dispatch,
 `finishedAt` = when the result has been reviewed. Subtasks running in PARALLEL: show them
-individually in the artifact but do NOT log them to calibration.jsonl — overlapping wall-clock
-pollutes the calibration. Their ETA contribution is the MAX of the group's estimates, not the
-sum.
+individually in the artifact but do NOT log them individually to calibration.jsonl —
+overlapping wall-clock pollutes the per-category factors. Their ETA contribution is the MAX of
+the group's estimates, not the sum. When the whole group is done and reviewed, log ONE
+synthetic row for it: `"category":"parallel-group"`, `rawEstimateMin` = the max of the group's
+raw estimates, `actualMin` = group wall-clock (first dispatch → last review). The script keeps
+these out of the factors; they exist to validate the max-of-group rule. Each reviewed subagent
+result is a checkpoint boundary (artifact republish), even though only the group logs.
 
 ## Stop procedure
 
