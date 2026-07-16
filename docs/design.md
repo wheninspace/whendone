@@ -19,9 +19,10 @@ planning session to understand why things are built the way they are.
 - **Frozen default anchors.** The default per-category estimate table never changes. All learning
   lives in the correction factor that multiplies it. This keeps the anchor stable and auditable —
   if numbers look wrong, the factor is the only place to look, not a moving baseline.
-- **Median over mean.** A single blown estimate (a debugging subtask that took ten times longer
-  than expected) shouldn't drag every future estimate with it. The trimmed median resists outliers
-  in a way a mean cannot.
+- **Winsorizing over a raw mean.** A single blown estimate (a debugging subtask that took ten
+  times longer than expected) shouldn't drag every future estimate with it. Clamping the extreme
+  20% of ratios to the nearest kept value before averaging blunts that leverage while still
+  tracking the mean ratio the ETA math actually needs (see Calibration statistics).
 - **Parallel subtasks are excluded from calibration.** When multiple subtasks run at once, their
   wall-clock durations overlap, so "actual minutes elapsed" no longer corresponds to "work done" —
   logging them would corrupt the ratio calculation. They're still shown individually in the
@@ -34,23 +35,34 @@ Mirrors the docstring in `scripts/calibration_summary.py`:
 
 - **ratio** = `actualMin / estimateMin` per completed subtask (rows with `actualMin: null` are
   excluded — those are crashed or interrupted subtasks, not data).
-- **observed factor** = a 20%-trimmed median of ratios per category: sort the ratios, drop the
-  bottom and top 20%, take the median of what remains. This blunts the effect of one-off extreme
-  values without discarding the whole distribution the way a hard cutoff would.
-- **phased blend**, keyed on the number of data points `n` for that category:
-  - `n < 5`: prior only — not enough data to trust an observed value yet.
-  - `5 <= n < 20`: `0.5 * PRIOR + 0.5 * observed` — split evenly between prior and evidence.
-  - `n >= 20`: `0.3 * PRIOR + 0.7 * observed` — evidence dominates once there's enough of it, but
-    the prior is never fully dropped.
+- **observed factor** = a 20%-winsorized mean of ratios per category: sort the ratios, then clamp
+  the bottom and top 20% to the nearest kept value instead of discarding them, and take the mean
+  of the resulting list. ETA totals are sums, so the calibrated quantity has to track the *mean*
+  ratio — a median (trimmed or not) estimates the wrong statistic for that purpose and would
+  under-correct for right-skewed categories (e.g. debugging, where the tail is long overruns, not
+  long underruns). Winsorizing keeps that tail's mass in the average while capping how much
+  leverage any single point gets.
+- **continuous shrinkage**: `factor = (n * observed + K * PRIOR) / (n + K)`, with `K = 5` acting
+  as a fixed number of prior pseudo-observations. This replaces an earlier phased blend
+  (`n < 5` → prior only, `5 <= n < 20` → 0.5/0.5, `n >= 20` → 0.3 * prior + 0.7 * observed) that
+  had two problems: a dead zone below `n = 5` where new data was thrown away entirely, and hard
+  jumps at the `n = 5` and `n = 20` boundaries. The shrinkage formula is identical to the old
+  blend's value at exactly `n = 5` (`(5*observed + 5*1.0)/10 = 0.5*observed + 0.5*1.0`), starts
+  using data from `n = 1` instead of `n = 5`, and converges smoothly toward the observed ratio as
+  `n` grows instead of plateauing at `0.3 * prior + 0.7 * observed`.
 - **PRIOR = 1.0.** pocket-watch, the project this scheme is adapted from, uses 1.3 as its prior,
   because its raw estimates are free-form guesses that empirically skew optimistic. Pacekeeper's
   raw estimates are different: they start from a frozen, table-anchored default per category, not
   an open guess. There's no equivalent built-in optimism bias to correct for up front, so the
   neutral prior of 1.0 is the right starting point here.
-- **spread** = interquartile range of the ratios, reported alongside the factor so a wide spread
-  is visible even when the median looks stable.
+- **spread** = interquartile range of the ratios, shown once `n >= 5` (below that, quartiles are
+  too noisy to be worth displaying) so a wide spread is visible even when the factor looks stable.
 - Confidence labels follow the same `n` thresholds: `n < 5` low, `5 <= n < 20` medium, `n >= 20`
   high.
+- The live summary table is factors-only — no default-estimate column. Anchoring protection (see
+  below) depends on the raw estimate being produced from SKILL.md's frozen table before the
+  factor is read; a table that showed both columns side by side would let that ordering be
+  shortcut by reading one file instead of two.
 
 ## Anchoring protection
 
@@ -96,7 +108,11 @@ notifications. There's an open feature request for exactly this combination
 (anthropics/claude-code#24666). The nearest prior art each covers roughly half the loop:
 
 - **pocket-watch** — the calibration math (phased blending, trimmed median, anchoring
-  protection), but no live artifact and no pause/resume.
+  protection), but no live artifact and no pause/resume. Pacekeeper deviates deliberately from
+  pocket-watch's specific math on two points: trimmed median → winsorized mean (the calibrated
+  quantity needs to be a mean, not a median — see Calibration statistics above), and phased
+  blending → continuous shrinkage (removes the dead zone below `n = 5` and the jumps at the phase
+  boundaries).
 - **task-progress-bar** — the idea of computing progress outside the model rather than having the
   model narrate it, but no calibration loop.
 - **agent-estimation** — ETA aggregation across parallel work (max of the group), but no
@@ -126,6 +142,9 @@ exist yet or would add complexity out of proportion to the current scope:
   per-category history.
 - **Plugin/marketplace packaging.** The repo is already structured so this would only mean adding
   manifest files, not restructuring the skill itself.
+- **Asymmetric ETA intervals** (`+P80` / `-P25`, or similar) for categories whose ratio
+  distribution is right-skewed, instead of a single symmetric `+/-` percentage — would better
+  reflect that overruns are typically larger and more likely than underruns for those categories.
 
 ## Origin note
 

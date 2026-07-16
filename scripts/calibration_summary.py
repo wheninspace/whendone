@@ -5,10 +5,10 @@ Usage: python3 calibration_summary.py <calibration.jsonl> <calibration-summary.m
 
 Statistics design (see docs/design.md for provenance):
 - ratio = actualMin / estimateMin per completed subtask (rows with actualMin null excluded)
-- observed = 20%-trimmed median of ratios per category
-- blended factor: n<5 -> PRIOR; 5<=n<20 -> 0.5*PRIOR+0.5*observed; n>=20 -> 0.3*PRIOR+0.7*observed
+- observed = 20%-winsorized mean of ratios per category
+- blended factor: continuous shrinkage toward PRIOR, (n*observed + K*PRIOR)/(n+K), K=5
 - PRIOR = 1.0 (raw estimates are anchored to the default table, not free-form guesses)
-- spread = interquartile range of ratios
+- spread = interquartile range of ratios, shown once n>=5
 Malformed lines are skipped and counted, never fatal.
 """
 import json, math, statistics, sys
@@ -50,16 +50,24 @@ def parse_row(line):
                   "project": row.get("project", ""), "job": row.get("job", "")}
 
 
-def trimmed_median(values, trim=0.2):
+K = 5  # prior weight in pseudo-observations; at n=5 identical to the old 0.5/0.5 blend
+
+
+def winsorized_mean(values, trim=0.2):
+    """Clamp the top/bottom 20% to the cut values, then mean.
+    ETA totals are sums, so the calibrated quantity must track the MEAN ratio;
+    winsorizing (vs trimming) keeps real tail mass while capping single-point leverage."""
     vs = sorted(values)
     k = int(len(vs) * trim)
-    core = vs[k:len(vs)-k] or vs
-    return statistics.median(core)
+    if k:
+        lo, hi = vs[k], vs[-k - 1]
+        vs = [min(max(v, lo), hi) for v in vs]
+    return sum(vs) / len(vs)
+
 
 def blend(observed, n):
-    if n < 5: return PRIOR
-    if n < 20: return 0.5 * PRIOR + 0.5 * observed
-    return 0.3 * PRIOR + 0.7 * observed
+    """Continuous shrinkage toward PRIOR: no dead zone below n=5, no jumps, converges."""
+    return (n * observed + K * PRIOR) / (n + K)
 
 def confidence(n):
     return "low" if n < 5 else ("medium" if n < 20 else "high")
@@ -97,24 +105,20 @@ def main(jsonl_path, out_path):
         "",
         "## Per category",
         "",
-        "| Category | Default estimate | Factor (blended) | Data points | Confidence | Spread (IQR) |",
-        "|---|---|---|---|---|---|",
+        "| Category | Factor (blended) | Data points | Confidence | Spread (IQR) |",
+        "|---|---|---|---|---|",
     ]
     for cat in sorted(CATEGORIES):
         d = cats.get(cat, {"ratios": [], "models": {}})
         n = len(d["ratios"])
-        default = "—"
-        if n == 0:
-            out.append(f"| {cat} | {default} | — | 0 | — | — |")
-            continue
-        factor = blend(trimmed_median(d["ratios"]), n)
-        if n >= 4:
+        factor = blend(winsorized_mean(d["ratios"]), n) if n else PRIOR
+        if n >= 5:
             q = statistics.quantiles(d["ratios"], n=4)
             spread = f"{q[0]:.2f}–{q[2]:.2f}"
         else:
             spread = "—"
-        shown = f"{factor:.2f}" if n >= 5 else "— (prior 1.0)"
-        out.append(f"| {cat} | {default} | {shown} | {n} | {confidence(n)} | {spread} |")
+        shown = f"{factor:.2f}" if n >= 1 else "— (prior 1.0)"
+        out.append(f"| {cat} | {shown} | {n} | {confidence(n) if n else '—'} | {spread} |")
 
     mixes = {c: d["models"] for c, d in cats.items() if len(d["models"]) > 1}
     if mixes:
@@ -131,10 +135,10 @@ def main(jsonl_path, out_path):
         "",
         "## How to use when estimating",
         "",
-        "Produce the raw estimate from the default table FIRST (adjusted only for the subtask's scope),",
-        "then multiply by the category factor. Uncertainty on the total ETA: confidence low -> +/-50 %,",
-        "medium -> +/-30 %, high -> shrink toward the IQR. Never state a point time without an interval,",
-        "and never mention factor values in chat or artifact.",
+        "Produce the raw estimate FIRST from the default table in SKILL.md (adjusted only for the",
+        "subtask's scope), then multiply by the category factor above. Uncertainty on the total ETA:",
+        "confidence low -> +/-50 %, medium -> +/-30 %, high -> shrink toward the IQR. Never state a",
+        "point time without an interval, and never mention factor values in chat or artifact.",
         "",
     ]
     try:

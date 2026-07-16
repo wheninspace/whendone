@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for calibration_summary.py. Run: python3 scripts/test_calibration_summary.py -v"""
-import json, os, sys, tempfile, unittest
+import json, os, statistics, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import calibration_summary as cs
@@ -26,12 +26,28 @@ def run_main(rows):
 
 
 class TestStats(unittest.TestCase):
-    def test_median_small_n(self):
-        self.assertEqual(cs.trimmed_median([2.0]), 2.0)
-        self.assertEqual(cs.trimmed_median([1.0, 3.0]), 2.0)
+    def test_blend_continuous_shrinkage(self):
+        self.assertAlmostEqual(cs.blend(3.0, 0), 1.0)
+        self.assertAlmostEqual(cs.blend(3.0, 4), (4*3.0 + 5*1.0) / 9)   # ≈1.889 — data counts from n=1
+        self.assertAlmostEqual(cs.blend(3.0, 5), 2.0)                    # identical to old value at n=5
+        self.assertGreater(cs.blend(3.0, 200), 2.9)                      # converges toward observed
 
-    def test_blend_prior_only_below_5(self):
-        self.assertEqual(cs.blend(3.0, 4), 1.0)
+    def test_winsorized_mean_caps_outlier_but_keeps_tail_mass(self):
+        vals = [1.0, 1.0, 1.0, 1.0, 8.0]
+        self.assertLess(cs.winsorized_mean(vals), 2.0)      # 8.0 clamped to 1.0 at 20% trim
+        vals2 = [1.0, 1.0, 1.2, 1.5, 3.0, 3.2]
+        self.assertGreater(cs.winsorized_mean(vals2), statistics.median(vals2))
+
+    def test_summary_has_no_default_column_and_prior_label(self):
+        out = run_main([row()])
+        self.assertNotIn("Default estimate", out)
+        self.assertIn("(prior 1.0)", out)          # n=0 categories self-explanatory
+
+    def test_spread_gated_at_5(self):
+        out4 = run_main([row(actual=a) for a in (8, 9, 10, 11)])
+        for line in out4.splitlines():
+            if line.startswith("| testing |"):
+                self.assertTrue(line.rstrip().endswith("| — |"))
 
     def test_confidence_labels(self):
         self.assertEqual(cs.confidence(4), "low")
