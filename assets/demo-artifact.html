@@ -1,0 +1,44 @@
+<title>Pacekeeper: Config migration</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0;
+          --running:#1e6fd9; --paused:#a66800; --done:#1e8a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; } }
+  :root[data-theme="dark"] { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; }
+  :root[data-theme="light"] { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0; }
+  body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,sans-serif;
+         max-width:640px; margin:0 auto; padding:16px; }
+  a { color:var(--link); }
+  .banner { padding:12px 16px; border-radius:8px; color:#fff; font-weight:600; }
+  .banner.running{background:var(--running)} .banner.paused{background:var(--paused)}
+  .banner.done{background:var(--done)}
+  .banner a { color:#fff; }                                    /* solid banner bg only */
+  .eta { background:var(--card); border-radius:8px; padding:12px 16px; margin:12px 0; }
+  .eta strong { font-size:1.3em; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
+          overflow-wrap:anywhere; }
+  th:nth-child(1),td:nth-child(1) { width:2em; }               /* status icon */
+  th:nth-child(2),td:nth-child(2) { width:auto; }              /* subtask — takes the slack */
+  th:nth-child(3),td:nth-child(3) { width:18%; }               /* category */
+  th:nth-child(4),td:nth-child(4) { width:4em; white-space:nowrap; } /* est. */
+  th:nth-child(5),td:nth-child(5) { width:26%; }               /* actual (+ optional note) */
+  td:nth-child(5) .dev { white-space:nowrap; }                 /* keep "4 m (−33 %)" intact */
+  .dim { color:var(--dim); font-size:.9em; }
+  .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
+</style>
+<div class="banner running">🔄 RUNNING — last updated 14:35</div>
+<div class="eta"><strong>Done ~16:40 ± 35 min</strong><br>
+  <span class="dim">Started 14:02 · 33 min elapsed · 2 of 6 subtasks done</span><br>
+  <span class="dim">Tokens: 412k spent · 3.1M cache reads</span></div>
+<table>
+  <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
+  <tr><td>✅</td><td>Migrate config loader</td><td class="dim">mechanical-implementation</td><td>5 m</td><td><span class="dev">7 m (+38 %)</span><br><span class="dim">9k tok</span></td></tr>
+  <tr><td>✅</td><td>Write API tests</td><td class="dim">testing</td><td>8 m</td><td><span class="dev">7 m (−13 %)</span><br><span class="dim">6k tok</span></td></tr>
+  <tr><td>🔄</td><td>Implement caching layer</td><td class="dim">judgment-coding</td><td>12 m</td><td>—</td></tr>
+  <tr><td>⬜</td><td>Review PR feedback</td><td class="dim">review</td><td>10 m</td><td>—</td></tr>
+  <tr><td>⬜</td><td>Update deployment config</td><td class="dim">deploy-infra</td><td>15 m</td><td>—</td></tr>
+  <tr><td>⬜</td><td>Research rate-limit strategy</td><td class="dim">research</td><td>15 m</td><td>—</td></tr>
+</table>
+<p class="dim">Stop: type "stop after the current subtask" in the chat or create the file
+<code>.claude/STOP</code> in the project root. Push notifications: via Remote Control.</p>
