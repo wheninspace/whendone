@@ -18,7 +18,9 @@ rationale and threat model in [docs/design.md](docs/design.md).
 
 - **A live progress artifact** — task table, actual vs. estimate per task, total ETA with an
   honest interval, and token consumption per task and per job. One compact page, same URL all
-  job long, updated at every subtask boundary — check it from your phone (claude.ai login).
+  job long, updated at every subtask boundary. It's a claude.ai page scoped to your account
+  (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop while you work
+  and opens on any other device signed in to the same account — including your phone.
 - **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
   ±50 %; correction factors move from your first logged data point and carry the label
   low/medium/high confidence as history accumulates. No manual tuning, no cloud: the log is a
@@ -29,7 +31,11 @@ rationale and threat model in [docs/design.md](docs/design.md).
 - **Token visibility** — output + fresh input vs. cache reads, measured from the session
   transcript by a script, shown in the artifact. No dollar figures: subscribers don't pay per
   token, so pacekeeper won't pretend to know your bill.
-- **Best-effort push notifications** — job done, job stopped, ETA slipping past 150 %.
+- **Push notifications via Remote Control** — run Claude Code with Remote Control and the
+  session mirrors to the Claude mobile app: pacekeeper's pings (job done, job stopped, ETA
+  slipping past 150 %) reach your phone and the artifact link rides along in the mirrored
+  session. Best-effort — Claude decides when to push; needs the Claude app signed in with
+  `/config` push enabled.
 
 ## Overhead — read this first if you pay per token or watch your quota
 
