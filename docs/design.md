@@ -11,7 +11,7 @@ planning session to understand why things are built the way they are.
 - **Checkpoint updates, not live updates.** The artifact is refreshed at subtask boundaries, not
   continuously. There's no background process and no polling loop — updates happen exactly when
   there's new, real information (a subtask finished), which keeps the design simple and avoids any
-  need for a always-running watcher.
+  need for an always-running watcher.
 - **Raw estimates get logged, not adjusted ones.** The category factor exists to measure how far
   off the raw (pre-factor) estimate was. If the log recorded the already-adjusted estimate
   instead, the ratio would converge toward 1.0 on its own regardless of actual accuracy, and the

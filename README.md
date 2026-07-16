@@ -36,9 +36,10 @@ Windows PowerShell:
 git clone https://github.com/WhenInSpace/pacekeeper "$env:USERPROFILE\.claude\skills\pacekeeper"
 ```
 
-It activates automatically the next session a long job starts — no configuration needed.
-Calibration data is per-user, stored in `~/.claude/pacekeeper-data/` (created on first run). It's
-never shared and never committed to any project repo.
+It's set up to trigger automatically the next session a long job starts — no configuration
+needed, though see the Usage section below on how reliable that is in practice. Calibration data
+is per-user, stored in `~/.claude/pacekeeper-data/` (created on first run). It's never shared and
+never committed to any project repo.
 
 ## Update
 
@@ -50,8 +51,9 @@ Calibration data lives outside the skill directory, so it survives updates untou
 
 ## Usage
 
-Normally there's nothing to do — it triggers on its own once a job looks long enough. You can
-also say:
+Normally there's nothing to do — it triggers on its own once a job looks long enough. Auto-
+triggering is best-effort — other plan-execution skills can win the trigger, so say "run with
+pacekeeper" when you want to be sure. You can also say:
 
 - "run with pacekeeper" / "run without pacekeeper" — force it on or off for this job
 - "stop after the current subtask" — graceful stop

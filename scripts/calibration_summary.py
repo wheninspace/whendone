@@ -50,7 +50,9 @@ def main(jsonl_path, out_path):
             est, act = row["estimateMin"], row["actualMin"]
         except (json.JSONDecodeError, KeyError, TypeError):
             malformed += 1; continue
-        if not isinstance(cat, str) or not isinstance(est, (int, float)) or (act is not None and not isinstance(act, (int, float))):
+        if (not isinstance(cat, str)
+                or not isinstance(est, (int, float)) or isinstance(est, bool)
+                or (act is not None and (not isinstance(act, (int, float)) or isinstance(act, bool)))):
             malformed += 1; continue
         if act is None or not est:
             skipped += 1; continue
@@ -106,8 +108,12 @@ def main(jsonl_path, out_path):
         "and never mention factor values in chat or artifact.",
         "",
     ]
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(out))
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(out))
+    except OSError as e:
+        print(f"cannot write {out_path}: {e}", file=sys.stderr)
+        return 1
     return 0
 
 if __name__ == "__main__":

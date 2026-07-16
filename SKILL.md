@@ -32,8 +32,9 @@ decline ("run without pacekeeper").
    first.
 5. Classify every subtask per the category taxonomy.
 6. Set `rawEstimateMin` for every subtask FIRST — from the default-estimate table in the
-   calibration summary, adjusted only for the subtask's scope — BEFORE reading the category
-   factors. Only then read `~/.claude/pacekeeper-data/calibration-summary.md` and set
+   INITIAL `calibration-summary.md` shipped in the skill's own directory (its factor column is
+   always "—"), adjusted only for the subtask's scope. Only then read the live
+   `~/.claude/pacekeeper-data/calibration-summary.md`, solely for the category factors, and set
    `estimateMin` = rawEstimateMin × category factor. Store BOTH in the state file. If the data
    directory or file is missing (first run on the machine): create
    `~/.claude/pacekeeper-data/` and copy the initial `calibration-summary.md` from the skill's
@@ -55,8 +56,9 @@ decline ("run without pacekeeper").
 ## Checkpoint protocol — between EVERY subtask, in this order
 
 1. Timestamp → set the subtask's `finishedAt` = now, `actualMin` = finishedAt − startedAt
-   (whole minutes); append a line to `~/.claude/pacekeeper-data/calibration.jsonl` (with the
-   RAW estimate, `rawEstimateMin`); update the state file.
+   (whole minutes); append a line to `~/.claude/pacekeeper-data/calibration.jsonl` — its
+   `estimateMin` field carries the RAW value (the state file's `rawEstimateMin`, not the
+   adjusted `estimateMin`; see references/file-formats.md); update the state file.
 2. Republish the artifact (same file/URL): statuses, actual vs estimate, revised total ETA, new
    "last updated". Copy the previous file and substitute the variable parts.
 3. Revised total ETA > 150 % of the original total and `etaAlertSent` is false? → push
