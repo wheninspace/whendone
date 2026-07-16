@@ -129,5 +129,5 @@ exist yet or would add complexity out of proportion to the current scope:
 
 ## Origin note
 
-This document and the skill it describes were rewritten in English from a private predecessor.
-Fresh history here is intentional.
+This document and the skill it describes were rewritten in English from a private Swedish
+predecessor. Fresh history here is intentional.
