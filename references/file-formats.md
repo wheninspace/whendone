@@ -28,6 +28,8 @@ precondition, not a note.
       "category": "<one of the categories below>",
       "rawEstimateMin": 6,
       "estimateMin": 8,
+      "model": "claude-haiku-4-5-20251001",
+      "effort": null,
       "actualMin": 11.4,
       "status": "done | running | pending",
       "startedAt": "<ISO 8601 or null>",
@@ -41,6 +43,15 @@ precondition, not a note.
 `rawEstimateMin` = estimate before the category factor (this is what gets logged to the jsonl);
 `estimateMin` = adjusted estimate (shown in the artifact, used for the ETA). `actualMin` is
 minutes with one decimal, minimum 0.5.
+
+`model` = the model executing THIS subtask: `null` until the subtask starts; set at start to
+the lead's exact model id (stated in its system prompt) when run inline, or to the dispatch
+alias (e.g. `"haiku"`) when delegated to a subagent; upgraded to the full versioned id from
+token_usage.py's per-task `models` list (top entry) at a later checkpoint. `effort` = reasoning
+effort, recorded ONLY when explicitly set for this subtask (Workflow `effort` option,
+agent-definition frontmatter, or the user stated it) — otherwise it stays `null`. The session's
+own effort level is not observable: never guess it. Both fields are optional — a state file
+without them (pre-upgrade or hand-built) stays valid and simply renders no executor line.
 
 Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
 its `planFile`/`job` to the job being started — same job means a crashed or still-live prior
@@ -66,12 +77,18 @@ skill directory so data survives skill updates; created on first run). One line 
 subtask:
 
 ```json
-{"date":"2026-07-16","project":"<project directory name>","job":"<job name>","category":"debugging","rawEstimateMin":10,"actualMin":26.0,"model":"<model id>","client":"desktop|web|cli|unknown"}
+{"date":"2026-07-16","project":"<project directory name>","job":"<job name>","category":"debugging","rawEstimateMin":10,"actualMin":26.0,"model":"claude-haiku-4-5-20251001","effort":"low","client":"desktop|web|cli|unknown"}
 ```
 
 Rules: `date` = local date. `client` from the environment (system prompt/client info); unsure →
 `unknown`. `rawEstimateMin` = the raw estimate before the category factor (the factor must
 measure raw accuracy). Legacy logs may carry this field as `estimateMin`; the script reads both.
+`model` = the full versioned id of the model that executed THE SUBTASK (the task's `model`
+field from the state file — not necessarily the lead's model); if only a dispatch alias ever
+resolved, log the alias. Include the `"effort"` key ONLY when the subtask's `effort` is
+non-null — omit it entirely otherwise. The summary script ignores both for factor computation
+(factors stay per-category); they are recorded so historical runs can be compared across model
+versions later.
 Append via the Bash tool only — `printf '%s\n' '<json>' >> …` — UTF-8 always (never PowerShell
 redirection, which writes UTF-16), never the Write/Edit tool, never read the file back at a
 checkpoint. Never edit existing lines. Corrupt file → rename to

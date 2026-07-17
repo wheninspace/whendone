@@ -70,7 +70,10 @@ decline ("run without whendone").
     `.claude/whendone-state.json` (`status: "running"`, `jobId` = compacted start timestamp).
     Set `originalTotalMin` = the sum of every subtask's initial (adjusted) `estimateMin` — write
     it once now and never revise it; it is the fixed baseline for the 150 %-slip check. Mark the
-    first subtask `status: "running"`, `startedAt` = now.
+    first subtask `status: "running"`, `startedAt` = now, and record its executor: `model` =
+    your exact model id from the system prompt when you run it yourself, or the dispatch alias
+    (e.g. `"haiku"`) when delegating; `effort` only when explicitly set (Workflow `effort`
+    option, agent frontmatter, or the user said so) — otherwise `null`, never guessed.
 11. Total ETA over ~2 h? Mention that Claude Code on the web is the alternative if the computer
     must be shut down.
 
@@ -85,6 +88,9 @@ protocol from memory.
    log line AND emits the next subtask's start time:
    `printf '%s\n' '{"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}' >> ~/.claude/whendone-data/calibration.jsonl && date -Iseconds`
    `rawEstimateMin` carries the state file's `rawEstimateMin` (see references/file-formats.md).
+   `model` carries the completed subtask's `model` field (full versioned id when resolved,
+   otherwise the alias); include an `"effort"` key only when the subtask's `effort` is
+   non-null.
    Build the JSON with double quotes only, inside shell single quotes. If any value contains a
    single quote (which would break the outer shell quoting), emit the line with a quoted-heredoc
    Python instead — the `'PY'` delimiter stops the shell touching the body, and numbers stay
@@ -104,15 +110,18 @@ protocol from memory.
    never rewrite the whole file after the first publish.
    Before editing, refresh token numbers (best-effort): run
    `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json` (same interpreter
-   fallback chain as at job end) and update the artifact's token figures from its JSON. Any
-   failure → show "tokens: n/a" and continue.
+   fallback chain as at job end) and update the artifact's token figures from its JSON; also
+   upgrade any task `model` still holding a dispatch alias to the full versioned id in the top
+   entry of that task's `models` list — in the state file and the artifact. Any failure → show
+   "tokens: n/a", keep the alias, and continue.
 3. Revised total ETA > 150 % of `originalTotalMin` and `etaAlertSent` is false? → push
    notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
    a finished job is not paused).
 5. Stop signal? (`.claude/STOP` exists, or the user asked to stop in chat) → Stop procedure.
 6. Otherwise: next subtask — set its `status: "running"` and `startedAt` = now in the state
-   file.
+   file, and record its `model`/`effort` the same way as at job start (inline → your exact
+   model id; delegated → the dispatch alias; `effort` only when explicitly set, else `null`).
 
 Subtasks delegated to subagents are measured the same way: `startedAt` = before dispatch,
 `finishedAt` = when the result has been reviewed. Subtasks running in PARALLEL: show them
