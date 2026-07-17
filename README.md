@@ -100,9 +100,8 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 Expect these prompts the first time: creating `~/.claude/whendone-data/` (outside the
 project), adding the state file to your `.gitignore`, Bash `date` calls, a log append at each
 checkpoint, and the artifact publish to claude.ai. To pre-approve the recurring ones for
-unattended runs, allowlist in `.claude/settings.json`: `Bash(date:*)`,
-`Bash(printf:*)` (append path under `~/.claude/whendone-data/`), and
-`Bash(python3:*)` for the two shipped scripts if you've reviewed them.
+unattended runs, allowlist in `.claude/settings.json`: `Bash(date:*)` and `Bash(python3:*)` for
+the three shipped scripts (including the calibration append helper) if you've reviewed them.
 
 ## Install
 

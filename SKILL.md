@@ -90,24 +90,27 @@ If you cannot restate these six steps from context (e.g. after context compactio
 this section and `.claude/whendone-state.json` once before continuing — never improvise the
 protocol from memory.
 
-1. Timestamp via Bash `date -Iseconds` → the subtask's `finishedAt`; `actualMin` =
-   finishedAt − startedAt in minutes, ONE decimal, minimum 0.5. Then one Bash call appends the
-   log line AND emits the next subtask's start time:
-   `printf '%s\n' '{"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}' >> ~/.claude/whendone-data/calibration.jsonl && date -Iseconds`
-   `rawEstimateMin` carries the state file's `rawEstimateMin` (see references/file-formats.md).
-   `model` carries the completed subtask's `model` field (full versioned id when resolved,
-   otherwise the alias); include an `"effort"` key only when the subtask's `effort` is
-   non-null.
-   Build the JSON with double quotes only, inside shell single quotes. If any value contains a
-   single quote (which would break the outer shell quoting), emit the line with a quoted-heredoc
-   Python instead — the `'PY'` delimiter stops the shell touching the body, and numbers stay
-   numeric:
-   ```
-   python3 <<'PY' >> ~/.claude/whendone-data/calibration.jsonl
-   import json; print(json.dumps({"date":"…","project":"…","job":"…","category":"…","rawEstimateMin":8,"actualMin":11.4,"model":"…","client":"…"}))
-   PY
-   ```
-   NEVER touch calibration.jsonl with the Write or Edit tool, and never read it back.
+1. Timestamp via Bash `date -Iseconds` → the subtask's `finishedAt`. Write a JSON object —
+   `date`, `project`, `job`, `category`, `rawEstimateMin` (see references/file-formats.md), this
+   task's `startedAt` (already in the state file), the `finishedAt` just captured, `model`
+   (the completed subtask's `model` field — full versioned id when resolved, otherwise the
+   alias), `client`, and an `"effort"` key only when the subtask's `effort` is non-null — with
+   NO `actualMin` field, the script computes that itself — to a temp file in the session
+   scratchpad using the Write tool (Write treats content as data; nothing is ever spliced into
+   shell or Python source). The same temp file path can be reused/overwritten at every
+   checkpoint. Then one Bash call runs the append helper and gets the next subtask's start time
+   in the same invocation:
+   `python3 <skill-dir>/scripts/append_calibration.py <tmpfile>`
+   (resolve `<skill-dir>` to this skill's actual directory; same interpreter fallback chain as
+   elsewhere — if `python3` is not found, try `python`, then `py -3`).
+   On success the script prints two lines: the computed `actualMin` (or the literal `null` on
+   clock skew — the system clock moved back) and the next subtask's start time. Use both for
+   the state-file Edit below — never recompute `actualMin` yourself. On any failure (validation
+   error, or python3/python/py all missing): skip the append, set this subtask's `actualMin:
+   null` in the state file, note it in chat, and continue — a lost log write never blocks the
+   job.
+   NEVER touch calibration.jsonl with the Write or Edit tool, and never read it back — the temp
+   file above is NOT the log, so writing it with the Write tool does not violate that rule.
    Skip the append for subtasks that ran in PARALLEL with others (group rule below). Then
    update the state file with targeted Edit calls on the changed fields only (finishedAt,
    actualMin, status, next task's startedAt) — never rewrite the whole JSON.
@@ -135,10 +138,12 @@ Subtasks delegated to subagents are measured the same way: `startedAt` = before 
 individually in the artifact but do NOT log them individually to calibration.jsonl —
 overlapping wall-clock pollutes the per-category factors. Their ETA contribution is the MAX of
 the group's estimates, not the sum. When the whole group is done and reviewed, log ONE
-synthetic row for it: `"category":"parallel-group"`, `rawEstimateMin` = the max of the group's
-raw estimates, `actualMin` = group wall-clock (first dispatch → last review). The script keeps
-these out of the factors; they exist to validate the max-of-group rule. Each reviewed subagent
-result is a checkpoint boundary (artifact republish), even though only the group logs.
+synthetic row for it via the same append helper (step 1 above): `"category":"parallel-group"`,
+`rawEstimateMin` = the max of the group's raw estimates, `startedAt` = first dispatch,
+`finishedAt` = last review — the script computes `actualMin` as the group's wall-clock from
+those two timestamps. The script keeps these out of the factors; they exist to validate the
+max-of-group rule. Each reviewed subagent result is a checkpoint boundary (artifact republish),
+even though only the group logs.
 
 ## Stop procedure
 
@@ -212,6 +217,7 @@ Remote Control").
 |---|---|
 | Artifact publish fails | Continue the job; retry next checkpoint; after 3 straight misses: stop trying, say so in chat |
 | calibration.jsonl corrupt | Rename to `calibration.broken-<date>.jsonl`, start fresh, note it |
+| append_calibration.py rejects the row, or python3/python/py all missing at a checkpoint | Skip the append, `actualMin: null` for the subtask in the state file, note it in chat, continue |
 | Clock read fails | `actualMin: null` for the subtask, continue |
 | Session sat paused during the subtask (wall-clock is clearly not work time) | `actualMin: null`, note in chat — never pollute the calibration |
 | PushNotification missing | Silent degradation |

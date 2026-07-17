@@ -10,6 +10,10 @@ Statistics design (see docs/design.md for provenance):
 - blended factor: continuous shrinkage toward PRIOR, (n*observed + K*PRIOR)/(n+K), K=5
 - PRIOR = 1.0 (raw estimates are anchored to the default table, not free-form guesses)
 - spread = interquartile range of ratios, shown once n>=5
+- actualMin is derived from startedAt/finishedAt when both are present (never trusted
+  as model-computed arithmetic); legacy rows without timestamps fall back to the
+  logged actualMin; a row whose logged actualMin disagrees with the derived value by
+  more than rounding is skipped
 Malformed lines are skipped and counted, never fatal.
 
 Log rotation: main() rotates calibration.jsonl once it exceeds ROTATE_AT (2000) lines,
@@ -18,7 +22,7 @@ moving all but the newest KEEP (1000) to calibration-archive-<year>.jsonl (atomi
 calibration-archive-*.jsonl siblings — the LLM never reads the jsonl directly.
 """
 import glob, json, math, os, statistics, sys
-from datetime import date
+from datetime import date, datetime
 
 PRIOR = 1.0
 CATEGORIES = frozenset({
@@ -34,8 +38,26 @@ def sanitize(s, maxlen=64):
     return str(s).replace("\n", " ").replace("\r", " ").replace("|", "/")[:maxlen]
 
 
+def _derive_actual_min(started_at, finished_at):
+    """Minutes between two ISO 8601 timestamps, one decimal. None if unparseable."""
+    try:
+        start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        finish = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return round((finish - start).total_seconds() / 60.0, 1)
+
+
 def parse_row(line):
-    """Validate one jsonl line. Returns (status, row): 'ok', 'skipped', or 'malformed'."""
+    """Validate one jsonl line. Returns (status, row): 'ok', 'skipped', or 'malformed'.
+
+    actualMin is never trusted as model arithmetic: when startedAt/finishedAt are both
+    present (append_calibration.py always writes them), actualMin is DERIVED from them
+    here, independent of whatever the row's own actualMin says. Legacy rows without
+    timestamps fall back to the logged actualMin. If a row somehow carries both a
+    logged actualMin and timestamps that disagree by more than rounding, the row is
+    untrustworthy and is skipped rather than silently trusting either number.
+    """
     try:
         row = json.loads(line, parse_constant=lambda _: None)  # NaN/Inf -> None -> rejected
         cat = row["category"]
@@ -49,6 +71,13 @@ def parse_row(line):
             or (act is not None and (not isinstance(act, (int, float))
                                      or isinstance(act, bool) or not math.isfinite(act)))):
         return "malformed", None
+    started_at, finished_at = row.get("startedAt"), row.get("finishedAt")
+    if isinstance(started_at, str) and isinstance(finished_at, str):
+        derived = _derive_actual_min(started_at, finished_at)
+        if derived is not None and derived > 0:
+            if act is not None and not math.isclose(derived, act, abs_tol=0.1):
+                return "skipped", None  # logged actualMin disagrees with the timestamps
+            act = derived
     if act is None or act <= 0 or est <= 0:
         return "skipped", None
     return "ok", {"category": cat, "est": est, "act": act,

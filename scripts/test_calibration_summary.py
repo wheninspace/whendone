@@ -107,6 +107,48 @@ class TestHardening(unittest.TestCase):
         self.assertIn("parallel-group", out)          # but noted
 
 
+class TestDerivedActualMin(unittest.TestCase):
+    """actualMin must never be trusted as model-computed arithmetic (C9): when both
+    timestamps are present, parse_row derives it independently of the logged value."""
+
+    def test_legacy_row_without_timestamps_falls_back_to_logged_actual_min(self):
+        status, r = cs.parse_row(row(actual=11.4))
+        self.assertEqual(status, "ok")
+        self.assertEqual(r["act"], 11.4)
+
+    def test_timestamps_present_and_agreeing_use_derived_value(self):
+        line = row(actual=8.0, startedAt="2026-07-16T10:00:00+00:00",
+                    finishedAt="2026-07-16T10:08:00+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "ok")
+        self.assertEqual(r["act"], 8.0)
+
+    def test_timestamps_disagree_with_logged_actual_min_skipped(self):
+        # Logged actualMin (100) wildly disagrees with the timestamp span (8 min) —
+        # the row is untrustworthy and must not silently pick either number.
+        line = row(actual=100, startedAt="2026-07-16T10:00:00+00:00",
+                    finishedAt="2026-07-16T10:08:00+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "skipped")
+
+    def test_timestamps_derive_across_midnight_boundary(self):
+        # Same scenario C9 warns about: a naive LLM subtraction would say 76.5 min;
+        # the derived value from real timestamps is 16.5.
+        line = row(actual=16.5, startedAt="2026-07-16T23:47:12+00:00",
+                    finishedAt="2026-07-17T00:03:41+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "ok")
+        self.assertEqual(r["act"], 16.5)
+
+    def test_null_logged_actual_min_with_backwards_timestamps_stays_skipped(self):
+        # Clock-skew row written by append_calibration.py: actualMin null, and the
+        # timestamps themselves run backwards — must stay excluded, not resurrected.
+        line = row(actual=None, startedAt="2026-07-16T10:10:00+00:00",
+                    finishedAt="2026-07-16T10:00:00+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "skipped")
+
+
 class TestReportAndRotation(unittest.TestCase):
     def test_report_mode(self):
         import io, contextlib
