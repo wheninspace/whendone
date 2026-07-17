@@ -178,10 +178,25 @@ def rotate(jsonl_path, lines):
     retries at the next job end, so skipping never loses data. A lock older than
     STALE_LOCK_SECONDS is treated as abandoned (e.g. a crashed session) and reclaimed.
 
+    `lines` (the caller's pre-lock read) is used only for the cheap up-front
+    len(lines) <= ROTATE_AT gate, deciding whether it's worth taking the lock at all.
+    Once the lock is held, the file is RE-READ fresh from disk and every decision below
+    (what's archived, what's kept, the idempotency boundary) is made from that fresh
+    read — never from the stale pre-lock snapshot. Without this, a row appended by a
+    concurrent session (append_calibration.py's O_APPEND write, which is lock-unaware
+    by design — see module docstring) in the window between the caller's read and this
+    function acquiring the lock would be silently destroyed by the truncate, since it
+    exists on disk but not in the stale `lines` list rotate() would otherwise operate
+    on. Residual: an append landing in the much smaller window between THIS fresh
+    re-read and os.replace() below is still not captured — acceptable, since rotation
+    runs only once per job end and O_APPEND writes are atomic, so that row simply
+    survives as the newest line of the freshly-truncated file until the next rotation.
+
     Idempotency: the archive append happens BEFORE the live-log truncate (so a crash
     between the two just means the next run repeats the append), guarded by a check:
-    if the archive's last line already equals lines[-KEEP-1] (last run's boundary
-    line), the append is skipped so a re-run after a crash does not duplicate rows.
+    if the archive's last line already equals the fresh read's boundary line (last
+    run's boundary), the append is skipped so a re-run after a crash does not
+    duplicate rows.
     """
     if len(lines) <= ROTATE_AT:
         return lines
@@ -198,17 +213,30 @@ def rotate(jsonl_path, lines):
         return lines  # lock busy (FileExistsError) or the stale-check failed — degrade
 
     try:
+        # Re-read fresh under the lock (C15): never operate on the caller's pre-lock
+        # snapshot — see docstring above for why.
+        try:
+            if os.path.getsize(jsonl_path) > MAX_JSONL_BYTES:
+                return lines  # oversized on the fresh read too (N3) — degrade, skip
+            with open(jsonl_path, encoding="utf-8") as f:
+                fresh_lines = f.read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            return lines  # fresh re-read failed — degrade, never crash
+
+        if len(fresh_lines) <= ROTATE_AT:
+            return fresh_lines  # already at/under budget by the time the lock was held
+
         archive = os.path.join(os.path.dirname(jsonl_path),
                                f"calibration-archive-{date.today().year}.jsonl")
-        boundary = lines[-KEEP - 1]
+        boundary = fresh_lines[-KEEP - 1]
         if _last_line(archive) != boundary:
             with open(archive, "a", encoding="utf-8") as f:
-                f.write("\n".join(lines[:-KEEP]) + "\n")
+                f.write("\n".join(fresh_lines[:-KEEP]) + "\n")
         tmp = jsonl_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines[-KEEP:]) + "\n")
+            f.write("\n".join(fresh_lines[-KEEP:]) + "\n")
         os.replace(tmp, jsonl_path)
-        return lines[-KEEP:]
+        return fresh_lines[-KEEP:]
     finally:
         try:
             os.remove(lock_path)

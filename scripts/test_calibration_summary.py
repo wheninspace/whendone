@@ -279,6 +279,37 @@ class TestRotationConcurrencyAndIdempotency(unittest.TestCase):
             archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
             self.assertEqual(archives, [])
 
+    def test_concurrent_append_before_lock_is_preserved_not_destroyed(self):
+        # C15 failure mode (a): a row appended by another session (e.g.
+        # append_calibration.py's O_APPEND write, which is lock-unaware by design) in
+        # the window between the caller's pre-lock read and rotate() acquiring the
+        # lock must survive rotation, not be silently destroyed by the truncate.
+        # rotate() must re-read the file fresh under the lock rather than operate on
+        # the caller's stale pre-lock snapshot.
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            lines = self._make_lines()
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            # simulate the caller's pre-lock read
+            stale_lines = list(lines)
+            # simulate a concurrent session appending a new, distinguishable row
+            # directly to disk AFTER that read but BEFORE rotate() is invoked
+            marker_row = row(project="concurrent-marker")
+            with open(jp, "a", encoding="utf-8") as f:
+                f.write(marker_row + "\n")
+
+            result = cs.rotate(jp, stale_lines)
+
+            archive_glob = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            archived_lines = []
+            if archive_glob:
+                archived_lines = open(os.path.join(td, archive_glob[0]),
+                                       encoding="utf-8").read().splitlines()
+            # the marker row must survive somewhere -- kept tail or archive -- never
+            # silently dropped
+            self.assertIn(marker_row, list(result) + archived_lines)
+
     def test_stale_lock_is_reclaimed_and_rotation_proceeds(self):
         with tempfile.TemporaryDirectory() as td:
             jp = os.path.join(td, "c.jsonl")
