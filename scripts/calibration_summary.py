@@ -6,14 +6,27 @@ Usage: python3 calibration_summary.py <calibration.jsonl> <calibration-summary.m
 
 Statistics design (see docs/design.md for provenance):
 - ratio = actualMin / estimateMin per completed subtask (rows with actualMin null excluded)
-- observed = 20%-winsorized mean of ratios per category
+- each individual ratio is clamped to [0.1, 8] before it reaches any pooling step (M21):
+  cheap, order-independent, active at every n, unlike winsorizing below (which is inert
+  for n<=4 since k=int(n*0.2) is 0 there — exactly where one point has the most leverage)
+- observed = the estimate-weighted (by rawEstimateMin), 20%-winsorized mean of the CLAMPED
+  ratios per category — equivalently a ratio-of-sums (sum(actualMin)/sum(rawEstimateMin))
+  computed on the clamped/winsorized values. ETA totals are sums, so the calibrated
+  quantity must minimize error for a SUM: an unweighted mean gives a 0.5-min quick task the
+  same vote as a 60-min task, and short tasks produce the noisiest, most extreme ratios —
+  weighting by rawEstimateMin fixes that (see docs/design.md's Calibration statistics
+  section for the worked example and the note on how this changed factor values already
+  on disk pre-release)
 - blended factor: continuous shrinkage toward PRIOR, (n*observed + K*PRIOR)/(n+K), K=5
 - PRIOR = 1.0 (raw estimates are anchored to the default table, not free-form guesses)
-- spread = interquartile range of ratios, shown once n>=5
+- spread = interquartile range of the (clamped) ratios, shown once n>=5
 - actualMin is derived from startedAt/finishedAt when both are present (never trusted
   as model-computed arithmetic); legacy rows without timestamps fall back to the
   logged actualMin; a row whose logged actualMin disagrees with the derived value by
   more than rounding is skipped
+- rows matched only via the legacy estimateMin key (not rawEstimateMin) are counted and
+  surfaced as "N legacy-key rows" in the summary header (M30) — a compatibility shim for
+  pre-rename logs, not something that should apply silently forever
 - date is validated at the source in parse_row: kept only if it is a str matching
   YYYY-MM-DD, else "" — end-to-end, every string this module re-emits is neutralized
   before reaching --report or calibration-summary.md: category via the
@@ -97,6 +110,7 @@ def parse_row(line):
     try:
         row = json.loads(line, parse_constant=lambda _: None)  # NaN/Inf -> None -> rejected
         cat = row["category"]
+        legacy_key = "rawEstimateMin" not in row  # M30: matched only via the old key
         est = row.get("rawEstimateMin", row.get("estimateMin"))
         act = row["actualMin"]
     except (json.JSONDecodeError, KeyError, TypeError, RecursionError):
@@ -124,25 +138,62 @@ def parse_row(line):
         return "skipped", None
     raw_date = row.get("date")
     date_str = raw_date if isinstance(raw_date, str) and DATE_RE.fullmatch(raw_date) else ""
+
+    def _finite_or_none(v):
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
     return "ok", {"category": cat, "est": est, "act": act,
                   "model": sanitize(row.get("model") or "unknown"),
-                  "date": date_str,
+                  "date": date_str, "legacy_key": legacy_key,
+                  # M22: the parallel-group ETA rule's actual operands (max/sum of the
+                  # group's ADJUSTED estimates), logged only on synthetic parallel-group
+                  # rows — absent (None) on every ordinary category row and on synthetic
+                  # rows written before this field existed.
+                  "maxAdjusted": _finite_or_none(row.get("maxAdjusted")),
+                  "sumAdjusted": _finite_or_none(row.get("sumAdjusted")),
                   "project": row.get("project", ""), "job": row.get("job", "")}
 
 
 K = 5  # prior weight in pseudo-observations; at n=5 identical to the old 0.5/0.5 blend
 
+# M21: fixed sanity band for a single ratio, applied BEFORE any pooling step, at every n.
+# Winsorizing below is inert for n<=4 (k=int(n*0.2) is 0) — exactly where one point has
+# maximum leverage on a mean — so this clamp is what protects a fresh category from a
+# single wild first data point; winsorizing then adds a second, rank-based cap once n>=5.
+RATIO_CLAMP_LO, RATIO_CLAMP_HI = 0.1, 8.0
 
-def winsorized_mean(values, trim=0.2):
-    """Clamp the top/bottom 20% to the cut values, then mean.
-    ETA totals are sums, so the calibrated quantity must track the MEAN ratio;
-    winsorizing (vs trimming) keeps real tail mass while capping single-point leverage."""
-    vs = sorted(values)
-    k = int(len(vs) * trim)
+
+def clamp_ratio(r):
+    """M21: bound a single ratio to [RATIO_CLAMP_LO, RATIO_CLAMP_HI] before pooling."""
+    return min(max(r, RATIO_CLAMP_LO), RATIO_CLAMP_HI)
+
+
+def winsorized_mean(ratios, weights=None, trim=0.2):
+    """20%-winsorized mean of ratios, optionally weighted by `weights` (M2: estimate-weighted
+    factor — weights are each row's rawEstimateMin, so this becomes a ratio-of-sums,
+    sum(actualMin)/sum(rawEstimateMin), computed on the winsorized values). `weights=None`
+    (the default) is an unweighted mean — every weight is implicitly 1.
+
+    Winsorizing: sort the ratios, clamp the top/bottom `trim` fraction BY RANK to the
+    nearest kept value, then take the (weighted) mean. ETA totals are sums, so the
+    calibrated quantity has to track a MEAN, not a median. Callers are expected to have
+    already run each ratio through clamp_ratio() (M21) — that clamp is the leverage
+    control active at every n; this rank-based trim is a second cap that only engages
+    at n>=5 (int(n*trim) is 0 below that)."""
+    n = len(ratios)
+    if n == 0:
+        return 0.0
+    if weights is None:
+        weights = [1.0] * n
+    order = sorted(ratios)
+    k = int(n * trim)
     if k:
-        lo, hi = vs[k], vs[-k - 1]
-        vs = [min(max(v, lo), hi) for v in vs]
-    return sum(vs) / len(vs)
+        lo, hi = order[k], order[-k - 1]
+        vals = [min(max(v, lo), hi) for v in ratios]
+    else:
+        vals = list(ratios)
+    denom = sum(weights)
+    return sum(v * w for v, w in zip(vals, weights)) / denom if denom else sum(vals) / n
 
 
 def blend(observed, n):
@@ -251,27 +302,38 @@ def report(jsonl_path):
     rows = []
     for p in paths:
         try:
-            for line in open(p, encoding="utf-8"):
-                status, r = parse_row(line)
-                if status == "ok" and r["category"] != PARALLEL:
-                    rows.append(r)
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    status, r = parse_row(line)
+                    if status == "ok" and r["category"] != PARALLEL:
+                        rows.append(r)
         except OSError:
             continue
     if not rows:
         print("No calibration data yet."); return 0
     print(f"# WhenDone accuracy report ({len(rows)} data points)\n")
-    print("| Category | n | Mean ratio (winsorized) | Lifetime factor | Last-10 factor |")
+    # M17: "Last-10 mean ratio" is the UNSHRUNK winsorized mean of the recent window —
+    # comparable to the lifetime "Mean ratio (winsorized)" column. The old "Last-10
+    # factor" column re-applied K=5 shrinkage at n<=10 while the lifetime factor column
+    # is barely shrunk at large n, so the two were never on the same scale.
+    print("| Category | n | Mean ratio (winsorized) | Lifetime factor | Last-10 mean ratio |")
     print("|---|---|---|---|---|")
     bycat = {}
     for r in rows:
         bycat.setdefault(r["category"], []).append(r)
     for cat in sorted(bycat):
         rs = bycat[cat]
-        ratios = [r["act"] / r["est"] for r in rs]
-        recent = ratios[-10:]
-        print(f"| {cat} | {len(ratios)} | {winsorized_mean(ratios):.2f} "
-              f"| {blend(winsorized_mean(ratios), len(ratios)):.2f} "
-              f"| {blend(winsorized_mean(recent), len(recent)):.2f} |")
+        # M21: clamp every ratio before it reaches any pooling step. M2: weight by each
+        # row's rawEstimateMin (r["est"]) so the mean tracks a SUM's error, not a
+        # per-task-count-equal vote.
+        ratios = [clamp_ratio(r["act"] / r["est"]) for r in rs]
+        weights = [r["est"] for r in rs]
+        recent, recent_w = ratios[-10:], weights[-10:]
+        lifetime_mean = winsorized_mean(ratios, weights)
+        recent_mean = winsorized_mean(recent, recent_w)  # unshrunk — no blend() here (M17)
+        print(f"| {cat} | {len(ratios)} | {lifetime_mean:.2f} "
+              f"| {blend(lifetime_mean, len(ratios)):.2f} "
+              f"| {recent_mean:.2f} |")
     print("\n## Biggest misses\n")
     worst = sorted(rows, key=lambda r: abs(math.log(r["act"] / r["est"])), reverse=True)[:5]
     for r in worst:
@@ -296,7 +358,7 @@ def _iter_calibration_lines(jsonl_path):
 
 
 def main(jsonl_path, out_path):
-    cats, skipped, malformed, parallel = {}, 0, 0, []
+    cats, skipped, malformed, legacy_count, parallel = {}, 0, 0, 0, []
     try:
         for line in _iter_calibration_lines(jsonl_path):
             if not line.strip():
@@ -306,21 +368,32 @@ def main(jsonl_path, out_path):
                 malformed += 1; continue
             if status == "skipped":
                 skipped += 1; continue
+            if r["legacy_key"]:  # M30: matched only via the legacy estimateMin key
+                legacy_count += 1
             if r["category"] == PARALLEL:
-                parallel.append(r["act"] / r["est"]); continue
-            d = cats.setdefault(r["category"], {"ratios": [], "models": {}})
-            d["ratios"].append(r["act"] / r["est"])
+                parallel.append(r); continue
+            # M21: clamp every ratio before it reaches any pooling step. M2: track each
+            # row's rawEstimateMin as its weight so the per-category factor tracks a
+            # SUM's error, not a per-task-count-equal vote.
+            d = cats.setdefault(r["category"], {"ratios": [], "weights": [], "models": {}})
+            d["ratios"].append(clamp_ratio(r["act"] / r["est"]))
+            d["weights"].append(r["est"])
             d["models"][r["model"]] = d["models"].get(r["model"], 0) + 1
     except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
 
     total = sum(len(c["ratios"]) for c in cats.values())
+    extras = []
+    if skipped or malformed:
+        extras.append(f"{skipped} skipped, {malformed} malformed")
+    if legacy_count:
+        extras.append(f"{legacy_count} legacy-key rows")
     out = [
         "# Calibration summary",
         "",
         f"Regenerated: {date.today().isoformat()} ({total} data points"
-        + (f", {skipped} skipped, {malformed} malformed" if skipped or malformed else "") + "). "
+        + (", " + ", ".join(extras) if extras else "") + "). "
         "Regenerated from calibration.jsonl by scripts/calibration_summary.py at every job end. "
         "Read at job start — never read the full jsonl at start.",
         "",
@@ -331,9 +404,9 @@ def main(jsonl_path, out_path):
     ]
     iqr_by_cat = {}
     for cat in sorted(CATEGORIES):
-        d = cats.get(cat, {"ratios": [], "models": {}})
+        d = cats.get(cat, {"ratios": [], "weights": [], "models": {}})
         n = len(d["ratios"])
-        factor = blend(winsorized_mean(d["ratios"]), n) if n else PRIOR
+        factor = blend(winsorized_mean(d["ratios"], d["weights"]), n) if n else PRIOR
         if n >= 5:
             q = statistics.quantiles(d["ratios"], n=4)
             spread = f"{q[0]:.2f}–{q[2]:.2f}"
@@ -351,8 +424,28 @@ def main(jsonl_path, out_path):
             out.append(f"- {cat}: " + ", ".join(f"`{m}` ×{k}" for m, k in sorted(mix.items())))
 
     if parallel:
-        out += ["", f"{PARALLEL} rows: {len(parallel)} logged, max-rule ratio median "
-                f"{statistics.median(parallel):.2f} (validation data — never pooled into factors)."]
+        # M22: log/report the ETA rule's actual operands (max-of-adjusted vs
+        # sum-of-adjusted estimates) against the group's wall-clock, so the pair can
+        # discriminate between aggregators — a lone "max-rule ratio" can't, since a
+        # ratio far from 1.0 is confounded with ordinary per-category estimate bias.
+        # Rows logged before this field existed (or a row missing one field) simply
+        # don't contribute to that side's median — never fabricated, never crashes.
+        wall_over_max = [p["act"] / p["maxAdjusted"] for p in parallel
+                          if p["maxAdjusted"] and p["maxAdjusted"] > 0]
+        wall_over_sum = [p["act"] / p["sumAdjusted"] for p in parallel
+                          if p["sumAdjusted"] and p["sumAdjusted"] > 0]
+        out += ["", f"{PARALLEL} rows: {len(parallel)} logged "
+                "(bookkeeping — never pooled into factors)."]
+        if wall_over_max:
+            out.append(f"- wall-clock / max-adjusted ratio median: "
+                       f"{statistics.median(wall_over_max):.2f}")
+        if wall_over_sum:
+            out.append(f"- wall-clock / sum-adjusted ratio median: "
+                       f"{statistics.median(wall_over_sum):.2f}")
+        if wall_over_max or wall_over_sum:
+            out.append("  (informative about which aggregator tracks wall-clock more "
+                       "closely — not proof either rule is statistically correct, since "
+                       "both ratios are confounded with ordinary per-category estimate bias.)")
 
     out += [
         "",

@@ -265,11 +265,15 @@ estimateMin_i − elapsed_i)` — never 0, and shown as "overrunning by X min" o
 elapsed time passes its estimate; this is also why the interval sums over pending AND
 running tasks, never pending alone. When the whole group is done and reviewed, log ONE
 synthetic row for it via the same append helper (step 1(c) above): `"category":"parallel-group"`,
-`rawEstimateMin` = the max of the group's raw estimates, `startedAt` = first dispatch,
-`finishedAt` = last review — the script computes `actualMin` as the group's wall-clock from
-those two timestamps. The script keeps these out of the factors; they exist to validate the
-max-of-group rule. Each reviewed subagent result is a checkpoint boundary (artifact republish),
-even though only the group logs.
+`rawEstimateMin` = the max of the group's raw estimates (kept for schema compatibility),
+`maxAdjusted` = the max of the group's ADJUSTED (factor-applied) estimates, `sumAdjusted` = the
+sum of the group's adjusted estimates — these are the ETA rule's actual operands (see
+references/file-formats.md) — `startedAt` = first dispatch, `finishedAt` = last review — the
+script computes `actualMin` as the group's wall-clock from those two timestamps. The script
+keeps these out of the factors; it reports wall-clock/max-adjusted and wall-clock/sum-adjusted
+medians as bookkeeping — informative about which aggregator tracks wall-clock more closely, not
+proof that either rule is the statistically correct one. Each reviewed subagent result is a
+checkpoint boundary (artifact republish), even though only the group logs.
 
 ## Stop procedure
 

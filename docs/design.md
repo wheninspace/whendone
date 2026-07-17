@@ -19,15 +19,25 @@ planning session to understand why things are built the way they are.
 - **Frozen default anchors.** The default per-category estimate table never changes. All learning
   lives in the correction factor that multiplies it. This keeps the anchor stable and auditable —
   if numbers look wrong, the factor is the only place to look, not a moving baseline.
-- **Winsorizing over a raw mean.** A single blown estimate (a debugging subtask that took ten
-  times longer than expected) shouldn't drag every future estimate with it. Clamping the extreme
-  20% of ratios to the nearest kept value before averaging blunts that leverage while still
-  tracking the mean ratio the ETA math actually needs (see Calibration statistics).
+- **Clamped, estimate-weighted, winsorizing mean over a raw mean.** A single blown estimate (a
+  debugging subtask that took ten times longer than expected) shouldn't drag every future estimate
+  with it, and a swarm of small tasks shouldn't out-vote the few large tasks that dominate actual
+  wall-clock. Every individual ratio is first clamped to a fixed sanity band (`[0.1, 8]`) — cheap,
+  order-independent, and active at every sample size, unlike winsorizing (see below); winsorizing
+  then caps the leverage of the top/bottom 20% by rank; the resulting ratios are combined into a
+  mean weighted by each row's raw estimate — instead of an unweighted mean — so a 0.5-min quick
+  task and a 60-min task don't get an equal vote (see Calibration statistics).
 - **Parallel subtasks are excluded from calibration.** When multiple subtasks run at once, their
   wall-clock durations overlap, so "actual minutes elapsed" no longer corresponds to "work done" —
   logging them would corrupt the ratio calculation. They're still shown individually in the
   artifact, but the group's contribution to the total ETA is the max of the group's estimates, not
-  the sum.
+  the sum. The synthetic parallel-group row logs the ETA rule's actual operands —
+  `maxAdjusted` (max of the group's factor-adjusted estimates) and `sumAdjusted` (their sum) —
+  alongside the group's wall-clock, and the summary reports wall-clock/max-adjusted and
+  wall-clock/sum-adjusted medians side by side. That pair is bookkeeping, not proof: informative
+  about which aggregator tracks wall-clock more closely, but either ratio is confounded with
+  ordinary per-category estimate bias, so neither confirms the max rule (or the sum) is the
+  statistically correct aggregator.
 
 ## Calibration statistics
 
@@ -35,13 +45,38 @@ Mirrors the docstring in `scripts/calibration_summary.py`:
 
 - **ratio** = `actualMin / estimateMin` per completed subtask (rows with `actualMin: null` are
   excluded — those are crashed or interrupted subtasks, not data).
-- **observed factor** = a 20%-winsorized mean of ratios per category: sort the ratios, then clamp
-  the bottom and top 20% to the nearest kept value instead of discarding them, and take the mean
-  of the resulting list. ETA totals are sums, so the calibrated quantity has to track the *mean*
-  ratio — a median (trimmed or not) estimates the wrong statistic for that purpose and would
-  under-correct for right-skewed categories (e.g. debugging, where the tail is long overruns, not
-  long underruns). Winsorizing keeps that tail's mass in the average while capping how much
-  leverage any single point gets.
+- **individual-ratio clamp (M21 hardening)** = every ratio is first clamped to a fixed sanity band
+  `[0.1, 8]` before it reaches any pooling step. Winsorizing (next bullet) is inert below `n = 5`
+  — `k = int(n * 0.2)` is `0` for `n <= 4` — exactly the sample sizes where a single blown estimate
+  has the most leverage on a mean. The clamp is what actually protects a fresh category (its first
+  one to four data points) from a single wild outlier; winsorizing then adds a second, rank-based
+  cap once `n >= 5`. The clamp also bounds the same ratios that feed the displayed spread (IQR), so
+  a single implausible ratio can't blow that out either.
+- **observed factor** = the CLAMPED ratios' estimate-weighted, 20%-winsorized mean per category:
+  sort the clamped ratios, then clamp the bottom and top 20% by rank to the nearest kept value
+  instead of discarding them (inert below `n = 5`, see above), and take the mean of the resulting
+  list — weighted by each row's raw estimate (`rawEstimateMin`), not an unweighted mean. Weighted
+  this way, the calculation is equivalent to a ratio-of-sums, `Σ actualMin / Σ rawEstimateMin`,
+  computed on the clamped/winsorized values rather than the raw ones.
+
+  ETA totals are sums, so the calibrated quantity has to minimize error for a *sum* — a median
+  (trimmed or not) estimates the wrong statistic for that purpose, and so does an *unweighted*
+  mean of ratios: it gives a 0.5-minute quick task the same vote as a 60-minute task, and short
+  tasks systematically produce the noisiest, most extreme ratios (amplified further by the
+  `actualMin` floor of 0.5 min). An unweighted mean is therefore dominated by exactly the data that
+  matters least to the total wall-clock the factor exists to predict. Weighting by
+  `rawEstimateMin` fixes that: a category's few large tasks, which dominate its actual sum, get
+  proportionally more say than a swarm of small ones.
+
+  **This is a behavior change, made pre-release (hardening round 2, M2):** this section originally
+  specified an *unweighted* mean of ratios, justified by the claim that "ETA totals are sums, so
+  the calibrated quantity must track the mean ratio." That justification was true only if every
+  task in a category shares the same raw estimate — not guaranteed, since scope-based adjustment
+  of the raw estimate within a category is allowed. Switching to the estimate-weighted mean above
+  changes the factor value computed from calibration data already on disk: categories whose raw
+  estimates were already close to homogeneous are nearly unaffected; categories with a size-skewed
+  mix of raw estimates will see their factor move toward whatever the large tasks' true ratio is,
+  which is the correction this section was always meant to provide.
 - **continuous shrinkage**: `factor = (n * observed + K * PRIOR) / (n + K)`, with `K = 5` acting
   as a fixed number of prior pseudo-observations. This replaces an earlier phased blend
   (`n < 5` → prior only, `5 <= n < 20` → 0.5/0.5, `n >= 20` → 0.3 * prior + 0.7 * observed) that
