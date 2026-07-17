@@ -32,7 +32,15 @@ Content requirements (top to bottom):
    `"—"` for an unfinished one; wrong: `"done"` (the icon already shows status). Wrap the
    `time (±%)` figure in `<span class="dev">…</span>` so it never breaks mid-figure; put any
    explanatory note (e.g. "mostly dashboard time; not counted") as plain text AFTER the span so
-   it is free to wrap onto its own lines. The table is fixed-layout: the Subtask column absorbs
+   it is free to wrap onto its own lines.
+   Below the subtask name, one dim executor line when the task's `model` is known:
+   `<br><span class="dim">Haiku 4.5</span>` — use the `display` value from token_usage.py's
+   `models` list (always initial-capital: `Fable 5`, `Sonnet 4.7`); while only a dispatch alias
+   is known, capitalize it (`Haiku`). Append ` · low effort` ONLY when the task's `effort` is
+   set. Omit the line entirely when `model` is null — no placeholder text. Model names come
+   from the trusted script/state fields, but still land inside HTML — keep them inside the
+   `<span>` text node.
+   The table is fixed-layout: the Subtask column absorbs
    the remaining width, so long subtask names stay readable and never collapse to one word per
    line.
 4. **When PAUSED:** a box with the exact resume instruction (project, plan file, next subtask,
@@ -83,8 +91,8 @@ Skeleton (adapt content, keep structure and theme handling):
   <span class="dim">Tokens: 412k spent · 3.1M cache reads</span></div>
 <table>
   <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
-  <tr><td>✅</td><td>Failing test read_skill</td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span><br><span class="dim">38k tok</span></td></tr>
-  <tr><td>🔄</td><td>Implement read_skill</td><td class="dim">judgment-coding</td><td>15 m</td><td>—</td></tr>
+  <tr><td>✅</td><td>Failing test read_skill<br><span class="dim">Haiku 4.5 · low effort</span></td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span><br><span class="dim">38k tok</span></td></tr>
+  <tr><td>🔄</td><td>Implement read_skill<br><span class="dim">Fable 5</span></td><td class="dim">judgment-coding</td><td>15 m</td><td>—</td></tr>
   <tr><td>⬜</td><td>Cost cap per turn</td><td class="dim">judgment-coding</td><td>20 m</td><td>—</td></tr>
 </table>
 <p class="dim">Stop: type "stop after the current subtask" in the chat or create the file

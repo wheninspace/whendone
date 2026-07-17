@@ -16,8 +16,9 @@ rationale and threat model in [docs/design.md](docs/design.md).
 
 ## What you get
 
-- **A live progress artifact** — task table, actual vs. estimate per task, total ETA with an
-  honest interval, and token consumption per task and per job. One compact page, same URL all
+- **A live progress artifact** — task table, actual vs. estimate per task, which model ran
+  each subtask (full version, e.g. "Haiku 4.5", plus reasoning effort when explicitly set),
+  total ETA with an honest interval, and token consumption per task and per job. One compact page, same URL all
   job long, updated at every subtask boundary. It's a claude.ai page scoped to your account
   (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop while you work
   and opens on any other device signed in to the same account — including your phone.
@@ -70,7 +71,7 @@ monitor progress.`
 
 | Data | Where it goes |
 |---|---|
-| Progress artifact (task names, timings, token counts) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Sensitive-looking names are flagged before first publish and re-checked when the task list changes |
+| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Sensitive-looking names are flagged before first publish and re-checked when the task list changes |
 | State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
 | Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
 | Session transcript | read locally by the token script — usage numbers only, never content |
