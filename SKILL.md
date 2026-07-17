@@ -153,18 +153,21 @@ point during this session's run.
       rule. Skip this sub-step entirely for subtasks that ran in PARALLEL with others (group
       rule below) — no individual append for group members.
    d. Edit the state file again: set THIS task's `actualMin` from the helper's first line (or
-      `null` per the failure fallback above) — never recompute `actualMin` yourself. If a next
-      subtask exists, mark it `status: "running"`, `startedAt` = the helper's second line (or
-      the fallback timestamp), and record its `model`/`effort` the same way as at job start
-      (inline → your exact model id; delegated → the dispatch alias; `effort` only when
-      explicitly set, else `null`).
+      `null` per the failure fallback above) — never recompute `actualMin` yourself. Do NOT
+      mark a next subtask running here: this step only CAPTURES the next subtask's start
+      timestamp (the helper's second output line, or the fallback `date -Iseconds` from (c)'s
+      failure path) for use in step 6 below, which is where that timestamp is actually written
+      to the state file.
 
    Crash analysis: a crash between (b) and (c) loses at most one calibration row — harmless,
    because the task is already durably marked done, so Resume never redoes it and never
    double-logs it. A crash between (c) and (d) leaves `actualMin` null in the state file
-   (display-only, cosmetic) but the log already holds the row. Both gaps are strictly safer
-   than the reverse order (log first, mark done second), which can double-log AND re-execute a
-   finished subtask.
+   (display-only, cosmetic) but the log already holds the row. A crash after (d) but before
+   step 6 runs (e.g. during the republish in step 2) leaves the next subtask simply `pending`
+   with no `startedAt` stamped — Resume then starts it fresh like any other pending task,
+   rather than finding a task stuck "running" that never actually started. Both (b)/(c) gaps
+   are strictly safer than the reverse order (log first, mark done second), which can
+   double-log AND re-execute a finished subtask.
 2. Republish the artifact: update the SAME file in place with targeted Edit calls (banner,
    "last updated", ETA block per the formula in references/file-formats.md, changed table
    rows), then publish the same path — same URL. Never create a new filename mid-session;
@@ -188,9 +191,17 @@ point during this session's run.
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
    a finished job is not paused).
 5. Stop signal? (`.claude/STOP` exists, or the user asked to stop in chat) → Stop procedure.
-6. Otherwise: continue with the next subtask. Its `status: "running"`, `startedAt`, and
-   `model`/`effort` were already set in step 1(d) above — this step is just the "keep working"
-   branch, not another state write.
+6. Otherwise: mark the next subtask running. Edit the state file: set its `status: "running"`,
+   `startedAt` = the timestamp captured in step 1 (the append helper's second output line, or
+   the fallback timestamp from step 1's failure path), and record its `model`/`effort` the same
+   way as at job start (inline → your exact model id; delegated → the dispatch alias; `effort`
+   only when explicitly set, else `null`). This is the ONLY write that marks a task running —
+   because it happens here, after the stop check in step 5, a stop signal never leaves a
+   next-subtask "running" with a `startedAt` that never actually started. One consequence, by
+   design: the checkpoint overhead in steps 2-5 (token refresh, artifact republish, slip check)
+   falls INSIDE the next task's measured window rather than an uncounted gap — this is
+   deliberate, since it keeps calibrated ETAs honest about wall-clock time for
+   whendone-monitored jobs.
 
 Subtasks delegated to subagents are measured the same way: `startedAt` = before dispatch,
 `finishedAt` = when the result has been reviewed. Subtasks running in PARALLEL: show them
@@ -214,7 +225,8 @@ even though only the group logs.
 1. Finish the current subtask — never stop mid-subtask.
 2. Update the plan file's checkboxes/status note; commit only if the project's documented
    conventions or an active plan-execution skill requires it.
-3. State file: `status: "paused"`.
+3. Timestamp via Bash `date -Iseconds`. Edit the state file: `status: "paused"`, `pausedAt` =
+   that timestamp.
 4. Republish the artifact with the PAUSED banner + resume instruction; include the full
    artifact URL in the chat message.
 5. Push notification: "Stopped after subtask N — state saved."
@@ -258,9 +270,15 @@ below once the file is confirmed to parse.
    chat either way.
 5. Capture this session's id (`echo "${CLAUDE_CODE_SESSION_ID:-}"`) and APPEND it to the state
    file's `sessionIds` array (empty string → token display just stays unavailable, which is
-   fine). State: `status: "running"`, record `resumedAt` = now and add the pause length to
-   `pausedTotalMin` (see references/file-formats.md). Continue the checkpoint protocol from the
-   next task not marked done — mark it `running`, `startedAt` = now.
+   fine). Timestamp via Bash `date -Iseconds` → `now`. Compute the pause length (see
+   references/file-formats.md for the fallback derivation): if the state file's `pausedAt` is
+   set (clean stop), pause length = `now − pausedAt`. If `pausedAt` is `null` or absent
+   (crash-resume — no clean Stop ever ran), pause length = `now −` the latest `finishedAt`
+   among tasks marked `done` (or `now −` the job's `startedAt` if no task has finished yet) —
+   this intentionally counts the crashed task's lost partial work as pause time. Add the pause
+   length to `pausedTotalMin`, then clear `pausedAt` to `null`. State: `status: "running"`,
+   `resumedAt` = `now`. Continue the checkpoint protocol from the next task not marked done —
+   mark it `running`, `startedAt` = `now`.
 6. State file missing but a plan file exists? Rebuild the state from the checkboxes; new
    artifact (say the old URL is lost).
 

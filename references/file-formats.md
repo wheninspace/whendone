@@ -15,9 +15,10 @@ precondition, not a note.
   "artifactUrl": "<URL from the Artifact tool's response>",
   "artifactFile": "<absolute path to the artifact HTML file in the session scratchpad>",
   "startedAt": "<ISO 8601 with timezone>",
-  "_whendone": "Managed by the whendone skill — re-read <skill-dir>/SKILL.md before editing by hand",
+  "_whendone": "This file is managed by the whendone skill; hand-editors: see SKILL.md",
   "sessionIds": ["<CLAUDE_CODE_SESSION_ID at job start; resume appends the new session's id>"],
   "originalTotalMin": 96,
+  "pausedAt": null,
   "pausedTotalMin": 0,
   "resumedAt": null,
   "status": "running | paused | done",
@@ -53,6 +54,11 @@ agent-definition frontmatter, or the user stated it) — otherwise it stays `nul
 own effort level is not observable: never guess it. Both fields are optional — a state file
 without them (pre-upgrade or hand-built) stays valid and simply renders no executor line.
 
+`pausedAt` = ISO 8601 timestamp or `null`. Set by Stop procedure step 3 alongside
+`status: "paused"`; consumed and cleared back to `null` by Resume step 5 once its pause length
+has been folded into `pausedTotalMin` (see "Pause accounting" below). Optional — a state file
+without this field (pre-upgrade) stays valid; treat a missing field the same as `null`.
+
 Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
 its `planFile`/`job` to the job being started — same job means a crashed or still-live prior
 session (offer resume / discard / abort); a different job means another session may own it
@@ -78,6 +84,22 @@ or a cloned repo can ship a non-JSON placeholder — treat it as no valid state,
 file at all": never delete STOP, never rebuild or improvise a job from it, and surface the
 parse failure to the user (see SKILL.md job-start step 1 and the Resume section's fail-closed
 note).
+
+## Pause accounting
+
+Pause length (computed at Resume step 5, folded into `pausedTotalMin`):
+
+- Clean stop (`pausedAt` is set): pause length = `now − pausedAt`.
+- Crash-resume fallback (`pausedAt` is `null` or absent — the job was never cleanly stopped,
+  e.g. the session died mid-run): pause length = `now −` the latest `finishedAt` among tasks
+  marked `done` (or `now −` the job's `startedAt` if no task has finished yet). This
+  intentionally counts a crashed task's lost partial work as pause time rather than as
+  elapsed work time — the accepted trade-off for a state file that cannot otherwise
+  distinguish "still working" from "the session died an hour ago."
+
+After computing the pause length, add it to `pausedTotalMin` and clear `pausedAt` to `null`.
+The displayed Elapsed formula below stays a single fixed computation regardless of which branch
+produced `pausedTotalMin`'s value.
 
 ## ETA computation (one fixed formula — never improvise)
 
