@@ -86,6 +86,18 @@ def build_row(obj):
     effort = obj.get("effort")
     if effort is not None:
         row["effort"] = effort
+    # M22: parallel-group synthetic rows carry the ETA rule's actual operands
+    # (max-of-adjusted, sum-of-adjusted estimates) so calibration_summary.py can report
+    # wall/max-adjusted and wall/sum-adjusted medians. Optional (omitted for ordinary
+    # category rows and pre-M22 callers) but must be numeric/finite when present —
+    # rejected loudly, same as rawEstimateMin, rather than silently dropped or coerced.
+    for key in ("maxAdjusted", "sumAdjusted"):
+        value = obj.get(key)
+        if value is not None:
+            if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                    or not math.isfinite(value)):
+                return None, f"invalid {key}: {value!r}"
+            row[key] = value
     return row, None
 
 

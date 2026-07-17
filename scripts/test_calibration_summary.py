@@ -5,6 +5,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import calibration_summary as cs
+import append_calibration as ac
 
 
 def row(category="testing", raw=8, actual=10, model="claude-sonnet-5", **kw):
@@ -180,9 +181,11 @@ class TestHardening(unittest.TestCase):
         self.assertIn("parallel-group", out)          # but noted
 
     def test_parallel_group_reports_wall_over_max_and_sum_adjusted(self):
-        # M22: the synthetic row must log the ETA rule's actual operands
-        # (max-of-adjusted, sum-of-adjusted) and the summary must print both
-        # wall-clock ratios side by side, not a single confounded "max-rule ratio".
+        # Reader-level check of calibration_summary.py's own median logic, given a row
+        # shape that already carries maxAdjusted/sumAdjusted. This does NOT prove the
+        # real writer (append_calibration.py) produces that shape -- see the
+        # writer->reader round-trip test below for that; this test is a hand-built
+        # jsonl line and would pass even if build_row() silently dropped both fields.
         synthetic_row = row(category="parallel-group", raw=20, actual=30,
                             maxAdjusted=20, sumAdjusted=35,
                             startedAt="2026-07-16T10:00:00+00:00",
@@ -199,6 +202,41 @@ class TestHardening(unittest.TestCase):
         self.assertIn("parallel-group rows: 1 logged", out)
         self.assertNotIn("wall-clock / max-adjusted", out)
         self.assertNotIn("wall-clock / sum-adjusted", out)
+
+    def test_writer_to_reader_round_trip_reports_wall_over_max_and_sum_adjusted(self):
+        # M22 (round 2 review fix): the reader-level test above passed even when
+        # append_calibration.py's build_row() dropped maxAdjusted/sumAdjusted entirely
+        # -- a parallel-group row logged via the real writer never carried the fields
+        # this summary reads, so the medians never printed in production. This test
+        # goes through the ACTUAL writer (ac.append()) before calibration_summary.main()
+        # reads the result, so a regression in either file's handling of these fields
+        # fails this test.
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            op = os.path.join(td, "s.md")
+            input_obj = {
+                "date": "2026-07-16", "project": "proj", "job": "job",
+                "category": "parallel-group", "rawEstimateMin": 20,
+                "maxAdjusted": 20, "sumAdjusted": 35,
+                "startedAt": "2026-07-16T10:00:00+00:00",
+                "finishedAt": "2026-07-16T10:30:00+00:00",
+                "model": "claude-sonnet-5", "client": "cli",
+            }
+            tmp = os.path.join(td, "row.json")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(input_obj, f)
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertTrue(ok, err)
+
+            jsonl_path = os.path.join(data_dir, "calibration.jsonl")
+            with open(jsonl_path, "a", encoding="utf-8") as f:
+                f.write(row() + "\n")  # an ordinary row too, so main() has data to show
+
+            rc = cs.main(jsonl_path, op)
+            self.assertEqual(rc, 0)
+            out = read_text(op)
+            self.assertIn("wall-clock / max-adjusted ratio median: 1.50", out)  # 30/20
+            self.assertIn("wall-clock / sum-adjusted ratio median: 0.86", out)  # 30/35
 
     def test_date_with_injection_sanitized_to_empty_in_parse_row(self):
         # C5: a newline-bearing date (the verified --report injection vector) must

@@ -33,6 +33,13 @@ def write_tmp(td, data):
     return p
 
 
+def read_lines(data_dir):
+    """M29: read calibration.jsonl back through a `with` block -- no bare open()s left
+    for the GC to close later (which is what emits ResourceWarnings)."""
+    with open(os.path.join(data_dir, "calibration.jsonl"), encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
 class TestValidAppend(unittest.TestCase):
     def test_valid_row_appends(self):
         with tempfile.TemporaryDirectory() as td:
@@ -41,8 +48,7 @@ class TestValidAppend(unittest.TestCase):
             ok, result = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, result)
             self.assertEqual(result["actualMin"], 8.0)   # the appended row, not None
-            lines = open(os.path.join(data_dir, "calibration.jsonl"),
-                         encoding="utf-8").read().splitlines()
+            lines = read_lines(data_dir)
             self.assertEqual(len(lines), 1)
             row = json.loads(lines[0])
             self.assertEqual(row["actualMin"], 8.0)   # 10:00 -> 10:08 = 8 min
@@ -70,8 +76,7 @@ class TestValidAppend(unittest.TestCase):
                     os.environ.pop("WHENDONE_DATA_DIR", None)
                 else:
                     os.environ["WHENDONE_DATA_DIR"] = old
-            lines = open(os.path.join(data_dir, "calibration.jsonl"),
-                         encoding="utf-8").read().splitlines()
+            lines = read_lines(data_dir)
             self.assertEqual(len(lines), 1)
 
     def test_main_prints_null_on_clock_skew(self):
@@ -103,8 +108,7 @@ class TestInjectionHardening(unittest.TestCase):
             tmp = write_tmp(td, obj(job=evil_job))
             ok, err = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, err)
-            line = open(os.path.join(data_dir, "calibration.jsonl"),
-                        encoding="utf-8").read().splitlines()[0]
+            line = read_lines(data_dir)[0]
             row = json.loads(line)
             self.assertEqual(row["job"], evil_job)   # exact round-trip, never interpreted
 
@@ -116,8 +120,7 @@ class TestInjectionHardening(unittest.TestCase):
             tmp = write_tmp(td, obj(project=evil_project))
             ok, err = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, err)
-            line = open(os.path.join(data_dir, "calibration.jsonl"),
-                        encoding="utf-8").read().splitlines()[0]
+            line = read_lines(data_dir)[0]
             row = json.loads(line)
             self.assertEqual(row["project"], evil_project)  # inert data, not executed
 
@@ -223,8 +226,7 @@ class TestActualMinComputation(unittest.TestCase):
                                      finished="2026-07-17T00:03:41+00:00"))
             ok, err = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, err)
-            line = open(os.path.join(data_dir, "calibration.jsonl"),
-                        encoding="utf-8").read().splitlines()[0]
+            line = read_lines(data_dir)[0]
             row = json.loads(line)
             # 23:47:12 -> 00:03:41 next day = 16 min 29 s = 16.4833... -> 16.5
             self.assertEqual(row["actualMin"], 16.5)
@@ -236,8 +238,7 @@ class TestActualMinComputation(unittest.TestCase):
                                      finished="2026-07-16T10:00:00+00:00"))
             ok, err = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, err)   # clock skew is not a validation failure
-            line = open(os.path.join(data_dir, "calibration.jsonl"),
-                        encoding="utf-8").read().splitlines()[0]
+            line = read_lines(data_dir)[0]
             row = json.loads(line)
             self.assertIsNone(row["actualMin"])   # never a wrong-but-finite duration, never 0.5
 
@@ -248,8 +249,7 @@ class TestActualMinComputation(unittest.TestCase):
                                      finished="2026-07-16T10:00:05+00:00"))
             ok, err = ac.append(tmp, data_dir=data_dir)
             self.assertTrue(ok, err)
-            line = open(os.path.join(data_dir, "calibration.jsonl"),
-                        encoding="utf-8").read().splitlines()[0]
+            line = read_lines(data_dir)[0]
             row = json.loads(line)
             self.assertEqual(row["actualMin"], 0.5)
 
@@ -269,15 +269,49 @@ class TestOptionalFields(unittest.TestCase):
             data_dir = os.path.join(td, "data")
             tmp = write_tmp(td, obj())
             ac.append(tmp, data_dir=data_dir)
-            row = json.loads(open(os.path.join(data_dir, "calibration.jsonl"),
-                                   encoding="utf-8").read().splitlines()[0])
+            row = json.loads(read_lines(data_dir)[0])
             self.assertNotIn("effort", row)
 
             tmp2 = write_tmp(td, obj(effort="low"))
             ac.append(tmp2, data_dir=data_dir)
-            rows = [json.loads(l) for l in open(
-                os.path.join(data_dir, "calibration.jsonl"), encoding="utf-8").read().splitlines()]
+            rows = [json.loads(l) for l in read_lines(data_dir)]
             self.assertEqual(rows[1]["effort"], "low")
+
+    def test_max_and_sum_adjusted_round_trip_through_the_writer(self):
+        # M22 (round 2 review fix): build_row previously dropped maxAdjusted/sumAdjusted
+        # entirely -- a parallel-group row logged via the real append() helper never
+        # carried the fields calibration_summary.py's wall/max, wall/sum medians read.
+        # This is the writer->reader contract test: it must go through ac.append(),
+        # not construct the jsonl line directly.
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            tmp = write_tmp(td, obj(category="parallel-group", maxAdjusted=20, sumAdjusted=35))
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertTrue(ok, err)
+            row = json.loads(read_lines(data_dir)[0])
+            self.assertEqual(row["maxAdjusted"], 20)
+            self.assertEqual(row["sumAdjusted"], 35)
+
+    def test_max_and_sum_adjusted_omitted_when_absent(self):
+        # An ordinary (non-parallel) row, or a pre-M22 caller, must still work -- the
+        # fields are optional, never fabricated.
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            tmp = write_tmp(td, obj())
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertTrue(ok, err)
+            row = json.loads(read_lines(data_dir)[0])
+            self.assertNotIn("maxAdjusted", row)
+            self.assertNotIn("sumAdjusted", row)
+
+    def test_non_numeric_max_adjusted_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            tmp = write_tmp(td, obj(category="parallel-group", maxAdjusted="a lot"))
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertFalse(ok)
+            self.assertIn("maxAdjusted", err)
+            self.assertFalse(os.path.exists(os.path.join(data_dir, "calibration.jsonl")))
 
 
 if __name__ == "__main__":
