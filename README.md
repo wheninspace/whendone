@@ -25,12 +25,13 @@ rationale and threat model in [docs/design.md](docs/design.md).
 
 ## What you get
 
-- **A live progress artifact** — task table, actual vs. estimate per task, which model ran
+- **A progress artifact** — task table, actual vs. estimate per task, which model ran
   each subtask (full version, e.g. "Haiku 4.5", plus reasoning effort when explicitly set),
-  total ETA with an honest interval, and token consumption per task and per job. One compact page, same URL all
-  job long, updated at every subtask boundary. It's a claude.ai page scoped to your account
-  (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop while you work
-  and opens on any other device signed in to the same account — including your phone.
+  total ETA with an honest interval, and token consumption per task and per job. The same
+  account-scoped page throughout — one URL, republished at every subtask boundary. It's a
+  claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
+  while you work and opens on any other device signed in to the same account — including your
+  phone.
 - **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
   ±50 %; correction factors move from your first logged data point and carry the label
   low/medium/high confidence as history accumulates. No manual tuning, no cloud: the log is a
@@ -93,15 +94,20 @@ Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 
 
 ## Usage — say "run with whendone"
 
-Treat "run with whendone" as the interface — explicit invocation is the only path with a stable
-pass rate so far. Auto-triggering exists but is unreliable: after a frontmatter description fix
-aimed at improving it, our own headless retest still only fired in 1 of 3 target cases
-([docs/test-log.md](docs/test-log.md#retest-after-description-fix)), and a later retest round
-found the SAME prompts flip between pass and fail on identical repeats
-([docs/test-log.md](docs/test-log.md#post-trim-retest-2026-07-16)) — auto-trigger is
-probabilistic, not something to rely on for an unattended run. If you run plan executions
-routinely, add one line to your CLAUDE.md: `When executing a plan of 6+ tasks, also invoke the
-whendone skill to monitor progress.`
+Treat "run with whendone" as the interface — explicit, plan-anchored invocation is the path with
+a track record so far. Auto-triggering exists but a bare mention is unreliable: in the retest
+under the CURRENT shipped name and trigger description
+([docs/test-log.md](docs/test-log.md#post-rename-trigger-retest-whendone--2026-07-17)), none of
+the 3 bare-prompt target cases ("execute the plan in plan.md", "how long will this take?", "stop
+after the current subtask" — each tried once, no repeat-run check yet) fired whendone. What DID
+fire, on its one recorded run each: an explicit, plan-anchored request ("Execute the plan in
+plan.md, and run with whendone") and a salient mention of a paused whendone job when asking to
+resume. Read that as "explicit invocation has worked every time it's been tried, bare-keyword
+auto-trigger has not" — a single run per case either way, not a proven reliability rate. (Older
+numbers elsewhere in this repo's test log, from before the `pacekeeper → whendone` rename and an
+earlier untrimmed description, no longer characterize the shipped skill — treat them as history,
+not current behavior.) If you run plan executions routinely, add one line to your CLAUDE.md:
+`When executing a plan of 6+ tasks, also invoke the whendone skill to monitor progress.`
 
 - "run with whendone" / "run without whendone" — force it on or off for this job
 - "run without the artifact" — chat-table-only mode: keep calibration logging and the in-chat
