@@ -95,6 +95,10 @@ class TestTokenUsage(unittest.TestCase):
         self.assertEqual(tu.display_name("haiku"), "Haiku")  # dispatch alias, no version
         self.assertEqual(tu.display_name(""), "")            # falsy passes through
         self.assertIsNone(tu.display_name(None))
+        # 1M-context annotation and Bedrock/Vertex vendor prefixes / deployment suffixes
+        self.assertEqual(tu.display_name("claude-opus-4-8[1m]"), "Opus 4.8")
+        self.assertEqual(tu.display_name("us.anthropic.claude-sonnet-4-20250514-v1:0"), "Sonnet 4")
+        self.assertEqual(tu.display_name("eu.anthropic.claude-haiku-4-5-20251001-v1:0"), "Haiku 4.5")
 
     def test_models_per_window_ordered_by_output(self):
         # Task 1's window gets a haiku subentry with MORE output than the sonnet entry.

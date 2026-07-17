@@ -35,20 +35,25 @@ def parse_ts(s):
 def display_name(model_id):
     """'claude-haiku-4-5-20251001' -> 'Haiku 4.5'; alias 'haiku' -> 'Haiku'.
 
-    Best-effort: strip the 'claude-' prefix and a trailing 8-digit date, take the
-    first alphabetic token as the name and all numeric tokens as the version.
-    Unknown shapes pass through unchanged rather than erroring."""
+    Best-effort: drop any '[...]' annotation (e.g. the '[1m]' 1M-context marker)
+    and a leading vendor/region prefix (e.g. 'us.anthropic.'), strip the 'claude-'
+    prefix and a trailing deployment suffix ('-v1:0'), take the first alphabetic
+    token as the name and the numeric tokens (excluding 8-digit dates) as the
+    version. Unknown shapes pass through unchanged rather than erroring."""
     if not isinstance(model_id, str) or not model_id:
         return model_id
-    parts = model_id.split("-")
-    if parts[0] == "claude":
+    s = re.sub(r"\[[^\]]*\]", "", model_id)      # drop '[1m]'-style annotations
+    idx = s.find("claude")
+    if idx != -1:
+        s = s[idx:]                              # drop 'us.anthropic.'-style prefixes
+    s = re.sub(r"-v\d+(?::\d+)?$", "", s)        # drop '-v1:0' deployment suffix
+    parts = s.split("-")
+    if parts and parts[0] == "claude":
         parts = parts[1:]
-    if parts and re.fullmatch(r"\d{8}", parts[-1]):
-        parts = parts[:-1]
     name = next((p for p in parts if p.isalpha()), None)
     if not name:
         return model_id
-    version = ".".join(p for p in parts if p.isdigit())
+    version = ".".join(p for p in parts if p.isdigit() and not re.fullmatch(r"\d{8}", p))
     return name.capitalize() + ((" " + version) if version else "")
 
 
