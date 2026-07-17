@@ -238,4 +238,46 @@ treating triggering as solved.**
 
 ## Post-rename trigger retest (whendone) — 2026-07-17
 
-_To be filled by Task 4 of the rename plan._
+Re-run after the `pacekeeper → whendone` rename (frontmatter `name:` and `description:` both
+changed). Same headless method as above.
+
+### Environment (this retest)
+
+- Claude Code CLI 2.1.209 (`~/.local/bin/claude`), macOS (Darwin 25.5.0)
+- Harness: `claude -p "<prompt>" --model claude-haiku-4-5-20251001 --allowedTools Skill
+  --max-turns 6 --output-format stream-json --verbose`, run from a fresh scratch project outside
+  the repo (`.../scratchpad/wd-test-project`, git-initialized, `.gitignore` with `node_modules/`
+  and `.claude/whendone-state.json`, `plan.md` with a 5-task checkbox plan). Each case preceded by
+  `git reset --hard` + `git clean -fd`.
+- Skill under test: `whendone`, installed at `~/.claude/skills/whendone` (symlink to the repo).
+- **Confounds REDUCED vs. the 2026-07-16 session:** the old `progress-monitor` skill is no longer
+  installed, and there is no stale `pacekeeper` skill — both absences confirmed by `ls`. The
+  competing skills that remain are the `superpowers:*` plan skills (see cases a–c, e).
+
+### Cases
+
+| Case | Prompt | Expected | Result | Evidence |
+|---|---|---|---|---|
+| a | "Execute the plan in plan.md" | whendone triggers (in addition to any executor) | FAIL | `Skill` invoked `superpowers:executing-plans` only; whendone not called. num_turns 7 (hit max-turns). Same miss as the 2026-07-16 case a. |
+| b | "…refactor five modules, run tests, update docs. How long will this take?" | whendone triggers (ETA question) | FAIL | `Skill` invoked `superpowers:writing-plans` (args: "effort estimation… realistic timeline"); whendone not called. num_turns 3. (2026-07-16 case b invoked no skill at all — still a miss either way.) |
+| c | "stop after the current subtask" | whendone triggers (stop procedure) | FAIL | No `Skill` call at all (num_turns 1); no prior job/state existed. Same as 2026-07-16 case c framing. |
+| d | "Execute the plan in plan.md, and run with whendone" | whendone triggers | **PASS** | `Skill` invoked `whendone` (args: "Execute … create 5 text files…"). Explicit "run with whendone" reliably triggers the renamed skill. num_turns 7 (hit max-turns). |
+| e | paused `.claude/whendone-state.json` present + "continue the work" | whendone triggers (resume) | FAIL (harness artifact) | Deterministic across 3 identical Skill-only runs: `superpowers:executing-plans` every time, never whendone. A variant with `--allowedTools Skill Read` also missed (the model looked for a plan file, `PLAN.md`, and never inspected the state file). **Root cause: the headless harness never surfaces the paused-state signal to the trigger model** — there is no SessionStart hook or context injection announcing the paused job, and the model does not proactively read `.claude/whendone-state.json`. See e′ below. |
+| e′ | same paused state, but salient prompt: "There's a paused whendone job in .claude/whendone-state.json… Resume it and continue the work." | whendone triggers (resume) | **PASS** | `Skill` invoked `whendone` (args: "resume"), num_turns 5. Confirms the renamed skill's *resume trigger wording is correct*; case e's failure is purely that the bare-prompt headless run gives the trigger model no signal that a paused job exists. |
+
+### Interpretation
+
+- The rename did not regress triggering: the one case that reliably fired under the old name via
+  an explicit request ("run with …") fires identically under `whendone` (case d PASS), and the
+  paused-resume path fires whenever the paused state is actually visible to the model (e′ PASS).
+- Cases a–c behave as they did pre-rename: under Haiku with a 4–6-turn budget and only `Skill`
+  permitted, plan-execution / ETA / stop prompts are captured by the `superpowers:*` skills or no
+  skill, not by whendone. whendone is designed as an *in-addition* companion, so a–c are honest
+  misses of the auto-trigger in this constrained harness — not name-specific breakage.
+- Case e is a harness limitation, not a skill defect (e′ proves the wording works). In real
+  Claude Code, a paused job is surfaced to the model via session context / hooks that this
+  `claude -p` harness does not replicate.
+- **Authoritative check still pending:** as with the 2026-07-16 session, a real non-nested
+  interactive run (full tool access, no turn cap, a human operator) remains the true test of
+  auto-triggering and end-to-end resume under the `whendone` name. Recorded honestly per the
+  task's honesty requirement; run-to-run for e was deterministic here (no flip observed).
