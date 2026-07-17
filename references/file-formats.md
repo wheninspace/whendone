@@ -56,7 +56,28 @@ without them (pre-upgrade or hand-built) stays valid and simply renders no execu
 Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
 its `planFile`/`job` to the job being started — same job means a crashed or still-live prior
 session (offer resume / discard / abort); a different job means another session may own it
-(warn, let the user decide). Never silently overwrite.
+(warn, let the user decide). Never silently overwrite. `jobId` is deliberately NOT the
+comparison key here: a same-job crash-and-restart necessarily gets a new `jobId` (it is derived
+from the restart's own start timestamp), so keying the guard on `jobId` would misclassify every
+crash-resume as "another session owns it."
+
+`jobId` IS, however, the ownership key used at every checkpoint after job start (see SKILL.md's
+checkpoint protocol): each session remembers the `jobId` it read or wrote at job start/resume,
+and before writing state/log/artifact at any later checkpoint, re-checks that the file on disk
+still carries that same `jobId`. A mismatch means a different session ran "discard and start
+fresh" against this same state file in the meantime — the checkpoint stops touching
+state/log/artifact and tells the user, rather than interleaving two jobs' fields into one file.
+
+`.claude/STOP` is deleted only when this file does not exist, or exists and parses with
+`status: "done"` — never when `status` is `"running"` (same job or different), so a legitimate
+pending stop request already on disk is never eaten by a freshly starting session (see SKILL.md
+job-start steps 1-4).
+
+If this file exists but does not parse as valid JSON — a crash mid-Edit can leave it truncated,
+or a cloned repo can ship a non-JSON placeholder — treat it as no valid state, not as "no state
+file at all": never delete STOP, never rebuild or improvise a job from it, and surface the
+parse failure to the user (see SKILL.md job-start step 1 and the Resume section's fail-closed
+note).
 
 ## ETA computation (one fixed formula — never improvise)
 

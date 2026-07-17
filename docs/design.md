@@ -92,9 +92,16 @@ honestly.
   `.claude/whendone-state.json` and must never be committed. Before the first write, the skill
   ensures it's covered by the project's `.gitignore` — this is a precondition to the write
   happening at all, not a follow-up step.
-- **Concurrency guard via jobId.** If the state file already exists with `status: "running"` and a
-  different `jobId`, another session may currently own it. The skill warns the user and waits for
-  a decision rather than silently overwriting another session's in-progress state.
+- **Concurrency guard via planFile/job, not jobId.** If the state file already exists with
+  `status: "running"`, the skill compares its `planFile`/`job` to the job being started, not its
+  `jobId`. `jobId` is derived from the run's own start timestamp, so a same-job crash-and-restart
+  always produces a NEW `jobId` — keying the guard on `jobId` would misclassify every ordinary
+  crash-resume as "a different session owns it" and break the resume path this design relies on.
+  Same `planFile`/`job` means a crashed or still-live prior session (offer resume / discard /
+  abort); a different `planFile`/`job` means another session may genuinely own it (warn, let the
+  user decide). `jobId` is instead used as the ownership key at every later checkpoint: each
+  session remembers the `jobId` it saw at job start, and a mismatch there (not at job start) means
+  another session discarded and replaced this state file while this one kept running.
 - **Crash mid-subtask → `actualMin: null`.** A subtask found `running` with a `startedAt` but no
   `finishedAt` after a resume didn't fail gracefully — it crashed or the session died. Its
   duration is unknown, so it's recorded as `null` and never logged to calibration, instead of
