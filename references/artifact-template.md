@@ -19,8 +19,10 @@ Content requirements (top to bottom):
 
 1. **Status banner:** RUNNING (blue) / PAUSED (yellow) / DONE (green) + **"Last updated HH:MM"**
    in large type — the reader must see the view updates per checkpoint, not live.
-2. **ETA block:** "Done ~HH:MM ± N min" (NEVER a point time without an interval), start time,
-   elapsed time, N of M subtasks done.
+2. **ETA block:** "Done ~HH:MM ± N min" (low/medium confidence, flat nominal bounds) — or, at
+   high confidence, the asymmetric form "Done ~HH:MM (−A/+B min)" per the interval rule in
+   references/file-formats.md's ETA computation — NEVER a point time without an interval —
+   plus start time, elapsed time, N of M subtasks done.
    Below the elapsed line, one dim token line when available: "Tokens: 412k spent (output +
    fresh input) · 3.1M cache reads" — never sum cache reads into the headline number (they
    cost ~10x less); job-level only. Per-task tokens go in the Actual column as a second dim
@@ -35,7 +37,10 @@ Content requirements (top to bottom):
 3. **Task table:** one row per subtask: status icon (✅/🔄/⬜), name, category, estimate, actual,
    deviation baked into the actual column: "11 m (+38 %)". **The actual column is always a
    computed time, never a status word** — correct: `"4 m (−33 %)"` for a finished subtask and
-   `"—"` for an unfinished one; wrong: `"done"` (the icon already shows status). Wrap the
+   `"—"` for an unfinished one; wrong: `"done"` (the icon already shows status). For a running
+   task whose elapsed time has passed its `estimateMin`, show "overrunning by X min" in the
+   actual column instead of "—" (see the in-flight rule in references/file-formats.md's ETA
+   computation — the interval must never read 0 while this is happening). Wrap the
    `time (±%)` figure in `<span class="dev">…</span>` so it never breaks mid-figure; put any
    explanatory note (e.g. "mostly dashboard time; not counted") as plain text AFTER the span so
    it is free to wrap onto its own lines.

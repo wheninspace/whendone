@@ -68,9 +68,13 @@ decline ("run without whendone").
    Only THEN read `~/.claude/whendone-data/calibration-summary.md`, solely for the category
    factors, and set `estimateMin` = rawEstimateMin × factor. File missing (first run — create
    `~/.claude/whendone-data/` now) or factor shown as "— (prior 1.0)" → use 1.0. Always
-   state an uncertainty interval (low confidence ±50 %, medium ±30 %, high → the summary's
-   IQR), and never mention factor values in chat or artifact (anchoring pollutes future raw
-   estimates).
+   state an uncertainty interval, per the one fixed rule in references/file-formats.md's ETA
+   computation (never improvise): High confidence: per-task interval = `[raw_i × min(q1,
+   factor), raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered
+   asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum −
+   point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, nominal (not empirical)
+   bounds, used whenever a category has no q1/q3. Never mention factor values in chat or
+   artifact (anchoring pollutes future raw estimates).
 8. Sensitivity check before first publish: if the job name, project name, plan-file path, or
    any subtask name looks like it identifies a client, a person, or confidential internal work,
    flag it to the user and let them rename or approve before the artifact goes up. Re-run this
@@ -87,8 +91,11 @@ decline ("run without whendone").
     first write.
 11. Write the artifact HTML per the template and publish; save URL + task list + estimates in
     `.claude/whendone-state.json` (`status: "running"`, `jobId` = compacted start timestamp).
-    Set `originalTotalMin` = the sum of every subtask's initial (adjusted) `estimateMin` — write
-    it once now and never revise it; it is the fixed baseline for the 150 %-slip check.
+    Set `originalTotalMin` using the SAME aggregation as the displayed ETA — sequential sum
+    + MAX per parallel group, never a sum of every group member — over every subtask's
+    initial (adjusted) `estimateMin`; write it once now and never revise it. It is the fixed
+    baseline for the 150 %-slip check (see checkpoint step 3 and
+    references/file-formats.md).
     Immediately after the first publish, state the full artifact URL as a plain markdown link
     in chat. The mobile app's Remote Control view cannot open the artifact card and has no
     list of Code artifacts, so the URL in the message flow is the ONLY mobile access path.
@@ -174,8 +181,9 @@ point during this session's run.
    attempt to split it back out per member. Any failure → show "tokens: n/a", keep the alias,
    and continue. Run the script WITHOUT `--task` (full job + subagents + every task) only at
    job end (see below).
-3. Revised total ETA > 150 % of `originalTotalMin` and `etaAlertSent` is false? → push
-   notification, set the flag (max one per job).
+3. `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin, elapsed)) > 1.5 ×
+   originalTotalMin`, and `etaAlertSent` is false? → push notification, set the flag (max
+   one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
    a finished job is not paused).
 5. Stop signal? (`.claude/STOP` exists, or the user asked to stop in chat) → Stop procedure.
@@ -187,7 +195,12 @@ Subtasks delegated to subagents are measured the same way: `startedAt` = before 
 `finishedAt` = when the result has been reviewed. Subtasks running in PARALLEL: show them
 individually in the artifact but do NOT log them individually to calibration.jsonl —
 overlapping wall-clock pollutes the per-category factors. Their ETA contribution is the MAX of
-the group's estimates, not the sum. When the whole group is done and reviewed, log ONE
+the group's estimates, not the sum, while the group is still PENDING. Once the group is
+RUNNING, its contribution instead follows the in-flight rule in references/file-formats.md's
+ETA computation — MAX over the group's unfinished members of `max(0.2 × estimateMin_i,
+estimateMin_i − elapsed_i)` — never 0, and shown as "overrunning by X min" once a member's
+elapsed time passes its estimate; this is also why the interval sums over pending AND
+running tasks, never pending alone. When the whole group is done and reviewed, log ONE
 synthetic row for it via the same append helper (step 1(c) above): `"category":"parallel-group"`,
 `rawEstimateMin` = the max of the group's raw estimates, `startedAt` = first dispatch,
 `finishedAt` = last review — the script computes `actualMin` as the group's wall-clock from
@@ -293,7 +306,7 @@ Remote Control").
 
 ## Red flags
 
-- A point time without an interval in the artifact → always ±.
+- A point time without an interval in the artifact → always show one (symmetric ± at low/medium confidence, or the asymmetric `(−A/+B min)` form at high confidence).
 - "I'll update the artifact later, several subtasks in one batch" → a checkpoint is EVERY boundary.
 - Reading calibration.jsonl into context at ANY time — job start, checkpoints, accuracy
   reports — the script reads it; you never do.

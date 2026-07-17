@@ -36,7 +36,8 @@ rationale and threat model in [docs/design.md](docs/design.md).
   session mirrors to the Claude mobile app: whendone's pings (job done, job stopped, ETA
   slipping past 150 %) reach your phone and the artifact link rides along in the mirrored
   session. Best-effort — Claude decides when to push; needs the Claude app signed in with
-  `/config` push enabled.
+  `/config` push enabled. Alerts fire at subtask boundaries — a single hung subtask cannot
+  alert.
 
 ## Overhead — read this first if you pay per token or watch your quota
 

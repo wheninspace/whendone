@@ -252,5 +252,30 @@ class TestReportAndRotation(unittest.TestCase):
             self.assertEqual(len(archives), 1)
 
 
+class TestFooterIntervalRule(unittest.TestCase):
+    """C8/M23: the footer must state the same interval rule as file-formats.md/SKILL.md and
+    expose machine-usable q1/q3 per category so a consumer can apply the formula without
+    re-deriving quartiles from the raw jsonl."""
+
+    def test_footer_states_interval_rule_and_q1_q3(self):
+        actuals = (10, 12, 14, 15, 16, 18, 19, 20, 20, 21,
+                   22, 23, 24, 25, 26, 28, 30, 32, 35, 40)
+        rows = [row(category="debugging", raw=20, actual=a) for a in actuals]
+        out = run_main(rows)
+        normalized = " ".join(out.split())  # footer prose soft-wraps at ~90 cols
+        # same interval rule as file-formats.md's ETA computation and SKILL.md step 7
+        # (compared word-for-word, not line-wrap-for-line-wrap)
+        self.assertIn(
+            "High confidence: per-task interval = [raw_i × min(q1, factor), raw_i × "
+            "max(q3, factor)], summed over pending AND running tasks, rendered asymmetrically "
+            "as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − "
+            "point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, "
+            "nominal (not empirical) bounds, used whenever a category has no q1/q3.",
+            normalized)
+        # machine-usable q1/q3 for a high-confidence (n=20) category, matching
+        # statistics.quantiles(ratios, n=4) on the same fixture
+        self.assertIn("debugging: q1=0.83 q3=1.37", out)
+
+
 if __name__ == "__main__":
     unittest.main()

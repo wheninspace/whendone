@@ -214,6 +214,7 @@ def main(jsonl_path, out_path):
         "| Category | Factor (blended) | Data points | Confidence | Spread (IQR) |",
         "|---|---|---|---|---|",
     ]
+    iqr_by_cat = {}
     for cat in sorted(CATEGORIES):
         d = cats.get(cat, {"ratios": [], "models": {}})
         n = len(d["ratios"])
@@ -221,6 +222,7 @@ def main(jsonl_path, out_path):
         if n >= 5:
             q = statistics.quantiles(d["ratios"], n=4)
             spread = f"{q[0]:.2f}–{q[2]:.2f}"
+            iqr_by_cat[cat] = (q[0], q[2])
         else:
             spread = "—"
         shown = f"{factor:.2f}" if n >= 1 else "— (prior 1.0)"
@@ -242,11 +244,29 @@ def main(jsonl_path, out_path):
         "## How to use when estimating",
         "",
         "Produce the raw estimate FIRST from the default table in SKILL.md (adjusted only for the",
-        "subtask's scope), then multiply by the category factor above. Uncertainty on the total ETA:",
-        "confidence low -> +/-50 %, medium -> +/-30 %, high -> shrink toward the IQR. Never state a",
-        "point time without an interval, and never mention factor values in chat or artifact.",
+        "subtask's scope), then multiply by the category factor above. Uncertainty on the total ETA",
+        "(one fixed rule — never improvise, stated identically in references/file-formats.md and",
+        "SKILL.md): High confidence: per-task interval = [raw_i × min(q1, factor), raw_i × max(q3,",
+        "factor)], summed over pending AND running tasks, rendered asymmetrically as `Done ~HH:MM",
+        "(−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). Low confidence ±50 %,",
+        "medium confidence ±30 % — flat, nominal (not empirical) bounds, used whenever a category",
+        "has no q1/q3. Never state a point time without an interval, and never mention factor",
+        "values in chat or artifact.",
         "",
     ]
+    if iqr_by_cat:
+        out += [
+            "## Per-category q1/q3 (machine-usable)",
+            "",
+            "The raw-ratio IQR bounds behind the Spread column above, for categories with n >= 5",
+            "data points — apply directly in the high-confidence interval formula (below that, a",
+            "category has no q1/q3; use the flat nominal bounds instead, never fabricate an IQR):",
+            "",
+        ]
+        for cat in sorted(iqr_by_cat):
+            q1, q3 = iqr_by_cat[cat]
+            out.append(f"- {cat}: q1={q1:.2f} q3={q3:.2f}")
+        out.append("")
     try:
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n".join(out))

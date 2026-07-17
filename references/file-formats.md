@@ -83,13 +83,27 @@ note).
 
 remaining = Σ `estimateMin` of pending sequential tasks
           + for each pending parallel group: MAX of its members' `estimateMin`
-          + for the in-flight task: max(0, its `estimateMin` − minutes elapsed on it)
+          + for each running task or running parallel group: MAX over its unfinished
+            members of `max(0.2 × estimateMin_i, estimateMin_i − elapsed_i)`
 
 ETA = now + remaining. Elapsed (shown in the artifact) = now − job `startedAt` −
-`pausedTotalMin`. The 150 %-slip alert compares Σ(actual-or-estimate per task) against
-`originalTotalMin`, which is written once at job start and never revised. Interval: per-task ±
-from the category's confidence (low ±50 %, medium ±30 %, high → the summary's IQR), summed over
-pending tasks.
+`pausedTotalMin`. The interval never collapses to 0 while anything is running; once a
+running task's elapsed time exceeds its `estimateMin`, show "overrunning by X min" next to
+it instead of implying imminence.
+
+**Interval (one fixed rule — never improvise):** High confidence: per-task interval =
+`[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed over pending AND running
+tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B =
+high sum − point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, nominal (not
+empirical) bounds, used whenever a category has no q1/q3. `q1`/`q3` are the IQR bounds of
+the category's raw-ratio distribution in calibration-summary.md's Spread column (also
+printed as machine-usable numbers in that file's footer); `factor` is that category's
+blended factor.
+
+**150 %-slip alert:** `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin,
+elapsed)) > 1.5 × originalTotalMin`. `originalTotalMin` uses the SAME aggregation as the
+displayed ETA — sequential sum + MAX per parallel group, never a sum of every group member
+— computed once over ALL subtasks' initial `estimateMin` at job start and never revised.
 
 ## calibration.jsonl — global, append-only
 
