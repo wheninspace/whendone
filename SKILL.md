@@ -88,9 +88,12 @@ decline ("run without whendone").
    credentials" (internal infrastructure). Fine: "Refactor auth middleware", "Write API tests".
 9. One Bash call takes the start timestamp and the session id:
    `date -Iseconds; echo "${CLAUDE_CODE_SESSION_ID:-}"` (PowerShell fallback:
-   `Get-Date -Format o`). Never guess times. Store the id in the state file's `sessionIds`
-   array (empty string → token display unavailable, fine). On resume, append the NEW
-   session's id.
+   `Get-Date -Format o; $env:CLAUDE_CODE_SESSION_ID`). Never guess times. Store the id in the
+   state file's `sessionIds` array (empty string → token display unavailable, fine). On
+   resume, append the NEW session's id. Calibration logging on pure PowerShell (no bash) uses
+   the SAME `append_calibration.py` / `token_usage.py` / `calibration_summary.py` helpers via
+   `py -3` — they are shell-agnostic and write UTF-8 regardless of the invoking shell (see
+   references/file-formats.md) — never improvise with `Out-File`/`>>` redirection.
 10. Two hard preconditions gate the writes in step 11 below — neither is a soft note:
     - **Write-target precondition:** for each of `.claude/whendone-state.json` and
       `.gitignore`, verify it either does not exist yet, or exists as a REGULAR FILE whose
@@ -124,9 +127,13 @@ decline ("run without whendone").
 
 ## Checkpoint protocol — between EVERY subtask, in this order
 
-If you cannot restate these six steps from context (e.g. after context compaction), re-read
-this section and `.claude/whendone-state.json` once before continuing — never improvise the
-protocol from memory.
+After ANY context compaction notice since the last checkpoint, and at every 5th checkpoint
+regardless, re-read the Checkpoint protocol section (Read with offset/limit around the
+section, not the whole file) and `.claude/whendone-state.json` before continuing. This trigger
+is observable, not a self-assessment — do not decide based on whether you feel able to restate
+the six steps from memory (a post-compaction summary can feel confidently restatable while
+missing the load-bearing details, e.g. log-append quoting, the alias-upgrade guard, or the
+parallel-group exception). Never improvise the protocol from memory.
 
 **Ownership check, before any write in this section:** confirm the state file's `jobId` still
 matches the `jobId` this session recorded at job start (or resume). If it no longer matches,
@@ -136,24 +143,52 @@ Edit the state file, do not republish. This is a per-checkpoint check, not a one
 check, because a "discard and start fresh" decision in a different session can land at any
 point during this session's run.
 
-1. Ordering matters here: the state file's durable done-marker is written BEFORE the
-   calibration log gets the row, so a crash in the gap loses at most one log line instead of
-   double-logging a row and having Resume re-execute an already-completed subtask.
+1. Ordering matters here: the state file's durable done-marker (b) is written before anything
+   else in this step — including the token refresh / alias resolution (b2) and the calibration
+   log row (c) — so a crash right after (b) loses at most a token refresh or a log line, never
+   a double-logged or re-executed subtask.
    a. Timestamp via Bash `date -Iseconds` → the subtask's `finishedAt`.
    b. Edit the state file: set THIS task's `finishedAt` and `status: "done"` (leave
-      `actualMin` as-is/null for now). This lands BEFORE the append below.
+      `actualMin` as-is/null for now). This lands BEFORE the append below. Anchor `old_string`
+      on that task's unique `"nr": N,` line plus the field(s) being changed — tasks are
+      one-object-per-row (references/file-formats.md), but field/value pairs repeat verbatim
+      across rows (e.g. `"status": "pending"` matches every still-pending task), so the `nr`
+      line is what keeps `old_string` unique. The same anchoring applies to every other
+      state-file Edit in this protocol (b2 below, step 1(d), step 6).
+   b2. Refresh token numbers and resolve THIS task's model alias, in one Bash call:
+      `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json --task N` where N
+      is the task just marked done in (b) (same interpreter fallback chain as elsewhere — if
+      `python3` is not found, try `python`, then `py -3`; remember whichever interpreter
+      succeeds and reuse it for the rest of the job — the append call below, this same script at
+      later checkpoints, and the job-end scripts — never re-probe the whole chain each time).
+      HOLD this call's full JSON output: step 2 below reuses it verbatim for the artifact's
+      token figures. Do NOT call token_usage.py a second time at this checkpoint.
+      Alias-upgrade guard (substring match, never family-blind): if task N's `model` field is
+      still a bare dispatch alias (e.g. `"haiku"`, not already a full versioned id), look at the
+      top entry of task N's `models` list in this output. Upgrade the state file's `model` field
+      for task N to that entry's full id ONLY IF the id CONTAINS the alias as a substring (e.g.
+      alias `"sonnet"` → an id containing `sonnet`, such as `claude-sonnet-5-...` → upgrade).
+      Never upgrade across families — e.g. if the lead's own review output outweighs the
+      delegated subagent's within this task's window and the top entry's id contains `opus`
+      instead of `sonnet`, that does NOT match the alias, so it does NOT upgrade. If the top id
+      does not contain the alias, the models list is empty, or the script/call fails: leave the
+      alias exactly as-is. When the guard matches, Edit the state file now with the resolved
+      full id (same `"nr": N,`-anchored technique as (b)) — this Edit must land BEFORE (c)
+      builds the log line below, so the calibration row carries the resolved full id whenever a
+      resolution was possible, never the alias.
    c. Write a JSON object — `date`, `project`, `job`, `category`, `rawEstimateMin` (see
       references/file-formats.md), this task's `startedAt` (already in the state file), the
-      `finishedAt` from (a), `model` (the completed subtask's `model` field — full versioned id
-      when resolved, otherwise the alias), `client`, and an `"effort"` key only when the
-      subtask's `effort` is non-null — with NO `actualMin` field, the script computes that
-      itself — to a temp file in the session scratchpad using the Write tool (Write treats
-      content as data; nothing is ever spliced into shell or Python source). The same temp file
-      path can be reused/overwritten at every checkpoint. Then one Bash call runs the append
-      helper and gets the next subtask's start time in the same invocation:
+      `finishedAt` from (a), `model` (THIS task's `model` field as it stands after (b2) — the
+      resolved full versioned id when the guard matched, otherwise still the alias), `client`,
+      and an `"effort"` key only when the subtask's `effort` is non-null — with NO `actualMin`
+      field, the script computes that itself — to a temp file in the session scratchpad using
+      the Write tool (Write treats content as data; nothing is ever spliced into shell or Python
+      source). The same temp file path can be reused/overwritten at every checkpoint. Then one
+      Bash call runs the append helper and gets the next subtask's start time in the same
+      invocation:
       `python3 <skill-dir>/scripts/append_calibration.py <tmpfile>`
-      (resolve `<skill-dir>` to this skill's actual directory; same interpreter fallback chain
-      as elsewhere — if `python3` is not found, try `python`, then `py -3`).
+      (resolve `<skill-dir>` to this skill's actual directory; same remembered interpreter as
+      (b2)).
       On success the script prints two lines: the computed `actualMin` (or the literal `null`
       on clock skew — the system clock moved back) and the next subtask's start time. On any
       failure (validation error, or python3/python/py all missing): skip the append, note it in
@@ -172,32 +207,33 @@ point during this session's run.
       failure path) for use in step 6 below, which is where that timestamp is actually written
       to the state file.
 
-   Crash analysis: a crash between (b) and (c) loses at most one calibration row — harmless,
-   because the task is already durably marked done, so Resume never redoes it and never
-   double-logs it. A crash between (c) and (d) leaves `actualMin` null in the state file
-   (display-only, cosmetic) but the log already holds the row. A crash after (d) but before
-   step 6 runs (e.g. during the republish in step 2) leaves the next subtask simply `pending`
-   with no `startedAt` stamped — Resume then starts it fresh like any other pending task,
-   rather than finding a task stuck "running" that never actually started. Both (b)/(c) gaps
-   are strictly safer than the reverse order (log first, mark done second), which can
-   double-log AND re-execute a finished subtask.
+   Crash analysis: a crash between (b) and (b2), or during (b2) itself, loses at most the token
+   refresh and/or leaves the model as the still-unresolved alias — cosmetic, and self-heals at
+   the next checkpoint that finds a bare alias (the task is already durably marked done from
+   (b), so Resume never redoes it). A crash between (b2) and (c) loses at most one calibration
+   row — harmless, same reason. A crash between (c) and (d) leaves `actualMin` null in the state
+   file (display-only, cosmetic) but the log already holds the row, with the resolved model if
+   (b2) matched. A crash after (d) but before step 6 runs (e.g. during the republish in step 2)
+   leaves the next subtask simply `pending` with no `startedAt` stamped — Resume then starts it
+   fresh like any other pending task, rather than finding a task stuck "running" that never
+   actually started. All of (b)/(b2)/(c) gaps are strictly safer than the reverse order (log
+   first, mark done second), which can double-log AND re-execute a finished subtask.
 2. Republish the artifact: update the SAME file in place with targeted Edit calls (banner,
    "last updated", ETA block per the formula in references/file-formats.md, changed table
    rows), then publish the same path — same URL. Never create a new filename mid-session;
    never rewrite the whole file after the first publish.
-   Before editing, refresh token numbers (best-effort): run
-   `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json --task N` (same
-   interpreter fallback chain as at job end), where N is the subtask just finished in step 1
-   — closed task windows are immutable, so only the just-finished task's numbers ever change;
-   re-emitting every prior task's frozen entries at every checkpoint is pure waste. Update
-   only that task's row plus the job/subagents figures from the JSON (`--task N` always
-   includes both); also upgrade any task `model` still holding a dispatch alias to the full
-   versioned id in the top entry of that task's `models` list — in the state file and the
-   artifact. If a task entry carries `"overlap": true` (parallel dispatch group), show one
-   combined token figure for the whole group instead of that task's own number — do not
-   attempt to split it back out per member. Any failure → show "tokens: n/a", keep the alias,
-   and continue. Run the script WITHOUT `--task` (full job + subagents + every task) only at
-   job end (see below).
+   Reuse the token_usage.py JSON captured in step 1(b2) above for this checkpoint's token
+   figures — do NOT run the script again here; closed task windows are immutable, so nothing
+   changed between (b2) and now that would justify a second call. Update task N's row plus the
+   job/subagents figures from that same JSON (`--task N` always includes both). The artifact
+   shows whatever the state file's `model` field for task N now holds after step 1(b2) — the
+   resolved full id (via its `display` name) if the alias-upgrade guard matched, otherwise the
+   alias, capitalized. If a task entry carries `"overlap": true` (parallel dispatch group), show
+   one combined token figure for the whole group instead of that task's own number — do not
+   attempt to split it back out per member. If step 1(b2)'s call failed: show "tokens: n/a" for
+   this checkpoint, keep the alias, and continue — do not retry the script a second time this
+   checkpoint. Run the script WITHOUT `--task` (full job + subagents + every task) only at job
+   end (see below).
 3. `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin, elapsed)) > 1.5 ×
    originalTotalMin`, and `etaAlertSent` is false? → push notification, set the flag (max
    one per job).
@@ -214,7 +250,9 @@ point during this session's run.
    design: the checkpoint overhead in steps 2-5 (token refresh, artifact republish, slip check)
    falls INSIDE the next task's measured window rather than an uncounted gap — this is
    deliberate, since it keeps calibrated ETAs honest about wall-clock time for
-   whendone-monitored jobs.
+   whendone-monitored jobs. (Token refresh itself now happens earlier, in step 1(b2), before
+   the next-task start timestamp is captured in step 1(c) — so it is NOT part of this overlap;
+   only steps 2-5's artifact republish and slip check are.)
 
 Subtasks delegated to subagents are measured the same way: `startedAt` = before dispatch,
 `finishedAt` = when the result has been reviewed. Subtasks running in PARALLEL: show them

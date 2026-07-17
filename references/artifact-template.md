@@ -11,9 +11,9 @@ subtask names, plan-file path (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, 
 `'` → `&#39;`). Escape before insertion into ANY context, and place untrusted strings in text
 nodes only — never inside attributes.
 
-**Republishing:** at checkpoints, copy the previous artifact file and substitute only the
-variable parts (banner, "last updated", ETA block, table rows) — do not regenerate the whole
-page freehand from this template each time (token cost and drift risk).
+**Republishing:** update the same file in place with targeted Edit calls on the variable parts
+(banner, "last updated", ETA block, table rows); never Write the full page after the first
+publish (token cost and drift risk).
 
 Content requirements (top to bottom):
 
@@ -107,7 +107,8 @@ Skeleton (adapt content, keep structure and theme handling):
   <tr><td>⬜</td><td>Cost cap per turn</td><td class="dim">judgment-coding</td><td>20 m</td><td>—</td></tr>
 </table>
 <p class="dim">Stop: type "stop after the current subtask" in the chat or create the file
-<code>.claude/STOP</code> in the project root. Push notifications: on.</p>
+<code>.claude/STOP</code> in the project root. Push notifications: uncertain delivery —
+requires Remote Control.</p>
 ```
 
 Keep the artifact to ONE compact page — no growing per-checkpoint history (token overhead at
