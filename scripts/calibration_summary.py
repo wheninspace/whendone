@@ -74,10 +74,16 @@ def parse_row(line):
     started_at, finished_at = row.get("startedAt"), row.get("finishedAt")
     if isinstance(started_at, str) and isinstance(finished_at, str):
         derived = _derive_actual_min(started_at, finished_at)
-        if derived is not None and derived > 0:
-            if act is not None and not math.isclose(derived, act, abs_tol=0.1):
-                return "skipped", None  # logged actualMin disagrees with the timestamps
-            act = derived
+        if derived is not None:
+            if derived > 0:
+                if act is not None and not math.isclose(derived, act, abs_tol=0.1):
+                    return "skipped", None  # logged actualMin disagrees with the timestamps
+                act = derived
+            elif act is not None:
+                # Clock skew (derived <= 0): append_calibration.py always logs actualMin:null
+                # here, so any non-null logged value disagrees with the timestamps — same
+                # tamper/hand-edit protection as the derived > 0 branch above.
+                return "skipped", None
     if act is None or act <= 0 or est <= 0:
         return "skipped", None
     return "ok", {"category": cat, "est": est, "act": act,

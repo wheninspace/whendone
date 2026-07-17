@@ -148,6 +148,16 @@ class TestDerivedActualMin(unittest.TestCase):
         status, r = cs.parse_row(line)
         self.assertEqual(status, "skipped")
 
+    def test_backwards_timestamps_with_divergent_positive_logged_actual_min_skipped(self):
+        # Tamper/hand-edit protection: timestamps say clock skew (no valid duration),
+        # but the logged actualMin is a normal positive number — that disagreement must
+        # be caught the same way a forward-timestamp mismatch is, not silently accepted
+        # as "ok" just because the skew branch never reached the isclose() check.
+        line = row(actual=100, startedAt="2026-07-16T10:10:00+00:00",
+                    finishedAt="2026-07-16T10:00:00+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "skipped")
+
 
 class TestReportAndRotation(unittest.TestCase):
     def test_report_mode(self):
