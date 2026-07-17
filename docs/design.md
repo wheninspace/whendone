@@ -145,8 +145,3 @@ exist yet or would add complexity out of proportion to the current scope:
 - **Asymmetric ETA intervals** (`+P80` / `-P25`, or similar) for categories whose ratio
   distribution is right-skewed, instead of a single symmetric `+/-` percentage — would better
   reflect that overruns are typically larger and more likely than underruns for those categories.
-
-## Origin note
-
-This document and the skill it describes were rewritten in English from a private Swedish
-predecessor. Fresh history here is intentional.
