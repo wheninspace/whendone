@@ -119,11 +119,18 @@ protocol from memory.
    rows), then publish the same path — same URL. Never create a new filename mid-session;
    never rewrite the whole file after the first publish.
    Before editing, refresh token numbers (best-effort): run
-   `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json` (same interpreter
-   fallback chain as at job end) and update the artifact's token figures from its JSON; also
-   upgrade any task `model` still holding a dispatch alias to the full versioned id in the top
-   entry of that task's `models` list — in the state file and the artifact. Any failure → show
-   "tokens: n/a", keep the alias, and continue.
+   `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json --task N` (same
+   interpreter fallback chain as at job end), where N is the subtask just finished in step 1
+   — closed task windows are immutable, so only the just-finished task's numbers ever change;
+   re-emitting every prior task's frozen entries at every checkpoint is pure waste. Update
+   only that task's row plus the job/subagents figures from the JSON (`--task N` always
+   includes both); also upgrade any task `model` still holding a dispatch alias to the full
+   versioned id in the top entry of that task's `models` list — in the state file and the
+   artifact. If a task entry carries `"overlap": true` (parallel dispatch group), show one
+   combined token figure for the whole group instead of that task's own number — do not
+   attempt to split it back out per member. Any failure → show "tokens: n/a", keep the alias,
+   and continue. Run the script WITHOUT `--task` (full job + subagents + every task) only at
+   job end (see below).
 3. Revised total ETA > 150 % of `originalTotalMin` and `etaAlertSent` is false? → push
    notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
@@ -190,8 +197,11 @@ even though only the group logs.
 
 ## At job end
 
-1. Final artifact update: DONE, total actual time vs estimate; include the full artifact URL
-   in the chat message.
+1. Final artifact update: refresh token numbers by running
+   `python3 <skill-dir>/scripts/token_usage.py .claude/whendone-state.json` WITHOUT `--task`
+   (full job + subagents + every task's row — the one time per job the whole table is
+   re-emitted). DONE, total actual time vs estimate; include the full artifact URL in the
+   chat message.
 2. Push notification: "Job done."
 3. Regenerate the calibration summary — run via Bash:
    `python3 <skill-dir>/scripts/calibration_summary.py ~/.claude/whendone-data/calibration.jsonl ~/.claude/whendone-data/calibration-summary.md`

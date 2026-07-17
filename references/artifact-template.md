@@ -26,6 +26,12 @@ Content requirements (top to bottom):
    cost ~10x less); job-level only. Per-task tokens go in the Actual column as a second dim
    line: `<br><span class="dim">38k tok</span>` (output+freshInput for that task's window,
    subagents included). Omit token elements entirely when unavailable — no error text.
+   When token_usage.py marks a task `"overlap": true` (parallel dispatch group whose windows
+   share wall-clock time — their token totals double-count each other), show ONE combined dim
+   line under the group instead of a per-task figure for each member: `<br><span
+   class="dim">≈52k tok (group)</span>`, matching the existing rule that parallel subtasks
+   share one ETA contribution and one calibration row — never show a precise-looking per-task
+   number for a task carrying `overlap: true`.
 3. **Task table:** one row per subtask: status icon (✅/🔄/⬜), name, category, estimate, actual,
    deviation baked into the actual column: "11 m (+38 %)". **The actual column is always a
    computed time, never a status word** — correct: `"4 m (−33 %)"` for a finished subtask and
