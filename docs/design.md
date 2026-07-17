@@ -75,6 +75,33 @@ implicitly anchored to it. This is the prompt-level equivalent of pocket-watch's
 multiplier: the correction has to stay invisible to the estimating process to keep measuring it
 honestly.
 
+**This protection is partial, not complete — say so plainly.** The raw-first ordering and the
+never-mention-factors rule only cover the channels they were designed for; at least two others
+leak the same information:
+
+- The state file stores `rawEstimateMin` and `estimateMin` side by side on every subtask (see
+  `references/file-formats.md`), so any session that reads the state file — every checkpoint,
+  every resume — can trivially divide one by the other and recover the per-category factor
+  already baked into that job's estimates, with no need to read the calibration summary at all.
+- Resume and accuracy-report sessions have factors in context by design: Resume's job-start
+  classify/estimate steps (see the Resume section) run with the calibration summary already
+  read for the ongoing job, and the accuracy report (see Accuracy report below) prints factors
+  and mean ratios directly into chat on request. Nothing currently stops a raw estimate made
+  later in that same session — for an unrelated job, or for tasks added to the same job — from
+  being anchored by a factor value the session has already seen.
+
+Neither leak is fixed at the prompt level in this round — a model that has already seen a factor
+value cannot un-see it, and nothing in SKILL.md marks or excludes an estimate that was produced
+with a factor already in context. The cheap mitigation available, documented here for anyone
+hardening this further: after presenting an accuracy report, note in chat that any raw estimate
+made later in the same session is anchored by having just seen the factors, so the user knows to
+discount it. That only flags the compromise in the moment it happens — it doesn't prevent the
+resulting row from quietly pulling the category factor back toward 1.0 if logged as raw. A more
+complete fix would tag such rows (e.g. an `anchored: true` field on the logged entry, skipped by
+`calibration_summary.py` when computing the factor) so contaminated estimates stop diluting the
+statistic instead of merely being disclosed after the fact. That field is explicitly NOT added
+this round — deferred, along with the read-side logic that would need to consume it.
+
 ## Safety decisions
 
 - **HTML-escaping of interpolated fields.** Job names, project names, and subtask names come from
