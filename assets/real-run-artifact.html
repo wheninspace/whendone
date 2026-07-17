@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  Real WhenDone run — provenance for the README hero image.
+  This is the actual DONE-state progress artifact from a real 14-subtask job:
+  this repo's own round-2 adversarial-review hardening (docs/plans/2026-07-17-round2-fixes.md),
+  executed 2026-07-17 under whendone's own monitoring via subagent-driven development.
+  Every number here came from the run (actual-vs-estimate per subtask, per-task and job token
+  counts from token_usage.py, the +51% overrun, the fired 150%-slip note). Nothing is mocked.
+  "actual 225 min total" is the sum of the 14 subtask actualMin values (225.1 min exact; the
+  Actual column adds to ~226 because each row is rounded to whole minutes). Wall-clock elapsed
+  was ~226 min — essentially the same (no pauses); the live artifact showed both and they are
+  merged here to one figure. No measured value was changed.
+  Open in a browser to render; the README hero (assets/progress-artifact.png) is a screenshot of it.
+  Full run record: docs/test-log.md "Real end-to-end run under whendone monitoring — 2026-07-17".
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhenDone: Round-2 adversarial review fixes</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0;
+          --running:#1e6fd9; --paused:#a66800; --done:#1e8a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; } }
+  :root[data-theme="dark"] { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; }
+  :root[data-theme="light"] { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0; }
+  body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,sans-serif;
+         max-width:640px; margin:0 auto; padding:16px; }
+  a { color:var(--link); }
+  .banner { padding:12px 16px; border-radius:8px; color:#fff; font-weight:600; }
+  .banner.running{background:var(--running)} .banner.paused{background:var(--paused)}
+  .banner.done{background:var(--done)}
+  .banner a { color:#fff; }
+  .eta { background:var(--card); border-radius:8px; padding:12px 16px; margin:12px 0; }
+  .eta strong { font-size:1.3em; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
+          overflow-wrap:anywhere; vertical-align:top; }
+  th:nth-child(1),td:nth-child(1) { width:2em; }
+  th:nth-child(2),td:nth-child(2) { width:auto; }
+  th:nth-child(3),td:nth-child(3) { width:18%; }
+  th:nth-child(4),td:nth-child(4) { width:4em; white-space:nowrap; }
+  th:nth-child(5),td:nth-child(5) { width:26%; }
+  td:nth-child(5) .dev { white-space:nowrap; }
+  .dim { color:var(--dim); font-size:.9em; }
+  .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
+</style>
+</head>
+<body>
+<div class="banner done">✅ DONE — last updated 18:29</div>
+<div class="eta"><strong>✅ Done 18:29 · 14 of 14 subtasks</strong><br>
+  <span class="dim">Started 14:43 · actual 225 min total vs 149 estimated (+51%)</span><br>
+  <span class="dim">Slipped past 150% of the original estimate (alert sent once). Delegated subtasks were measured dispatch→review-complete, and two of them needed a Critical-bug fix loop — genuinely longer than the frozen per-task estimates.</span><br>
+  <span class="dim">Tokens: 4.93M spent (output + fresh input) · 132M cache reads</span></div>
+<table>
+  <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
+  <tr><td>✅</td><td>T1: Checkpoint append helper (kill source-splicing)<br><span class="dim">Sonnet 5</span></td><td class="dim">judgment-coding</td><td>13 m</td><td><span class="dev">28 m (+119 %)</span><br><span class="dim">664k tok</span></td></tr>
+  <tr><td>✅</td><td>T2: Sanitize remaining strings + README security<br><span class="dim">Sonnet 5</span></td><td class="dim">judgment-coding</td><td>11 m</td><td><span class="dev">15 m (+36 %)</span><br><span class="dim">396k tok</span></td></tr>
+  <tr><td>✅</td><td>T3: token_usage.py correctness + output growth<br><span class="dim">Sonnet 5</span></td><td class="dim">judgment-coding</td><td>13 m</td><td><span class="dev">13 m (0 %)</span><br><span class="dim">257k tok</span></td></tr>
+  <tr><td>✅</td><td>T4: STOP-file race + state-machine ordering<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>11 m</td><td><span class="dev">16 m (+41 %)</span><br><span class="dim">264k tok</span></td></tr>
+  <tr><td>✅</td><td>T5: ETA interval + slip formula + in-flight floor<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>11 m</td><td><span class="dev">21 m (+87 %)</span><br><span class="dim">477k tok</span></td></tr>
+  <tr><td>✅</td><td>T6: Pause accounting + startedAt semantics<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>7 m</td><td><span class="dev">8 m (+19 %)</span><br><span class="dim">183k tok</span></td></tr>
+  <tr><td>✅</td><td>T7: Resume-path completeness<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>7 m</td><td><span class="dev">12 m (+70 %)</span><br><span class="dim">314k tok</span></td></tr>
+  <tr><td>✅</td><td>T7b: Write-target symlink hardening<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>7 m</td><td><span class="dev">9 m (+29 %)</span><br><span class="dim">158k tok</span></td></tr>
+  <tr><td>✅</td><td>T8: Cross-platform + followability polish<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>9 m</td><td><span class="dev">12 m (+38 %)</span><br><span class="dim">249k tok</span></td></tr>
+  <tr><td>✅</td><td>T9: rotate() concurrency + idempotency<br><span class="dim">Sonnet 5</span></td><td class="dim">judgment-coding</td><td>11 m</td><td><span class="dev">21 m (+87 %)</span><br><span class="dim">461k tok</span></td></tr>
+  <tr><td>✅</td><td>T10: Statistics honesty (estimate-weighted factor)<br><span class="dim">Sonnet 5</span></td><td class="dim">judgment-coding</td><td>13 m</td><td><span class="dev">32 m (+145 %)</span><br><span class="dim">713k tok</span></td></tr>
+  <tr><td>✅</td><td>T11: Overhead table re-measure + thresholds<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>9 m</td><td><span class="dev">16 m (+76 %)</span><br><span class="dim">278k tok</span></td></tr>
+  <tr><td>✅</td><td>T12: README rewrite (the needle's eye)<br><span class="dim">Sonnet 5</span></td><td class="dim">documentation</td><td>13 m</td><td><span class="dev">20 m (+51 %)</span><br><span class="dim">457k tok</span></td></tr>
+  <tr><td>✅</td><td>T13: Real end-to-end run + release furniture<br><span class="dim">Opus 4.8</span></td><td class="dim">testing</td><td>14 m</td><td><span class="dev">3 m (−78 %)</span><br><span class="dim">32k tok</span></td></tr>
+</table>
+<p class="dim">Stop: type "stop after the current subtask" in the chat or create the file
+<code>.claude/STOP</code> in the project root. Push notifications: uncertain delivery — requires Remote Control.</p>
+</body>
+</html>
