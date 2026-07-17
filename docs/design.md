@@ -119,6 +119,19 @@ this round — deferred, along with the read-side logic that would need to consu
   `.claude/whendone-state.json` and must never be committed. Before the first write, the skill
   ensures it's covered by the project's `.gitignore` — this is a precondition to the write
   happening at all, not a follow-up step.
+- **Write targets are validated.** A cloned or shared repo can ship `.claude/whendone-state.json`
+  or `.gitignore` as a symlink instead of a regular file, pointing anywhere the user has write
+  access — e.g. `~/.zshrc`. Without a check, job start would overwrite whatever the symlink
+  resolves to with state JSON or a gitignore edit, and attacker-influenced `job` free-text would
+  land inside it. Before the first write to either path, the skill verifies it either doesn't
+  exist yet or is a regular file whose canonical path (`realpath`) resolves inside the project
+  root; a symlink, or a canonical path outside the root, stops the write and flags the user
+  instead of proceeding. The same untrusted-input treatment applies to `artifactFile` on resume:
+  rather than validating the state-supplied path, the skill mints a fresh filename in its own
+  scratchpad and never treats the state file's string as a write target at all — nothing
+  state-controlled is left to canonicalize or reject. `.claude/STOP` is out of scope for this
+  check: it is only ever deleted, never written, so a symlinked STOP is harmless to remove
+  (unlinking a symlink doesn't touch its target).
 - **Concurrency guard via planFile/job, not jobId.** If the state file already exists with
   `status: "running"`, the skill compares its `planFile`/`job` to the job being started, not its
   `jobId`. `jobId` is derived from the run's own start timestamp, so a same-job crash-and-restart

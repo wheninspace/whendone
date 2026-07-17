@@ -2,10 +2,18 @@
 
 ## whendone-state.json — per project and job
 
-Location: `<project-root>/.claude/whendone-state.json`. NEVER committed — before the first
-write, ensure `.claude/whendone-state.json` (or `.claude/`) is in the project's `.gitignore`;
-if the project has no `.gitignore`, ask the user before creating one. This is a hard
-precondition, not a note.
+Location: `<project-root>/.claude/whendone-state.json`. Two hard preconditions gate the first
+write at job start — neither is a soft note:
+
+- **Write-target validation.** Before the first write to this file, and before editing
+  `.gitignore`, verify each target either does not exist yet, or exists as a REGULAR FILE whose
+  canonical path (resolve symlinks, e.g. via `realpath`) resolves INSIDE the project root — not
+  a symlink, not a path pointing outside the root. A cloned or shared repo can ship either path
+  as a symlink to redirect the write (e.g. to `~/.zshrc`). If either check fails: STOP, do not
+  write, and flag it to the user for a decision.
+- **Gitignore precondition.** NEVER committed — ensure `.claude/whendone-state.json` (or
+  `.claude/`) is in the project's `.gitignore`; if the project has no `.gitignore`, ask the user
+  before creating one.
 
 ```json
 {
@@ -77,7 +85,9 @@ state/log/artifact and tells the user, rather than interleaving two jobs' fields
 `.claude/STOP` is deleted only when this file does not exist, or exists and parses with
 `status: "done"` — never when `status` is `"running"` (same job or different), so a legitimate
 pending stop request already on disk is never eaten by a freshly starting session (see SKILL.md
-job-start steps 1-4).
+job-start steps 1-4). This is delete-only handling: the skill only ever checks for STOP's
+existence and deletes it, never writes to it. Deleting a symlink unlinks the link itself, not
+whatever it points to, so this is safe even if `.claude/STOP` is a symlink in a cloned repo.
 
 If this file exists but does not parse as valid JSON — a crash mid-Edit can leave it truncated,
 or a cloned repo can ship a non-JSON placeholder — treat it as no valid state, not as "no state
