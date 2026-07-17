@@ -88,13 +88,29 @@ def sanitize(s, maxlen=64):
 
 
 def _derive_actual_min(started_at, finished_at):
-    """Minutes between two ISO 8601 timestamps, one decimal. None if unparseable."""
+    """Minutes between two ISO 8601 timestamps, one decimal. None if unparseable.
+
+    Mirrors append_calibration.py's write-time floor EXACTLY: a non-negative delta is
+    floored to a minimum of 0.5 (round(max(delta_min, 0.5), 1)), matching what the
+    writer actually logged for a genuinely fast subtask. Without this floor, a subtask
+    under ~24s derives to < 0.5 here while the writer logged 0.5, the two disagree by
+    more than parse_row's isclose abs_tol=0.1, and the row is silently skipped -- lost
+    from calibration and inflating the "skipped" count (final-review fix).
+
+    A negative delta (clock skew) is returned UNFLOORED, so parse_row's skew branch
+    (derived <= 0, distinct from the writer's None-on-skew) keeps firing correctly --
+    flooring a negative delta up to 0.5 would look like a normal positive duration and
+    break clock-skew detection entirely.
+    """
     try:
         start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
         finish = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
     except (ValueError, TypeError, AttributeError):
         return None
-    return round((finish - start).total_seconds() / 60.0, 1)
+    delta_min = (finish - start).total_seconds() / 60.0
+    if delta_min < 0:
+        return round(delta_min, 1)
+    return round(max(delta_min, 0.5), 1)
 
 
 def parse_row(line):

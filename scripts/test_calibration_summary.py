@@ -322,6 +322,36 @@ class TestDerivedActualMin(unittest.TestCase):
         status, r = cs.parse_row(line)
         self.assertEqual(status, "skipped")
 
+    def test_fast_subtask_15s_floored_to_point5_matches_writer_floor(self):
+        # Writer bug (final-review fix): append_calibration.py floors any non-negative
+        # delta to a minimum of 0.5 min (round(max(delta_min, 0.5), 1)). A genuinely
+        # fast subtask (~15s = 0.25 min) is logged as actualMin: 0.5 by the writer, but
+        # the reader used to re-derive an unfloored 0.2 -- disagreeing with the logged
+        # 0.5 by more than the 0.1 isclose tolerance -- so the row was silently skipped.
+        line = row(actual=0.5, startedAt="2026-07-16T10:00:00+00:00",
+                    finishedAt="2026-07-16T10:00:15+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "ok")
+        self.assertEqual(r["act"], 0.5)
+
+    def test_fast_subtask_10s_floored_to_point5_matches_writer_floor(self):
+        # Same floor, an even shorter duration (~10s = 0.167 min), also written as 0.5
+        # by append_calibration.py -- must also agree, not be skipped.
+        line = row(actual=0.5, startedAt="2026-07-16T10:00:00+00:00",
+                    finishedAt="2026-07-16T10:00:10+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "ok")
+        self.assertEqual(r["act"], 0.5)
+
+    def test_genuinely_tampered_actual_min_against_floored_derived_still_skipped(self):
+        # Tamper/disagreement detection must survive the floor fix: timestamps 10 min
+        # apart (derived, floored = 10.0) but logged actualMin is 0.5 -- a real
+        # disagreement, not writer-floor noise -- must still be skipped.
+        line = row(actual=0.5, startedAt="2026-07-16T10:00:00+00:00",
+                    finishedAt="2026-07-16T10:10:00+00:00")
+        status, r = cs.parse_row(line)
+        self.assertEqual(status, "skipped")
+
     def test_backwards_timestamps_with_divergent_positive_logged_actual_min_skipped(self):
         # Tamper/hand-edit protection: timestamps say clock skew (no valid duration),
         # but the logged actualMin is a normal positive number — that disagreement must
