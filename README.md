@@ -41,26 +41,53 @@ rationale and threat model in [docs/design.md](docs/design.md).
 
 ## Overhead — read this first if you pay per token or watch your quota
 
-The mechanism IS context spend, so here it is:
+The mechanism IS context spend, so here it is. Figures below are estimated with a
+**4-characters-per-token proxy** (no tokenizer was run — see the note below the table for
+provenance), applied to the actual current file sizes in this repo:
 
 | When | Cost |
 |---|---|
-| Every session, used or not | ~120-token trigger description |
-| When it triggers | ~5–6k tokens (skill + references + summary) |
-| Per subtask boundary | ~1–2k tokens (surgical artifact + state edits, one log append, token script) |
-| Job end | one script run (~200 tokens) |
+| Every session, used or not | ~140-token trigger description |
+| When it triggers (incl. each resume session) | ~15–16k tokens reads (skill + two references + summary) + ~1.5–2k first artifact/state writes |
+| Per subtask boundary | ~1–1.5k tokens (surgical artifact + state edits, one log append, `--task N` token-script output) — flat regardless of task count |
+| Job end | ~0.8–1k tokens (final publish + full-table script run + calibration regen), scaling mildly with task count |
+| Per resume (additionally) | ~0.9–1.5k tokens (full artifact rebuild — the old session's scratchpad file is gone) |
+| After context compaction | one re-read of the checkpoint protocol section + the state file (~4–5k tokens) |
+
+**Proxy, not a tokenizer:** every number above is `char_count / 4`, the same rule of
+thumb used throughout this repo (see [docs/test-log.md](docs/test-log.md)), plus a rough
+allowance for the Read tool's line-number prefixes (~1.4 tokens/line) where a full file is read.
+No tokenizer was run; a real tokenizer typically runs a little denser on markdown/JSON, so these
+are floors, not ceilings. **Provenance:** SKILL.md (33,134 chars), `references/file-formats.md`
+(13,300 chars), and `references/artifact-template.md` (8,167 chars) are `wc -c` on the files as
+they ship in this repo; `calibration-summary.md` (2,825 chars) is the actual output of
+`scripts/calibration_summary.py` (unmodified) run against a synthetic 60-row, 8-category
+calibration log. The per-boundary and job-end token-script figures come from calling
+`token_usage.py`'s `summarize()` against a synthetic state file and transcript — confirming
+`--task N` (landed for C13) now returns a flat ~0.1–0.25k tokens per checkpoint instead of
+growing with task count (pre-fix, this script's own output alone measured up to ~2.5–3k+ tokens
+by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in this repo's own
+`assets/demo-artifact.html` (3,519 chars ≈ 880 tokens for a 6-task page, +~65 tokens per
+additional task row). The compaction figure is `wc -c`/`wc -l` on SKILL.md's Checkpoint protocol
+section (lines 128–277) plus a typical state file re-read. **What's excluded:** the model's own
+task-execution reasoning tokens — only whendone's own bookkeeping calls are counted. Current
+Claude Code deployments may also load the host's OWN artifact-design skill before the first
+Artifact publish — outside whendone's control and not counted here. **Why the trigger cost more
+than doubled since the last measurement:** SKILL.md itself has grown from ~16.9 KB to 33.1 KB
+across this hardening round (ownership checks, injection-safe logging, pause accounting, and
+similar fixes) — the growth is in the file, not in the estimate.
 
 Statistics never run in the model — calibration summaries and accuracy reports come from the
 script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk away from.
-Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~4 subtasks /
-~20 minutes.
+Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 subtasks /
+~45 minutes — the trigger cost alone (~17–18k tokens) is hard to amortize below that.
 
 ## Usage — say "run with whendone"
 
 Explicit invocation is the reliable path. Auto-triggering exists but is best-effort — in our
 own published tests it loses to plan-execution skills that grab the same moment
 ([docs/test-log.md](docs/test-log.md)). If you run plan executions routinely, add one line to
-your CLAUDE.md: `When executing a plan of 4+ tasks, also invoke the whendone skill to
+your CLAUDE.md: `When executing a plan of 6+ tasks, also invoke the whendone skill to
 monitor progress.`
 
 - "run with whendone" / "run without whendone" — force it on or off for this job

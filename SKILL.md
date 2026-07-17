@@ -1,6 +1,6 @@
 ---
 name: whendone
-description: Use when starting a long autonomous job — executing a plan file, running 4+ subtasks, or fanning out subagents — or when the user asks for an ETA or how long work will take, wants live progress visibility, wants to stop or pause after the current subtask or resume a paused job, or when .claude/whendone-state.json has status "paused". Also for calibration accuracy reports ("how accurate is whendone"). WhenDone is a companion, not an executor — when a plan-execution or orchestration skill runs the job, invoke whendone IN ADDITION to monitor it.
+description: Use when starting a long autonomous job — executing a plan file, running 6+ subtasks, or fanning out subagents — or when the user asks for an ETA or how long work will take, wants live progress visibility, wants to stop or pause after the current subtask or resume a paused job, or when .claude/whendone-state.json has status "paused". Also for calibration accuracy reports ("how accurate is whendone"). WhenDone is a companion, not an executor — when a plan-execution or orchestration skill runs the job, invoke whendone IN ADDITION to monitor it.
 ---
 
 # WhenDone
@@ -20,8 +20,10 @@ read `references/artifact-template.md` before the first publish.
 
 ## When not to use
 
-Jobs under ~4 subtasks or under ~20 min expected total — run without it. The user can always
-decline ("run without whendone").
+Jobs under ~6 subtasks or under ~45 min expected total — run without it. The user can always
+decline ("run without whendone"). This matches the README's "worth it for ~6+ subtasks or an
+hour-plus" line: the trigger-to-first-publish cost alone runs ~17-18k tokens (see README's
+Overhead table), which a 4-5-subtask job cannot amortize.
 
 ## At job start
 
