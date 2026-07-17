@@ -281,3 +281,87 @@ changed). Same headless method as above.
   interactive run (full tool access, no turn cap, a human operator) remains the true test of
   auto-triggering and end-to-end resume under the `whendone` name. Recorded honestly per the
   task's honesty requirement; run-to-run for e was deterministic here (no flip observed).
+
+## Real end-to-end run under whendone monitoring — 2026-07-17
+
+This section is the round-2 plan's "missing proof": a real, multi-subtask job run **with the
+progress artifact, state file, calibration append, and summary regeneration all permitted** —
+not sandbox-blocked as in the earlier headless runs above.
+
+**The job:** this repo's own round-2 hardening plan (`docs/plans/2026-07-17-round2-fixes.md`),
+14 subtasks, executed with superpowers:subagent-driven-development while whendone monitored it.
+Unedited evidence:
+
+- **Artifact:** one artifact published at job start and republished in place at every subtask
+  boundary (15 publishes total — job start + 13 checkpoints + final DONE), same file, same URL,
+  favicon `⏱️`. Per-task rows accreted their computed `actual (±%)` and per-task token sub-lines;
+  the ETA block tracked elapsed / N-of-M / job tokens; the executor line showed `Sonnet 5` for
+  delegated subtasks and `Opus 4.8` for the one run inline (Task 13).
+- **State file:** `.claude/whendone-state.json` tracked all 14 tasks through
+  pending→running→done, with `startedAt`/`finishedAt`/`actualMin`/`model` per task,
+  `originalTotalMin` frozen at job start (149), and `etaAlertSent` flipping once.
+- **Calibration log:** 14 rows appended via `scripts/append_calibration.py` (the new
+  Task-1 helper) — the checkpoint wrote each row as a temp JSON file and the helper validated
+  it, computed `actualMin` from the timestamps, and appended the canonical line. Three
+  representative rows (job name is not sensitive; reproduced from the logged values, the log
+  itself was never read back into context):
+
+  ```json
+  {"date":"2026-07-17","project":"pacekeeper","job":"Round-2 adversarial review fixes","category":"judgment-coding","rawEstimateMin":15,"startedAt":"2026-07-17T14:43:42+02:00","finishedAt":"2026-07-17T15:12:13+02:00","actualMin":28.5,"model":"sonnet","client":"cli"}
+  {"date":"2026-07-17","project":"pacekeeper","job":"Round-2 adversarial review fixes","category":"documentation","rawEstimateMin":8,"startedAt":"2026-07-17T16:16:43+02:00","finishedAt":"2026-07-17T16:25:01+02:00","actualMin":8.3,"model":"sonnet","client":"cli"}
+  {"date":"2026-07-17","project":"pacekeeper","job":"Round-2 adversarial review fixes","category":"testing","rawEstimateMin":18,"startedAt":"2026-07-17T18:26:08+02:00","finishedAt":"2026-07-17T18:29:16+02:00","actualMin":3.1,"model":"claude-opus-4-8","client":"cli"}
+  ```
+
+- **Slip alert:** at the 12-of-14 checkpoint the slip formula crossed threshold —
+  `Σ(actual-or-estimate) = 229.4 min > 1.5 × originalTotalMin (223.5)` — and the one-per-job
+  push fired. Delivery degraded honestly: **"Mobile push not sent (Remote Control inactive)"** —
+  desktop only, matching the artifact's "uncertain delivery — requires Remote Control" status.
+  (The slip is itself the expected signal: delegated subtasks measured dispatch→review-complete,
+  plus two Critical-bug fix loops, ran longer than the frozen per-task estimates.)
+- **token_usage.py** ran at every checkpoint (`--task N`) and at job end; job-level "spent"
+  (output + fresh input) grew from ~0.77M to ~4.9M with ~128M cache reads by the final publish —
+  numbers came from the script, never estimated.
+
+**Regenerated calibration summary** (`scripts/calibration_summary.py`, at job end — the new
+estimate-weighted M2 factor, M30 legacy-key count, M15 backtick-quoted models, and the Task-5
+ETA rule + machine-usable q1/q3 footer all visible):
+
+```
+# Calibration summary
+
+Regenerated: 2026-07-17 (29 data points, 4 legacy-key rows). ...
+
+| Category | Factor (blended) | Data points | Confidence | Spread (IQR) |
+|---|---|---|---|---|
+| documentation | 1.21 | 9 | medium | 1.08–1.53 |
+| judgment-coding | 1.15 | 9 | medium | 0.74–1.81 |
+| mechanical-implementation | 0.87 | 7 | medium | 0.69–0.85 |
+| testing | 0.68 | 4 | low | — |
+```
+
+Note the learning: `documentation` and `judgment-coding` moved *above* 1.0 (from 0.90/0.88
+pre-run) because subagent-driven subtasks measured through their review loop genuinely take
+longer than the raw estimate — exactly the correction whendone exists to make.
+
+**Accuracy report** (`--report`, unedited):
+
+```
+# WhenDone accuracy report (29 data points)
+
+| Category | n | Mean ratio (winsorized) | Lifetime factor | Last-10 mean ratio |
+|---|---|---|---|---|
+| documentation | 9 | 1.33 | 1.21 | 1.33 |
+| judgment-coding | 9 | 1.23 | 1.15 | 1.23 |
+| mechanical-implementation | 7 | 0.78 | 0.87 | 0.78 |
+| testing | 4 | 0.28 | 0.68 | 0.28 |
+```
+
+**Honest limits of this run:**
+- It ran from the **dev working tree** — the installed skill dir (`~/.claude/skills/whendone`)
+  is a symlink to this repo — on the release branch, **not a fresh clone at the v0.2.0 tag**.
+  A clean-clone install-and-run is still recommended as an author step.
+- **Cross-session resume was not exercised** (the whole job ran in one session); resume remains
+  the least-tested path.
+- **No GUI screenshot** was captured (headless environment). The hero image is still rendered
+  from `assets/demo-artifact.html`; capturing a real screenshot from an artifact like the one
+  above remains an author step.

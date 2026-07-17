@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 
-# Local planning documents — not part of the public release
+# Local planning + review documents — not part of the public release
 docs/plans/
+docs/reviews/
 .superpowers/
+
+# WhenDone runtime state — never committed
+.claude/whendone-state.json

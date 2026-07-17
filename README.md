@@ -14,14 +14,19 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.1.0 (2026-07-16), single author. The published log
-([docs/test-log.md](docs/test-log.md)) verifies auto-trigger behavior and graceful degradation
-under sandbox denial — failures included, unedited. It does NOT verify artifact publish,
-state-file persistence, or calibration-log persistence end-to-end: every one of those writes was
-sandbox-blocked in the headless test runs recorded there, so they are verified only in
-interactive development so far. Stop/resume is thinner still — resume is the least-tested path
-in this repo (a single passing headless trial plus interactive development use). Design
-rationale and threat model in [docs/design.md](docs/design.md).
+**Status:** v0.2.0 (2026-07-17), single author. This release's own hardening work was executed
+*under whendone's monitoring*: a real 14-subtask job ran end-to-end with the progress artifact
+republished at every subtask boundary, the state file (`.claude/whendone-state.json`) tracking
+all 14 tasks, 14 calibration rows appended via `append_calibration.py`, the summary regenerated
+by `calibration_summary.py`, and the 150 %-slip alert firing once (push degraded to desktop-only
+— Remote Control was inactive). That run is recorded in
+[docs/test-log.md](docs/test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17).
+Honest limits: that run used the dev working tree (the installed skill dir is a symlink to this
+repo) on the release branch, **not** a fresh clone at the tag; it did **not** exercise
+cross-session resume (still the least-tested path); and no GUI screenshot was captured (headless
+environment — the hero image is still rendered from `assets/demo-artifact.html`). Earlier
+headless runs additionally verified auto-trigger behavior and graceful degradation, failures
+included and unedited. Design rationale and threat model in [docs/design.md](docs/design.md).
 
 ## What you get
 
