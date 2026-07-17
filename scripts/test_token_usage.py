@@ -34,7 +34,8 @@ class TestTokenUsage(unittest.TestCase):
             f.write(entry("m2", "2026-07-16T10:15:00.000Z", out=300) + "\n")
             f.write("garbage line\n")
         self.state = os.path.join(self.td.name, "state.json")
-        json.dump(STATE, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(STATE, f)
 
     def tearDown(self):
         self.td.cleanup()
@@ -48,7 +49,8 @@ class TestTokenUsage(unittest.TestCase):
         self.assertEqual(res["job"]["freshInput"], 10 + 50 + 10 + 50)
 
     def test_missing_transcript_degrades(self):
-        json.dump({"sessionIds": ["nope"], "tasks": []}, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump({"sessionIds": ["nope"], "tasks": []}, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertFalse(res["available"])
 
@@ -56,14 +58,16 @@ class TestTokenUsage(unittest.TestCase):
         # Untrusted state file (e.g. from a cloned repo) ships a malicious sessionId
         # designed to escape projects_dir via glob. It must be filtered out before
         # ever reaching glob.glob, so no transcript is found and the job degrades.
-        json.dump({"sessionIds": ["../../../../etc/passwd"], "tasks": []}, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump({"sessionIds": ["../../../../etc/passwd"], "tasks": []}, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertEqual(res, {"available": False, "reason": "no transcript found for session ids"})
 
     def test_tasks_not_a_list_degrades_gracefully(self):
         # Malformed untrusted state file: "tasks" is a string instead of a list.
         # Must not raise — must return a valid {"available": ...} dict.
-        json.dump({"sessionIds": ["sess1"], "tasks": "not-a-list"}, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump({"sessionIds": ["sess1"], "tasks": "not-a-list"}, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertIsInstance(res, dict)
         self.assertIn("available", res)
@@ -71,7 +75,8 @@ class TestTokenUsage(unittest.TestCase):
     def test_tasks_with_non_dict_item_degrades_gracefully(self):
         # Malformed untrusted state file: "tasks" is a list, but contains a non-dict item.
         # Must not raise — must return a valid {"available": ...} dict.
-        json.dump({"sessionIds": ["sess1"], "tasks": ["oops"]}, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump({"sessionIds": ["sess1"], "tasks": ["oops"]}, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertIsInstance(res, dict)
         self.assertIn("available", res)
@@ -79,9 +84,10 @@ class TestTokenUsage(unittest.TestCase):
     def test_task_with_non_string_started_at_degrades_gracefully(self):
         # Malformed untrusted state file: a task dict has a non-string startedAt
         # (e.g. an integer timestamp). parse_ts must not raise.
-        json.dump({"sessionIds": ["sess1"],
-                   "tasks": [{"nr": 1, "startedAt": 12345, "finishedAt": None}]},
-                  open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump({"sessionIds": ["sess1"],
+                       "tasks": [{"nr": 1, "startedAt": 12345, "finishedAt": None}]},
+                      f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertIsInstance(res, dict)
         self.assertIn("available", res)
@@ -163,7 +169,8 @@ class TestTokenUsage(unittest.TestCase):
         state["startedAt"] = "2026-07-16T10:00:00+00:00"
         with open(self.transcript, "a", encoding="utf-8") as f:
             f.write(entry("pre1", "2026-07-16T09:00:00.000Z", out=99999) + "\n")
-        json.dump(state, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(state, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertTrue(res["available"])
         self.assertEqual(res["job"]["output"], 500)  # unchanged: pre-job entry excluded
@@ -173,7 +180,8 @@ class TestTokenUsage(unittest.TestCase):
         # old whole-session behavior rather than failing.
         state = dict(STATE)
         state.pop("startedAt", None)
-        json.dump(state, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(state, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertTrue(res["available"])
         self.assertEqual(res["job"]["output"], 500)
@@ -205,11 +213,12 @@ class TestTokenUsage(unittest.TestCase):
             with open(os.path.join(proj, "sessA.jsonl"), "w", encoding="utf-8") as f:
                 f.write(entry("cli1", "2026-07-16T10:05:00.000Z", out=42) + "\n")
             cli_state = os.path.join(fake_home.name, "state.json")
-            json.dump({"sessionIds": ["sessA"], "tasks": [
-                {"nr": 1, "startedAt": "2026-07-16T10:00:00+00:00",
-                 "finishedAt": "2026-07-16T10:10:00+00:00"},
-                {"nr": 2, "startedAt": "2026-07-16T10:10:00+00:00", "finishedAt": None},
-            ]}, open(cli_state, "w"))
+            with open(cli_state, "w") as f:
+                json.dump({"sessionIds": ["sessA"], "tasks": [
+                    {"nr": 1, "startedAt": "2026-07-16T10:00:00+00:00",
+                     "finishedAt": "2026-07-16T10:10:00+00:00"},
+                    {"nr": 2, "startedAt": "2026-07-16T10:10:00+00:00", "finishedAt": None},
+                ]}, f)
             script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "token_usage.py")
             out = subprocess.run(
                 [sys.executable, script, cli_state, "--task", "1"],
@@ -235,7 +244,8 @@ class TestTokenUsage(unittest.TestCase):
             f.write(entry("m1", "2026-07-16T10:20:00.000Z", out=777) + "\n")
         state = dict(STATE)
         state["sessionIds"] = ["sess1", "sess2"]
-        json.dump(state, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(state, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertTrue(res["available"])
         # m1 appears in both sess1.jsonl (out=200, kept-last within file) and sess2.jsonl
@@ -252,7 +262,8 @@ class TestTokenUsage(unittest.TestCase):
                      {"nr": 2, "startedAt": "2026-07-16T10:00:00+00:00",
                       "finishedAt": "2026-07-16T10:10:00+00:00"},
                  ]}
-        json.dump(state, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(state, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertTrue(res["available"])
         self.assertTrue(res["tasks"][0].get("overlap"))
@@ -266,7 +277,8 @@ class TestTokenUsage(unittest.TestCase):
                      {"nr": 2, "startedAt": "2026-07-16T10:05:00+00:00",
                       "finishedAt": "2026-07-16T10:15:00+00:00"},
                  ]}
-        json.dump(state, open(self.state, "w"))
+        with open(self.state, "w") as f:
+            json.dump(state, f)
         res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
         self.assertTrue(res["available"])
         self.assertTrue(res["tasks"][0].get("overlap"))
