@@ -7,8 +7,10 @@ description: Use when starting a long autonomous job — executing a plan file, 
 
 Checkpoint-based visibility for long runs: an artifact with a task list and a calibrated ETA,
 updated at every subtask boundary, plus graceful stop/resume and push notifications. Mobile
-access: the artifact URL in a mobile browser (requires claude.ai login) or Remote Control — the
-mobile app has no list of Code artifacts of its own.
+access: the artifact URL in a mobile browser (requires claude.ai login) or Remote Control — but
+the mobile app has no list of Code artifacts of its own and the artifact card in the Remote
+Control view is not tappable, so the full URL must appear as text in chat (see job start
+step 10).
 
 **Core principle: visibility must never block the work.** If the artifact, a notification, or a
 log write fails — continue the job, retry at the next checkpoint.
@@ -69,7 +71,12 @@ decline ("run without whendone").
 10. Write the artifact HTML per the template and publish; save URL + task list + estimates in
     `.claude/whendone-state.json` (`status: "running"`, `jobId` = compacted start timestamp).
     Set `originalTotalMin` = the sum of every subtask's initial (adjusted) `estimateMin` — write
-    it once now and never revise it; it is the fixed baseline for the 150 %-slip check. Mark the
+    it once now and never revise it; it is the fixed baseline for the 150 %-slip check.
+    Immediately after the first publish, state the full artifact URL as a plain markdown link
+    in chat. The mobile app's Remote Control view cannot open the artifact card and has no
+    list of Code artifacts, so the URL in the message flow is the ONLY mobile access path.
+    Repeat the full URL in the chat message at every phase transition (pause, resume, done)
+    and whenever the URL changes. Mark the
     first subtask `status: "running"`, `startedAt` = now, and record its executor: `model` =
     your exact model id from the system prompt when you run it yourself, or the dispatch alias
     (e.g. `"haiku"`) when delegating; `effort` only when explicitly set (Workflow `effort`
@@ -139,7 +146,8 @@ result is a checkpoint boundary (artifact republish), even though only the group
 2. Update the plan file's checkboxes/status note; commit only if the project's documented
    conventions or an active plan-execution skill requires it.
 3. State file: `status: "paused"`.
-4. Republish the artifact with the PAUSED banner + resume instruction.
+4. Republish the artifact with the PAUSED banner + resume instruction; include the full
+   artifact URL in the chat message.
 5. Push notification: "Stopped after subtask N — state saved."
 6. Delete `.claude/STOP`.
 
@@ -164,8 +172,9 @@ result is a checkpoint boundary (artifact republish), even though only the group
 4. Rewrite the artifact HTML to a file in THIS session's scratchpad (the previous session's
    `artifactFile` no longer exists), update `artifactFile` in the state file, and publish with
    the Artifact tool's url parameter set to the saved `artifactUrl` — banner RUNNING. If the
-   URL update fails: publish as a new artifact, update `artifactUrl`, say in chat that the link
-   changed.
+   URL update fails: publish as a new artifact, update `artifactUrl`, and post the NEW full
+   URL in chat, noting the old link is dead. On successful resume, restate the full URL in
+   chat either way.
 5. Capture this session's id (`echo "${CLAUDE_CODE_SESSION_ID:-}"`) and APPEND it to the state
    file's `sessionIds` array (empty string → token display just stays unavailable, which is
    fine). State: `status: "running"`, record `resumedAt` = now and add the pause length to
@@ -176,7 +185,8 @@ result is a checkpoint boundary (artifact republish), even though only the group
 
 ## At job end
 
-1. Final artifact update: DONE, total actual time vs estimate.
+1. Final artifact update: DONE, total actual time vs estimate; include the full artifact URL
+   in the chat message.
 2. Push notification: "Job done."
 3. Regenerate the calibration summary — run via Bash:
    `python3 <skill-dir>/scripts/calibration_summary.py ~/.claude/whendone-data/calibration.jsonl ~/.claude/whendone-data/calibration-summary.md`
