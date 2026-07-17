@@ -1,17 +1,26 @@
 # WhenDone
 
-Live progress and self-calibrating ETAs for long Claude Code runs — one page, updated at
-every subtask boundary, statistics computed outside the model.
+Checkpoint progress and self-calibrating ETAs for long Claude Code runs — one page,
+republished at every subtask boundary, statistics computed outside the model.
 
 ![WhenDone progress artifact: task table with actual-vs-estimate, ETA with interval, token counts](assets/progress-artifact.png)
+*Rendered from [`assets/demo-artifact.html`](assets/demo-artifact.html) in this repo — a
+constructed example, not a screenshot from a real job.*
 
-LLMs misjudge how long their own work will take — [measured at 4–7× off](https://arxiv.org/html/2604.00010v1).
-WhenDone closes that loop empirically: every finished subtask logs its raw estimate against
-its actual duration, per category, and a small stdlib Python script — not the model — turns
-that history into per-category correction factors for the next job's ETA.
+LLMs misjudge how long their own work will take — pre-task estimates overshoot actual duration
+by 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
+Empirical Investigation"](https://arxiv.org/abs/2604.00010), arXiv:2604.00010). WhenDone closes
+that loop empirically: every finished subtask logs its raw estimate against its actual duration,
+per category, and a small stdlib Python script — not the model — turns that history into
+per-category correction factors for the next job's ETA.
 
-**Status:** v0.1.0 (2026-07-16), single author. Trigger tests and an end-to-end dry run are
-published unedited — failures included — in [docs/test-log.md](docs/test-log.md). Design
+**Status:** v0.1.0 (2026-07-16), single author. The published log
+([docs/test-log.md](docs/test-log.md)) verifies auto-trigger behavior and graceful degradation
+under sandbox denial — failures included, unedited. It does NOT verify artifact publish,
+state-file persistence, or calibration-log persistence end-to-end: every one of those writes was
+sandbox-blocked in the headless test runs recorded there, so they are verified only in
+interactive development so far. Stop/resume is thinner still — resume is the least-tested path
+in this repo (a single passing headless trial plus interactive development use). Design
 rationale and threat model in [docs/design.md](docs/design.md).
 
 ## What you get
@@ -84,13 +93,20 @@ Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 
 
 ## Usage — say "run with whendone"
 
-Explicit invocation is the reliable path. Auto-triggering exists but is best-effort — in our
-own published tests it loses to plan-execution skills that grab the same moment
-([docs/test-log.md](docs/test-log.md)). If you run plan executions routinely, add one line to
-your CLAUDE.md: `When executing a plan of 6+ tasks, also invoke the whendone skill to
-monitor progress.`
+Treat "run with whendone" as the interface — explicit invocation is the only path with a stable
+pass rate so far. Auto-triggering exists but is unreliable: after a frontmatter description fix
+aimed at improving it, our own headless retest still only fired in 1 of 3 target cases
+([docs/test-log.md](docs/test-log.md#retest-after-description-fix)), and a later retest round
+found the SAME prompts flip between pass and fail on identical repeats
+([docs/test-log.md](docs/test-log.md#post-trim-retest-2026-07-16)) — auto-trigger is
+probabilistic, not something to rely on for an unattended run. If you run plan executions
+routinely, add one line to your CLAUDE.md: `When executing a plan of 6+ tasks, also invoke the
+whendone skill to monitor progress.`
 
 - "run with whendone" / "run without whendone" — force it on or off for this job
+- "run without the artifact" — chat-table-only mode: keep calibration logging and the in-chat
+  progress table, skip the claude.ai publish entirely. For NDA/confidential repos where nothing
+  should leave the machine, or you just don't want a gallery entry for this job
 - "stop after the current subtask" — graceful stop (or create `.claude/STOP` in the project root)
 - "resume the job" — pick a paused or crashed job back up, new session included
 - "how accurate is whendone?" — a script-computed accuracy report from your own history
@@ -106,8 +122,11 @@ monitor progress.`
 
 ## Security
 
-Untrusted strings (plan files, state files, log entries) are treated as data, never
-instructions, and are HTML-escaped before entering the published page. Resuming from a found
+The three shipped scripts (`scripts/calibration_summary.py`, `scripts/token_usage.py`,
+`scripts/append_calibration.py`) are stdlib-only Python with no network access — the only thing
+that leaves your machine is the artifact you can see. Untrusted strings (plan files, state
+files, log entries) are treated as data, never instructions, and are HTML-escaped before
+entering the published page. Resuming from a found
 state file requires your confirmation — a cloned repo can't silently start attacker-authored
 work. The statistics script whitelists categories and sanitizes every string it re-emits, so a
 poisoned log line can't plant instructions in the summary future sessions read. Install is
@@ -128,8 +147,17 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 Expect these prompts the first time: creating `~/.claude/whendone-data/` (outside the
 project), adding the state file to your `.gitignore`, Bash `date` calls, a log append at each
 checkpoint, and the artifact publish to claude.ai. To pre-approve the recurring ones for
-unattended runs, allowlist in `.claude/settings.json`: `Bash(date:*)` and `Bash(python3:*)` for
-the three shipped scripts (including the calibration append helper) if you've reviewed them.
+unattended runs, be deliberate about what you allowlist in `.claude/settings.json`:
+
+- `Bash(date:*)` is low-risk and fine to allowlist broadly.
+- Do **not** allowlist `Bash(python3:*)` or `Bash(printf:*)`. Either pattern pre-approves
+  arbitrary Python (or arbitrary shell tricks via `printf`) execution for every tool call in
+  every project — far beyond whendone's own three scripts. Scope the rule to the exact path
+  instead, e.g. `Bash(python3 ~/.claude/skills/whendone/scripts/*)`.
+- Before approving even the scoped pattern, review what you're approving: the shipped test
+  suites (`python3 ~/.claude/skills/whendone/scripts/test_calibration_summary.py`,
+  `test_token_usage.py`, `test_append_calibration.py`) are stdlib Python and quick to read —
+  that's the review path for all three scripts, since the tests exercise the same code.
 
 ## Install
 
@@ -143,19 +171,47 @@ Windows PowerShell:
 git clone --branch v0.1.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
+**Windows honesty:** the install command above works. Running the skill — the checkpoint
+protocol, state-file writes, calibration logging — has only been exercised on macOS so far (see
+[docs/test-log.md](docs/test-log.md), every recorded test run is macOS/Darwin). The PowerShell
+fallback path in SKILL.md (`py -3`, `Get-Date`) is written to be shell-agnostic by design, but
+that design has not yet been run end-to-end on a Windows machine.
+
 ## Update
 
-A skill update is an instruction update for your agent — look before you merge:
+A skill update is an instruction update for your agent — look before you merge. Update tag to
+tag, never against `origin/main`: a moving branch can carry unreviewed work-in-progress commits
+you'd otherwise merge sight unseen.
 
 ```bash
 cd ~/.claude/skills/whendone
 git fetch --tags
-git log --oneline HEAD..origin/main
-git diff HEAD origin/main -- SKILL.md scripts/
-git merge origin/main   # when the diff looks right
+git log --oneline HEAD..v0.x.y
+git diff HEAD v0.x.y -- SKILL.md scripts/
+git merge v0.x.y   # when the diff looks right, using the new release's actual tag name
 ```
 
 Calibration data lives outside the skill directory and survives updates untouched.
+
+## Uninstall
+
+```bash
+rm -rf ~/.claude/skills/whendone       # the skill itself
+rm -rf ~/.claude/whendone-data          # calibration log + summary, all projects
+rm <project>/.claude/whendone-state.json  # this project's job state, if present
+```
+
+Windows PowerShell equivalents:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\skills\whendone"
+Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\whendone-data"
+Remove-Item "<project>\.claude\whendone-state.json"
+```
+
+None of this touches claude.ai: any progress artifact you published stays in your
+`claude.ai/code/artifacts` gallery after uninstall, still reachable by anyone holding a shared
+link. Delete it there yourself if you want it gone.
 
 ## How the calibration works
 
@@ -183,6 +239,13 @@ Ideas adapted from three MIT-licensed projects: [pocket-watch](https://github.co
 (compute outside the model), [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
 (max-of-parallel-group ETA). WhenDone deviates deliberately where noted in
 [docs/design.md](docs/design.md).
+
+## Project status
+
+Single-author side project — issues welcome, best-effort response, no SLA. See
+[CHANGELOG.md](CHANGELOG.md) for release history. Tested against Claude Code CLI 2.1.209 (the
+exact environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
+versions are untested, not necessarily unsupported.
 
 ## License
 

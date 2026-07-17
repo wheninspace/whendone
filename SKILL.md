@@ -25,6 +25,11 @@ decline ("run without whendone"). This matches the README's "worth it for ~6+ su
 hour-plus" line: the trigger-to-first-publish cost alone runs ~17-18k tokens (see README's
 Overhead table), which a 4-5-subtask job cannot amortize.
 
+The user can also say **"run without the artifact"**: keep calibration logging and the in-chat
+progress table, but skip the claude.ai publish entirely for this job — e.g. an NDA/confidential
+repo where nothing should reach claude.ai. Treat this identically to the "Artifact tool absent
+entirely" row in the Error-handling table below, just user-invoked instead of environment-forced.
+
 ## At job start
 
 1. Does `.claude/whendone-state.json` exist? Read it FIRST, before touching `.claude/STOP` —
@@ -395,7 +400,7 @@ Remote Control").
 | PushNotification missing | Silent degradation |
 | python3/python/py all missing at job end | Skip regeneration, keep the previous summary, tell the user once |
 | Checkpoint(s) missed / subtasks batched | `actualMin: null` for every affected subtask — never reconstruct timestamps from memory; note it in chat; resume the protocol from now |
-| Artifact tool absent entirely (not just a failed publish) | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
+| Artifact tool absent entirely (not just a failed publish), or the user said "run without the artifact" | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
 | token_usage.py fails or no session id | Show "tokens: n/a" in chat/status and omit the token elements from the published artifact; never block the job |
 
 ## Red flags
