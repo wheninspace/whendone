@@ -7,7 +7,10 @@ Reads sessionIds + task startedAt/finishedAt windows from the state file, locate
 ~/.claude/projects/*/<sessionId>.jsonl (plus <dir>/<sessionId>/subagents/agent-*.jsonl),
 dedups assistant entries by message.id (keep LAST — streaming snapshots repeat ids with
 lower counts), and buckets usage into task windows, listing the distinct models observed
-per window (ordered by output tokens). Prints one JSON line to stdout.
+per window (ordered by output tokens). Entries whose model is "<synthetic>" (Claude
+Code's error-placeholder model) or that carry zero output AND zero input tokens are
+excluded from by_model/models but their token counts still count toward the window's
+totals. Prints one JSON line to stdout.
 
 Honesty notes baked into the output: "freshInput" = input_tokens + cache_creation (the
 expensive kind); cacheRead is reported separately (≈10x cheaper — never sum them into one
@@ -108,7 +111,10 @@ def summarize(state_path, projects_dir=None):
         for ts, out, fresh, cr, model in entries:
             if (start is None or ts >= start) and (end is None or ts < end):
                 tot["output"] += out; tot["freshInput"] += fresh; tot["cacheRead"] += cr
-                if model:
+                # Synthetic error-placeholder entries ("<synthetic>", or any model with
+                # zero output AND zero input) are excluded from by_model/models — their
+                # token counts (usually zero anyway) are still folded into tot above.
+                if model and model != "<synthetic>" and not (out == 0 and fresh == 0):
                     by_model[model] = by_model.get(model, 0) + out
         tot["models"] = [{"id": m, "display": display_name(m)}
                          for m, _ in sorted(by_model.items(), key=lambda kv: (-kv[1], kv[0]))]

@@ -116,6 +116,30 @@ class TestTokenUsage(unittest.TestCase):
         self.assertEqual([m["display"] for m in res["job"]["models"]],
                          ["Haiku 4.5", "Sonnet 5"])
 
+    def test_synthetic_model_excluded_from_models_but_counted_in_totals(self):
+        # M19: a real "<synthetic>" error-placeholder entry (nonzero output, e.g. a
+        # partial output before an API error) must not appear in by_model/models,
+        # but its tokens still count in the window/job totals.
+        with open(self.transcript, "a", encoding="utf-8") as f:
+            f.write(entry("m6", "2026-07-16T10:06:00.000Z", out=42, inp=5, cc=0,
+                          model="<synthetic>") + "\n")
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertTrue(res["available"])
+        self.assertEqual(res["tasks"][0]["output"], 200 + 42)   # counted in totals
+        ids = [m["id"] for m in res["tasks"][0]["models"]]
+        self.assertNotIn("<synthetic>", ids)                    # excluded from models
+
+    def test_zero_output_and_zero_input_entry_excluded_from_models(self):
+        # M19: any model with zero output AND zero input (synthetic/placeholder shape)
+        # is dropped from by_model/models even if it isn't literally "<synthetic>".
+        with open(self.transcript, "a", encoding="utf-8") as f:
+            f.write(entry("m7", "2026-07-16T10:06:30.000Z", out=0, inp=0, cc=0,
+                          model="claude-placeholder") + "\n")
+        res = tu.summarize(self.state, projects_dir=os.path.join(self.td.name, "projects"))
+        self.assertTrue(res["available"])
+        ids = [m["id"] for m in res["tasks"][0]["models"]]
+        self.assertNotIn("claude-placeholder", ids)
+
     def test_entry_without_model_field_tolerated(self):
         # Missing or non-string model: tokens still counted, models list unaffected.
         with open(self.transcript, "a", encoding="utf-8") as f:

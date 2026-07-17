@@ -14,6 +14,10 @@ Statistics design (see docs/design.md for provenance):
   as model-computed arithmetic); legacy rows without timestamps fall back to the
   logged actualMin; a row whose logged actualMin disagrees with the derived value by
   more than rounding is skipped
+- date is validated at the source in parse_row: kept only if it is a str matching
+  YYYY-MM-DD, else "" — every string this module re-emits (model/project/job via
+  sanitize(), date via this regex, category via the CATEGORIES/PARALLEL whitelist)
+  is neutralized before it can reach --report or calibration-summary.md
 Malformed lines are skipped and counted, never fatal.
 
 Log rotation: main() rotates calibration.jsonl once it exceeds ROTATE_AT (2000) lines,
@@ -21,7 +25,7 @@ moving all but the newest KEEP (1000) to calibration-archive-<year>.jsonl (atomi
 --report prints a markdown accuracy report to stdout, reading the main jsonl plus any
 calibration-archive-*.jsonl siblings — the LLM never reads the jsonl directly.
 """
-import glob, json, math, os, statistics, sys
+import glob, json, math, os, re, statistics, sys
 from datetime import date, datetime
 
 PRIOR = 1.0
@@ -31,11 +35,15 @@ CATEGORIES = frozenset({
 })
 PARALLEL = "parallel-group"
 ROTATE_AT, KEEP = 2000, 1000
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def sanitize(s, maxlen=64):
-    """Model strings come from the jsonl — strip newlines/pipes, cap length."""
-    return str(s).replace("\n", " ").replace("\r", " ").replace("|", "/")[:maxlen]
+    """Model/project/job strings come from the jsonl — never trusted as markdown.
+    Strip newlines/pipes (table delimiter) and backticks (breaks inline-code spans),
+    and drop a leading '#' run (markdown heading), before capping length."""
+    s = str(s).replace("\n", " ").replace("\r", " ").replace("|", "/").replace("`", "'")
+    return s.lstrip("#")[:maxlen]
 
 
 def _derive_actual_min(started_at, finished_at):
@@ -86,9 +94,11 @@ def parse_row(line):
                 return "skipped", None
     if act is None or act <= 0 or est <= 0:
         return "skipped", None
+    raw_date = row.get("date")
+    date_str = raw_date if isinstance(raw_date, str) and DATE_RE.fullmatch(raw_date) else ""
     return "ok", {"category": cat, "est": est, "act": act,
                   "model": sanitize(row.get("model") or "unknown"),
-                  "date": row.get("date", ""),
+                  "date": date_str,
                   "project": row.get("project", ""), "job": row.get("job", "")}
 
 
@@ -220,7 +230,7 @@ def main(jsonl_path, out_path):
         out += ["", "## Model mix caveat", "",
                 "These categories mix models with different speeds — factors conflate model and task variance:", ""]
         for cat, mix in sorted(mixes.items()):
-            out.append(f"- {cat}: " + ", ".join(f"{m} ×{k}" for m, k in sorted(mix.items())))
+            out.append(f"- {cat}: " + ", ".join(f"`{m}` ×{k}" for m, k in sorted(mix.items())))
 
     if parallel:
         out += ["", f"{PARALLEL} rows: {len(parallel)} logged, max-rule ratio median "
