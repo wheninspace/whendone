@@ -91,14 +91,15 @@ ETA = now + remaining. Elapsed (shown in the artifact) = now − job `startedAt`
 running task's elapsed time exceeds its `estimateMin`, show "overrunning by X min" next to
 it instead of implying imminence.
 
-**Interval (one fixed rule — never improvise):** High confidence: per-task interval =
-`[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed over pending AND running
-tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B =
-high sum − point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, nominal (not
-empirical) bounds, used whenever a category has no q1/q3. `q1`/`q3` are the IQR bounds of
-the category's raw-ratio distribution in calibration-summary.md's Spread column (also
-printed as machine-usable numbers in that file's footer); `factor` is that category's
-blended factor.
+**Interval (one fixed rule — never improvise):** At HIGH confidence (n ≥ 20): per-task
+interval = `[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed over pending AND
+running tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low
+sum, B = high sum − point ETA). At LOW or MEDIUM confidence — regardless of whether q1/q3
+happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %, medium ±30 %.
+`q1`/`q3` are the IQR bounds of the category's raw-ratio distribution in
+calibration-summary.md's Spread column (also printed as machine-usable numbers in that
+file's footer, shown from n ≥ 5 — informational below high confidence); `factor` is that
+category's blended factor.
 
 **150 %-slip alert:** `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin,
 elapsed)) > 1.5 × originalTotalMin`. `originalTotalMin` uses the SAME aggregation as the

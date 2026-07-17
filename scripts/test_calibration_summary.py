@@ -266,12 +266,17 @@ class TestFooterIntervalRule(unittest.TestCase):
         # same interval rule as file-formats.md's ETA computation and SKILL.md step 7
         # (compared word-for-word, not line-wrap-for-line-wrap)
         self.assertIn(
-            "High confidence: per-task interval = [raw_i × min(q1, factor), raw_i × "
-            "max(q3, factor)], summed over pending AND running tasks, rendered asymmetrically "
-            "as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − "
-            "point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, "
-            "nominal (not empirical) bounds, used whenever a category has no q1/q3.",
+            "At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor), "
+            "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered "
+            "asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high "
+            "sum − point ETA). At LOW or MEDIUM confidence — regardless of whether q1/q3 "
+            "happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %, "
+            "medium ±30 %.",
             normalized)
+        # branch keyed on confidence tier, not on q1/q3 presence (a medium-confidence
+        # category can already show q1/q3 in the Spread column without the interval
+        # formula applying to it)
+        self.assertNotIn("used whenever a category has no q1/q3", out)
         # machine-usable q1/q3 for a high-confidence (n=20) category, matching
         # statistics.quantiles(ratios, n=4) on the same fixture
         self.assertIn("debugging: q1=0.83 q3=1.37", out)

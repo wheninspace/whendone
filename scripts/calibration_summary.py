@@ -246,21 +246,23 @@ def main(jsonl_path, out_path):
         "Produce the raw estimate FIRST from the default table in SKILL.md (adjusted only for the",
         "subtask's scope), then multiply by the category factor above. Uncertainty on the total ETA",
         "(one fixed rule — never improvise, stated identically in references/file-formats.md and",
-        "SKILL.md): High confidence: per-task interval = [raw_i × min(q1, factor), raw_i × max(q3,",
-        "factor)], summed over pending AND running tasks, rendered asymmetrically as `Done ~HH:MM",
-        "(−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). Low confidence ±50 %,",
-        "medium confidence ±30 % — flat, nominal (not empirical) bounds, used whenever a category",
-        "has no q1/q3. Never state a point time without an interval, and never mention factor",
-        "values in chat or artifact.",
+        "SKILL.md): At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor),",
+        "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered asymmetrically",
+        "as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). At LOW",
+        "or MEDIUM confidence — regardless of whether q1/q3 happens to be shown — use flat, nominal",
+        "(not empirical) bounds: low ±50 %, medium ±30 %. Never state a point time without an",
+        "interval, and never mention factor values in chat or artifact.",
         "",
     ]
     if iqr_by_cat:
         out += [
             "## Per-category q1/q3 (machine-usable)",
             "",
-            "The raw-ratio IQR bounds behind the Spread column above, for categories with n >= 5",
-            "data points — apply directly in the high-confidence interval formula (below that, a",
-            "category has no q1/q3; use the flat nominal bounds instead, never fabricate an IQR):",
+            "The raw-ratio IQR bounds behind the Spread column above (shown from n >= 5). The",
+            "high-confidence interval formula (n >= 20) applies these directly; below high",
+            "confidence — including a medium-confidence category that already shows q1/q3 here —",
+            "use the flat nominal bounds instead (categories with n < 5 have no q1/q3 at all;",
+            "never fabricate one):",
             "",
         ]
         for cat in sorted(iqr_by_cat):

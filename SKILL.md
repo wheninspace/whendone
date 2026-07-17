@@ -65,16 +65,17 @@ decline ("run without whendone").
    | testing | 8 min | review | 10 min |
    | debugging | 20 min | deploy-infra | 15 min |
 
-   Only THEN read `~/.claude/whendone-data/calibration-summary.md`, solely for the category
-   factors, and set `estimateMin` = rawEstimateMin × factor. File missing (first run — create
-   `~/.claude/whendone-data/` now) or factor shown as "— (prior 1.0)" → use 1.0. Always
-   state an uncertainty interval, per the one fixed rule in references/file-formats.md's ETA
-   computation (never improvise): High confidence: per-task interval = `[raw_i × min(q1,
-   factor), raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered
-   asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum −
-   point ETA). Low confidence ±50 %, medium confidence ±30 % — flat, nominal (not empirical)
-   bounds, used whenever a category has no q1/q3. Never mention factor values in chat or
-   artifact (anchoring pollutes future raw estimates).
+   Only THEN read `~/.claude/whendone-data/calibration-summary.md`, for the category factors
+   (and q1/q3 at high confidence), and set `estimateMin` = rawEstimateMin × factor. File
+   missing (first run — create `~/.claude/whendone-data/` now) or factor shown as
+   "— (prior 1.0)" → use 1.0. Always state an uncertainty interval, per the one fixed rule in
+   references/file-formats.md's ETA computation (never improvise): At HIGH confidence
+   (n ≥ 20): per-task interval = `[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed
+   over pending AND running tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A =
+   point ETA − low sum, B = high sum − point ETA). At LOW or MEDIUM confidence — regardless of
+   whether q1/q3 happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %,
+   medium ±30 %. Never mention factor values in chat or artifact (anchoring pollutes future raw
+   estimates).
 8. Sensitivity check before first publish: if the job name, project name, plan-file path, or
    any subtask name looks like it identifies a client, a person, or confidential internal work,
    flag it to the user and let them rename or approve before the artifact goes up. Re-run this
