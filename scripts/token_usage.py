@@ -6,14 +6,16 @@ Usage: python3 token_usage.py <whendone-state.json>
 Reads sessionIds + task startedAt/finishedAt windows from the state file, locates
 ~/.claude/projects/*/<sessionId>.jsonl (plus <dir>/<sessionId>/subagents/agent-*.jsonl),
 dedups assistant entries by message.id (keep LAST — streaming snapshots repeat ids with
-lower counts), and buckets usage into task windows. Prints one JSON line to stdout.
+lower counts), and buckets usage into task windows, listing the distinct models observed
+per window (ordered by output tokens). Prints one JSON line to stdout.
 
 Honesty notes baked into the output: "freshInput" = input_tokens + cache_creation (the
 expensive kind); cacheRead is reported separately (≈10x cheaper — never sum them into one
 number). No USD: subscribers don't pay per token, and price tables go stale.
 The transcript format is undocumented and version-drifty: parse defensively, and on ANY
 problem return {"available": false} — token display must never block a job.
-Privacy: only message.usage numbers are read; conversation content is never extracted.
+Privacy: only message.usage numbers and the message.model string are read; conversation
+content is never extracted.
 """
 import glob, json, os, re, sys
 from datetime import datetime, timezone
@@ -30,8 +32,28 @@ def parse_ts(s):
         return None
 
 
+def display_name(model_id):
+    """'claude-haiku-4-5-20251001' -> 'Haiku 4.5'; alias 'haiku' -> 'Haiku'.
+
+    Best-effort: strip the 'claude-' prefix and a trailing 8-digit date, take the
+    first alphabetic token as the name and all numeric tokens as the version.
+    Unknown shapes pass through unchanged rather than erroring."""
+    if not isinstance(model_id, str) or not model_id:
+        return model_id
+    parts = model_id.split("-")
+    if parts[0] == "claude":
+        parts = parts[1:]
+    if parts and re.fullmatch(r"\d{8}", parts[-1]):
+        parts = parts[:-1]
+    name = next((p for p in parts if p.isalpha()), None)
+    if not name:
+        return model_id
+    version = ".".join(p for p in parts if p.isdigit())
+    return name.capitalize() + ((" " + version) if version else "")
+
+
 def read_usage(path):
-    """Dedup by message.id keeping the last entry; yield (ts, output, fresh, cacheread)."""
+    """Dedup by message.id keeping the last entry; yield (ts, output, fresh, cacheread, model)."""
     seen = {}
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -41,11 +63,13 @@ def read_usage(path):
                     if e.get("type") != "assistant":
                         continue
                     m = e["message"]; u = m["usage"]
+                    mdl = m.get("model")
                     seen[m.get("id") or e.get("requestId") or len(seen)] = (
                         parse_ts(e.get("timestamp")),
                         int(u.get("output_tokens") or 0),
                         int(u.get("input_tokens") or 0) + int(u.get("cache_creation_input_tokens") or 0),
                         int(u.get("cache_read_input_tokens") or 0),
+                        mdl if isinstance(mdl, str) else None,
                     )
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                     continue
@@ -75,9 +99,14 @@ def summarize(state_path, projects_dir=None):
 
     def bucket(entries, start, end):
         tot = dict.fromkeys(BUCKETS, 0)
-        for ts, out, fresh, cr in entries:
+        by_model = {}
+        for ts, out, fresh, cr, model in entries:
             if (start is None or ts >= start) and (end is None or ts < end):
                 tot["output"] += out; tot["freshInput"] += fresh; tot["cacheRead"] += cr
+                if model:
+                    by_model[model] = by_model.get(model, 0) + out
+        tot["models"] = [{"id": m, "display": display_name(m)}
+                         for m, _ in sorted(by_model.items(), key=lambda kv: (-kv[1], kv[0]))]
         return tot
 
     result_tasks = []
