@@ -158,7 +158,8 @@ def compute_overlaps(valid_tasks, now):
 
 def summarize(state_path, projects_dir=None, task_nr=None):
     try:
-        state = json.load(open(state_path, encoding="utf-8"))
+        with open(state_path, encoding="utf-8") as _sf:
+            state = json.load(_sf)
         sids = [s for s in state.get("sessionIds", []) if isinstance(s, str) and re.fullmatch(r"[A-Za-z0-9_-]+", s)]
         tasks = state.get("tasks", [])
         if not isinstance(tasks, list):
