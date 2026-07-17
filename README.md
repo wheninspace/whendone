@@ -3,9 +3,14 @@
 Checkpoint progress and self-calibrating ETAs for long Claude Code runs — one page,
 republished at every subtask boundary, statistics computed outside the model.
 
-![WhenDone progress artifact: task table with actual-vs-estimate, ETA with interval, token counts](assets/progress-artifact.png)
-*Rendered from [`assets/demo-artifact.html`](assets/demo-artifact.html) in this repo — a
-constructed example, not a screenshot from a real job.*
+<img src="assets/progress-artifact.png" width="440" alt="WhenDone progress artifact: the DONE state of a real 14-subtask job — task table with actual-vs-estimate per subtask, a +51% overrun, per-task and job-level token counts">
+
+*The actual DONE-state artifact from a real 14-subtask job — this repo's own round-2 hardening,
+monitored by whendone on 2026-07-17 (full record in
+[docs/test-log.md](docs/test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17)).
+Rendered from [`assets/real-run-artifact.html`](assets/real-run-artifact.html) — open that file
+to confirm the screenshot is faithful. A simpler constructed example lives in
+[`assets/demo-artifact.html`](assets/demo-artifact.html).*
 
 LLMs misjudge how long their own work will take — pre-task estimates overshoot actual duration
 by 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
@@ -23,8 +28,10 @@ by `calibration_summary.py`, and the 150 %-slip alert firing once (push degraded
 [docs/test-log.md](docs/test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17).
 Honest limits: that run used the dev working tree (the installed skill dir is a symlink to this
 repo) on the release branch, **not** a fresh clone at the tag; it did **not** exercise
-cross-session resume (still the least-tested path); and no GUI screenshot was captured (headless
-environment — the hero image is still rendered from `assets/demo-artifact.html`). Earlier
+cross-session resume (still the least-tested path). The run itself is headless, so the hero
+image above is a screenshot of *this run's own* DONE artifact
+([`assets/real-run-artifact.html`](assets/real-run-artifact.html)), captured manually rather
+than produced by the run. Earlier
 headless runs additionally verified auto-trigger behavior and graceful degradation, failures
 included and unedited. Design rationale and threat model in [docs/design.md](docs/design.md).
 
