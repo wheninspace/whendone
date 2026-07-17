@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for calibration_summary.py. Run: python3 scripts/test_calibration_summary.py -v"""
-import json, os, statistics, sys, tempfile, unittest
+import json, os, statistics, sys, tempfile, time, unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import calibration_summary as cs
@@ -250,6 +251,110 @@ class TestReportAndRotation(unittest.TestCase):
             self.assertEqual(len(main_lines), 1000)
             archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
             self.assertEqual(len(archives), 1)
+
+
+class TestRotationConcurrencyAndIdempotency(unittest.TestCase):
+    """C15: rotate() is guarded by a cross-platform create-exclusive lockfile and an
+    idempotency check on the archive append, so concurrent rotation attempts and a
+    crash between the archive append and the live-log truncate are both safe."""
+
+    def _make_lines(self, n=2500):
+        return [row() for _ in range(n)]
+
+    def test_lock_held_skips_rotation_cleanly(self):
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            lines = self._make_lines()
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            lock_path = jp + ".rotate.lock"
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            try:
+                result = cs.rotate(jp, lines)
+            finally:
+                os.remove(lock_path)
+            # rotation skipped: lines returned unchanged, no archive created
+            self.assertEqual(result, lines)
+            archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            self.assertEqual(archives, [])
+
+    def test_stale_lock_is_reclaimed_and_rotation_proceeds(self):
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            lines = self._make_lines()
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            lock_path = jp + ".rotate.lock"
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            old = time.time() - (cs.STALE_LOCK_SECONDS + 60)
+            os.utime(lock_path, (old, old))
+            result = cs.rotate(jp, lines)
+            self.assertEqual(len(result), cs.KEEP)
+            self.assertFalse(os.path.exists(lock_path))  # lock released after use
+
+    def test_lock_removed_after_successful_rotation(self):
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            lines = self._make_lines()
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            cs.rotate(jp, lines)
+            self.assertFalse(os.path.exists(jp + ".rotate.lock"))
+
+    def test_crash_before_truncate_then_rerun_has_no_duplicate_archive_rows(self):
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            lines = self._make_lines()
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+
+            with mock.patch("os.replace", side_effect=OSError("simulated crash")):
+                with self.assertRaises(OSError):
+                    cs.rotate(jp, lines)
+
+            # crash landed after the archive append but before the truncate: archive
+            # has the archived tail, live log is untouched (still the full 2500 lines)
+            archive_glob = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            self.assertEqual(len(archive_glob), 1)
+            archive_path = os.path.join(td, archive_glob[0])
+            archived_lines = open(archive_path, encoding="utf-8").read().splitlines()
+            self.assertEqual(len(archived_lines), len(lines) - cs.KEEP)
+            self.assertFalse(os.path.exists(jp + ".rotate.lock"))  # lock released even on crash
+
+            # re-run against the untouched live log (as a real re-invocation would)
+            live_lines = open(jp, encoding="utf-8").read().splitlines()
+            result = cs.rotate(jp, live_lines)
+            self.assertEqual(len(result), cs.KEEP)
+
+            archived_lines_after = open(archive_path, encoding="utf-8").read().splitlines()
+            self.assertEqual(len(archived_lines_after), len(lines) - cs.KEEP)  # no duplicates
+
+    def test_oversized_input_skips_rotation_and_does_not_materialize_via_rotate(self):
+        # N3: an oversized log is streamed for stats, not passed through rotate() at
+        # all this run (rotate() needs a materialized, sliceable list) -- verified via
+        # a monkeypatched low cap rather than an actually huge fixture file.
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            op = os.path.join(td, "s.md")
+            n = cs.ROTATE_AT + 200
+            with open(jp, "w", encoding="utf-8") as f:
+                for _ in range(n):
+                    f.write(row() + "\n")
+            with mock.patch.object(cs, "MAX_JSONL_BYTES", 100), \
+                 mock.patch.object(cs, "rotate") as mocked_rotate:
+                rc = cs.main(jp, op)
+            self.assertEqual(rc, 0)
+            mocked_rotate.assert_not_called()
+            # rotation skipped: main file untouched, no archive created
+            main_lines = open(jp, encoding="utf-8").read().splitlines()
+            self.assertEqual(len(main_lines), n)
+            archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            self.assertEqual(archives, [])
+            # stats still computed correctly via the streamed path
+            out = open(op, encoding="utf-8").read()
+            self.assertIn(f"{n} data points", out)
 
 
 class TestFooterIntervalRule(unittest.TestCase):

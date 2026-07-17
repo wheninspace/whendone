@@ -25,8 +25,25 @@ Log rotation: main() rotates calibration.jsonl once it exceeds ROTATE_AT (2000) 
 moving all but the newest KEEP (1000) to calibration-archive-<year>.jsonl (atomic replace).
 --report prints a markdown accuracy report to stdout, reading the main jsonl plus any
 calibration-archive-*.jsonl siblings — the LLM never reads the jsonl directly.
+
+Rotation concurrency + idempotency (C15): calibration.jsonl is a single global file
+appended to by every session, so rotate() is guarded by a cross-platform create-exclusive
+lockfile (<jsonl_path>.rotate.lock via os.open(O_CREAT|O_EXCL)). If another run holds the
+lock, rotation is skipped this run — it retries at the next job end, so no data is ever
+lost by skipping. A lock older than STALE_LOCK_SECONDS is treated as abandoned (a crashed
+run) and reclaimed. Archive-append happens BEFORE the live-log truncate (so a crash between
+the two is recoverable by re-running), guarded by an idempotency check: if the archive's
+last line already equals the boundary line, the append is skipped, so a re-run after a
+crash never double-appends.
+
+Input-size bound (N3): before materializing calibration.jsonl into memory, main() checks
+the file size against MAX_JSONL_BYTES. A pathologically large (hostile or bulk-imported)
+log is streamed line-by-line for stats instead — bounded per-line memory — and rotation
+(which needs the whole file as a sliceable list) is skipped that run; rotation resumes
+once the file is back under the cap. In normal operation ROTATE_AT already keeps the file
+small, so this cap is not expected to trigger outside a pathological import.
 """
-import glob, json, math, os, re, statistics, sys
+import glob, json, math, os, re, statistics, sys, time
 from datetime import date, datetime
 
 PRIOR = 1.0
@@ -37,6 +54,16 @@ CATEGORIES = frozenset({
 PARALLEL = "parallel-group"
 ROTATE_AT, KEEP = 2000, 1000
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # anchored: self-defending regardless of match method
+
+# C15: rotation lock staleness. Rotation itself runs in well under a second; 5 minutes
+# is generous headroom so a crashed session's held lock can never wedge rotation forever.
+STALE_LOCK_SECONDS = 300
+
+# N3: input-size bound. calibration rows are small JSON (~150-300 bytes); at ROTATE_AT
+# (2000) lines steady-state is well under 1 MB, so 20 MB gives ~40-100x headroom above
+# normal operation before this cap can trigger — reserved for a pathological/hostile or
+# bulk-imported log encountered before its first rotation.
+MAX_JSONL_BYTES = 20_000_000
 
 
 def sanitize(s, maxlen=64):
@@ -126,19 +153,67 @@ def confidence(n):
     return "low" if n < 5 else ("medium" if n < 20 else "high")
 
 
+def _last_line(path):
+    """Return a file's last line (no trailing newline), or None if missing/empty. Reads
+    only a bounded tail, not the whole file — an archive can grow large over years of
+    rotations, and this is called on every rotation attempt."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(-min(size, 8192), os.SEEK_END)
+            tail = f.read()
+    except OSError:
+        return None
+    chunks = tail.splitlines()
+    return chunks[-1].decode("utf-8", errors="replace") if chunks else None
+
+
 def rotate(jsonl_path, lines):
-    """Move all but the newest KEEP lines to calibration-archive-<year>.jsonl. Atomic."""
+    """Move all but the newest KEEP lines to calibration-archive-<year>.jsonl.
+
+    Concurrency (C15): guarded by a cross-platform create-exclusive lockfile
+    (<jsonl_path>.rotate.lock). If another run holds it, or the stale-check itself
+    fails, rotation is skipped for this run and `lines` is returned unchanged — it
+    retries at the next job end, so skipping never loses data. A lock older than
+    STALE_LOCK_SECONDS is treated as abandoned (e.g. a crashed session) and reclaimed.
+
+    Idempotency: the archive append happens BEFORE the live-log truncate (so a crash
+    between the two just means the next run repeats the append), guarded by a check:
+    if the archive's last line already equals lines[-KEEP-1] (last run's boundary
+    line), the append is skipped so a re-run after a crash does not duplicate rows.
+    """
     if len(lines) <= ROTATE_AT:
         return lines
-    archive = os.path.join(os.path.dirname(jsonl_path),
-                           f"calibration-archive-{date.today().year}.jsonl")
-    with open(archive, "a", encoding="utf-8") as f:
-        f.write("\n".join(lines[:-KEEP]) + "\n")
-    tmp = jsonl_path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines[-KEEP:]) + "\n")
-    os.replace(tmp, jsonl_path)
-    return lines[-KEEP:]
+
+    lock_path = jsonl_path + ".rotate.lock"
+    try:
+        if os.path.exists(lock_path):
+            if time.time() - os.stat(lock_path).st_mtime <= STALE_LOCK_SECONDS:
+                return lines  # held by another run — skip, retry next job end
+            os.remove(lock_path)  # older than the stale threshold: an abandoned lock
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except OSError:
+        return lines  # lock busy (FileExistsError) or the stale-check failed — degrade
+
+    try:
+        archive = os.path.join(os.path.dirname(jsonl_path),
+                               f"calibration-archive-{date.today().year}.jsonl")
+        boundary = lines[-KEEP - 1]
+        if _last_line(archive) != boundary:
+            with open(archive, "a", encoding="utf-8") as f:
+                f.write("\n".join(lines[:-KEEP]) + "\n")
+        tmp = jsonl_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines[-KEEP:]) + "\n")
+        os.replace(tmp, jsonl_path)
+        return lines[-KEEP:]
+    finally:
+        try:
+            os.remove(lock_path)
+        except OSError:
+            pass
 
 
 def report(jsonl_path):
@@ -177,28 +252,40 @@ def report(jsonl_path):
     return 0
 
 
+def _iter_calibration_lines(jsonl_path):
+    """Yield lines to process for the summary. Below MAX_JSONL_BYTES (the normal case):
+    materialize the file (needed for rotate()'s slicing) and run rotation. At/above the
+    cap (N3, a pathological or bulk-imported log): stream line-by-line instead — bounded
+    per-line memory — and skip rotation this run, since rotation needs the whole file as
+    a sliceable list; rotation resumes once the file is back under the cap."""
+    if os.path.getsize(jsonl_path) > MAX_JSONL_BYTES:
+        with open(jsonl_path, encoding="utf-8") as f:
+            yield from f
+        return
+    with open(jsonl_path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    yield from rotate(jsonl_path, lines)
+
+
 def main(jsonl_path, out_path):
+    cats, skipped, malformed, parallel = {}, 0, 0, []
     try:
-        lines = open(jsonl_path, encoding="utf-8").read().splitlines()
+        for line in _iter_calibration_lines(jsonl_path):
+            if not line.strip():
+                continue
+            status, r = parse_row(line)
+            if status == "malformed":
+                malformed += 1; continue
+            if status == "skipped":
+                skipped += 1; continue
+            if r["category"] == PARALLEL:
+                parallel.append(r["act"] / r["est"]); continue
+            d = cats.setdefault(r["category"], {"ratios": [], "models": {}})
+            d["ratios"].append(r["act"] / r["est"])
+            d["models"][r["model"]] = d["models"].get(r["model"], 0) + 1
     except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
-    lines = rotate(jsonl_path, lines)
-
-    cats, skipped, malformed, parallel = {}, 0, 0, []
-    for line in lines:
-        if not line.strip():
-            continue
-        status, r = parse_row(line)
-        if status == "malformed":
-            malformed += 1; continue
-        if status == "skipped":
-            skipped += 1; continue
-        if r["category"] == PARALLEL:
-            parallel.append(r["act"] / r["est"]); continue
-        d = cats.setdefault(r["category"], {"ratios": [], "models": {}})
-        d["ratios"].append(r["act"] / r["est"])
-        d["models"][r["model"]] = d["models"].get(r["model"], 0) + 1
 
     total = sum(len(c["ratios"]) for c in cats.values())
     out = [
