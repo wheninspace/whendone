@@ -15,9 +15,10 @@ Statistics design (see docs/design.md for provenance):
   logged actualMin; a row whose logged actualMin disagrees with the derived value by
   more than rounding is skipped
 - date is validated at the source in parse_row: kept only if it is a str matching
-  YYYY-MM-DD, else "" — every string this module re-emits (model/project/job via
-  sanitize(), date via this regex, category via the CATEGORIES/PARALLEL whitelist)
-  is neutralized before it can reach --report or calibration-summary.md
+  YYYY-MM-DD, else "" — end-to-end, every string this module re-emits is neutralized
+  before reaching --report or calibration-summary.md: category via the
+  CATEGORIES/PARALLEL whitelist, date via this anchored regex, model via sanitize()
+  inside parse_row, and project/job via sanitize() at their report() print sites
 Malformed lines are skipped and counted, never fatal.
 
 Log rotation: main() rotates calibration.jsonl once it exceeds ROTATE_AT (2000) lines,
@@ -35,7 +36,7 @@ CATEGORIES = frozenset({
 })
 PARALLEL = "parallel-group"
 ROTATE_AT, KEEP = 2000, 1000
-DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # anchored: self-defending regardless of match method
 
 
 def sanitize(s, maxlen=64):
