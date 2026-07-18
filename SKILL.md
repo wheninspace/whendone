@@ -22,8 +22,9 @@ read `references/artifact-template.md` before the first publish.
 
 Jobs under ~6 subtasks or under ~45 min expected total — run without it. The user can always
 decline ("run without whendone"). This matches the README's "worth it for ~6+ subtasks or an
-hour-plus" line: the trigger-to-first-publish cost alone runs ~17-18k tokens (see README's
-Overhead table), which a 4-5-subtask job cannot amortize.
+hour-plus" line: the trigger-to-first-publish cost alone runs ~19k tokens by a real tokenizer
+(see README's Overhead table — its char/4 figures are floors), which a 4-5-subtask job cannot
+amortize.
 
 The user can also say **"run without the artifact"**: keep calibration logging and the in-chat
 progress table, but skip the claude.ai publish entirely for this job — e.g. an NDA/confidential
