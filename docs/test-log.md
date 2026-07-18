@@ -574,3 +574,58 @@ read only when Source C is detected.
 
 All gate conditions met. The two never-run-live paths (Source-A and Source-B cross-session resume
 drills) remain owner tasks on the flip checklist — they gate the flip, not this branch's merge.
+
+## Stage 5 — Source-C (pace-only) live dogfood — 2026-07-19
+
+A real end-to-end Source-C run in the stage-5 execution session — no mocks. whendone monitored the
+final stretch of its own build: the TodoWrite list mirrored was the five remaining work items of
+this stage (the flip-gate check and the flip-checklist/ledger/final-review of Tasks 13–14), and the
+watcher ran while that work was actually done.
+
+**Environment.** macOS, `zsh`; real `.claude/whendone-state.json` with `source:"c"`,
+`originalTotalMin:null`, this session's id in `sessionIds`; artifact
+`048ecc36-4bfb-407b-9d43-403c4a5429fb`. Watcher level: **L1 Monitor** (`tail_progress.py --follow`,
+5 s interval / 30 s debounce), the first stage-5 Source-C run under a live Monitor watcher.
+
+**Job start.** State written per `references/source-c.md` (no classification, no estimate table, no
+calibration-summary read; `tasks:[]`). The gitignore precondition was already satisfied
+(`.claude/whendone-state.json` + `.claude/whendone-tail.lock`). A one-shot sync mirrored the five
+TodoWrite items into `tasks` on the first pass — each carrying only
+`nr`/`name`/`status`/`startedAt`/`finishedAt` (no estimate/category/model keys), with `startedAt`
+taken from the transcript's TodoWrite timestamp. First render + publish emitted
+`etaText:"ETA not yet known (uncalibrated)"` (empty→one running item), published to the URL above.
+
+**Observed event lines (representative).** One `progress` line per mirrored transition, then the
+terminal `all-done`:
+```
+{"event":"progress","done":0,"total":5,"etaText":"ETA not yet known (uncalibrated)"}
+{"event":"progress","done":1,"total":5,"justDone":["Run full test suites (267) warning-clean"],"etaText":"Done ~22:51 (uncalibrated — pace-based)"}
+{"event":"progress","done":2,"total":5,"justDone":["Formula-parity + forbidden-string + secrets sweeps"],"etaText":"Done ~22:41 (uncalibrated — pace-based)"}
+{"event":"progress","done":3,"total":5,"justDone":["Record flip-gate evidence + write flip-gate test-log entry"],"etaText":"Done ~22:39 (uncalibrated — pace-based)"}
+{"event":"progress","done":4,"total":5,"justDone":["Write the public-flip checklist + update SDD ledger"],"etaText":"Done ~22:36 (uncalibrated — pace-based)"}
+{"event":"all-done","done":5,"total":5,"justDone":["Final whole-branch code review + apply fixes"],"etaText":"Done (uncalibrated)"}
+```
+
+**What the dogfood confirmed.**
+- **Mirror transitions** on each wake: the newest TodoWrite snapshot drove `done` count, per-task
+  status icons, and computed `Actual` times (e.g. 2.1 m, 1.4 m, 4.7 m) with no hand-editing.
+- **Uncalibrated label everywhere:** `etaText` carried `(uncalibrated — pace-based)` while running
+  and exactly `Done (uncalibrated)` at end; the page's ETA headline matched. The pace ETA adapted as
+  items completed (~22:51 → ~22:36). **Category and Est. columns rendered `—`** (no estimates);
+  `slipAlert` never fired; `estimateTotalMin` was `0`.
+- **`justDone` naming** correctly named the item(s) newly completed at each wake.
+- **Same artifact URL** (`048ecc36…`) across all ~six republishes (same scratchpad file path).
+- **Zero calibration writes:** `wc -l ~/.claude/whendone-data/calibration.jsonl` = **72 before and
+  72 after** — the §5.1 guard held live for a full Source-C completion (no `handle_completion`/append
+  on the Source-C path).
+- **Job end:** on `all-done` the watcher exited **rc 0**, removed `.claude/whendone-tail.lock`, and
+  the Monitor stream ended. The model then set `status:"done"`, ran `token_usage.py` (no `--task`),
+  and rendered + published the **DONE (uncalibrated)** banner; a best-effort "job done" push was sent
+  (delivery uncertain — no Remote Control).
+
+**Deviations from `references/source-c.md`:** none. The protocol was followed as written and the
+document needed no correction — job-start (mirror-only, no declaration), wake handling (one publish
+per `progress`/`all-done`, verbatim `etaText`), and job-end (no calibration-summary regeneration)
+all matched observed behavior. Dogfood limit: because the run tracked the model's own multi-minute
+work items, wakes were minutes apart (not sub-second), which exercised the debounce/render tail
+naturally.
