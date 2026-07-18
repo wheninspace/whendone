@@ -192,5 +192,89 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(ra.fmt_dev(4, 6), "(−33 %)")
 
 
+class TestComputationCore(unittest.TestCase):
+    def setUp(self):
+        self.now = ra.parse_ts(NOW)  # 10:00+02:00
+
+    def test_units_groups_by_group_field(self):
+        ts = [task(1), task(2, group="g1"), task(3, group="g1"), task(4)]
+        us = ra.units(ts)
+        self.assertEqual([len(u) for u in us], [1, 2, 1])
+        self.assertEqual([t["nr"] for t in us[1]], [2, 3])
+
+    def test_v1_tasks_without_group_are_sequential(self):
+        us = ra.units([task(1), task(2)])
+        self.assertEqual([len(u) for u in us], [1, 1])
+
+    def test_remaining_pending_task_is_estimate(self):
+        self.assertEqual(ra.unit_remaining([task(estimateMin=10)], self.now), 10)
+
+    def test_remaining_pending_group_is_max(self):
+        u = [task(1, group="g", estimateMin=5), task(2, group="g", estimateMin=8)]
+        self.assertEqual(ra.unit_remaining(u, self.now), 8)
+
+    def test_remaining_running_uses_inflight_rule(self):
+        # started 09:55, est 10 -> max(0.2*10, 10-5) = 5
+        t = task(status="running", startedAt="2026-07-18T09:55:00+02:00", estimateMin=10)
+        self.assertAlmostEqual(ra.unit_remaining([t], self.now), 5.0)
+        # started 09:51 (elapsed 9) -> max(2, 1) = 2 — never collapses to 0
+        t["startedAt"] = "2026-07-18T09:51:00+02:00"
+        self.assertAlmostEqual(ra.unit_remaining([t], self.now), 2.0)
+
+    def test_remaining_done_unit_is_zero(self):
+        t = task(status="done", actualMin=12.0)
+        self.assertEqual(ra.unit_remaining([t], self.now), 0)
+
+    def test_remaining_running_group_max_over_unfinished(self):
+        u = [task(1, group="g", status="done", actualMin=4.0, estimateMin=5),
+             task(2, group="g", status="running", estimateMin=10,
+                  startedAt="2026-07-18T09:55:00+02:00"),
+             task(3, group="g", status="pending", estimateMin=3)]
+        # unfinished: max( max(2, 5)=5, 3 ) = 5
+        self.assertAlmostEqual(ra.unit_remaining(u, self.now), 5.0)
+
+    def test_slip_value_done_uses_actual(self):
+        self.assertEqual(ra.unit_slip_value([task(status="done", actualMin=25.0)], self.now), 25.0)
+
+    def test_slip_value_done_null_actual_derives_from_timestamps(self):
+        t = task(status="done", actualMin=None,
+                 startedAt="2026-07-18T09:00:00+02:00", finishedAt="2026-07-18T09:30:00+02:00")
+        self.assertEqual(ra.unit_slip_value([t], self.now), 30.0)
+
+    def test_slip_value_running_is_max_of_estimate_and_elapsed(self):
+        t = task(status="running", estimateMin=10, startedAt="2026-07-18T09:30:00+02:00")
+        self.assertEqual(ra.unit_slip_value([t], self.now), 30.0)  # elapsed 30 > est 10
+
+    def test_slip_group_contributes_max_not_sum(self):
+        # F1: a fully DONE group contributes MAX of members' actualMin, never the sum
+        u = [task(1, group="g", status="done", actualMin=20.0),
+             task(2, group="g", status="done", actualMin=15.0)]
+        self.assertEqual(ra.unit_slip_value(u, self.now), 20.0)
+
+    def test_total_estimate_uses_max_per_group(self):
+        ts = [task(1, estimateMin=10), task(2, group="g", estimateMin=5),
+              task(3, group="g", estimateMin=8)]
+        self.assertEqual(ra.total_estimate(ra.units(ts)), 18.0)
+
+    def test_elapsed_running_subtracts_paused_total(self):
+        s = state(pausedTotalMin=10)
+        self.assertAlmostEqual(ra.elapsed_min(s, self.now), 50.0)  # 60 wall - 10 paused
+
+    def test_elapsed_paused_freezes_at_pausedAt(self):
+        s = state(status="paused", pausedAt="2026-07-18T09:40:00+02:00")
+        self.assertAlmostEqual(ra.elapsed_min(s, self.now), 40.0)
+
+    def test_elapsed_done_ends_at_latest_finishedAt(self):
+        s = state(status="done", tasks=[
+            task(1, status="done", finishedAt="2026-07-18T09:20:00+02:00"),
+            task(2, status="done", finishedAt="2026-07-18T09:50:00+02:00")])
+        self.assertAlmostEqual(ra.elapsed_min(s, self.now), 50.0)
+
+    def test_derived_actual_min_floor(self):
+        t = task(status="done", startedAt="2026-07-18T09:00:00+02:00",
+                 finishedAt="2026-07-18T09:00:10+02:00")
+        self.assertEqual(ra.derived_actual(t), 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()

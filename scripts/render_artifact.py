@@ -178,6 +178,123 @@ def load_summary(path):
     return cats
 
 
+def task_est(t):
+    """Adjusted estimate for display/ETA — frozen at declaration in the state file.
+    (The summary's CURRENT factor is deliberately NOT re-applied here: factors can
+    shift between declaration and a resume, and the slip check compares against
+    originalTotalMin, which was aggregated from these frozen values.)"""
+    for k in ("estimateMin", "rawEstimateMin"):
+        v = t.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            return float(v)
+    return 0.0
+
+
+def task_raw(t):
+    v = t.get("rawEstimateMin")
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+        return float(v)
+    return task_est(t)
+
+
+def derived_actual(t):
+    """A done task's actualMin: the logged value, else derived from its own timestamps
+    (same rule as append_calibration.py: one decimal, minimum 0.5), else None."""
+    v = t.get("actualMin")
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
+        return float(v)
+    s, e = parse_ts(t.get("startedAt")), parse_ts(t.get("finishedAt"))
+    if s and e and e >= s:
+        return max(0.5, round(minutes(s, e), 1))
+    return None
+
+
+def units(tasks):
+    """Ordered aggregation units: [task] singletons for sequential tasks; tasks sharing
+    the same non-null `group` value (state-model v2) form ONE unit, positioned at the
+    first member. v1 state files (no group field) yield all-singleton units."""
+    seen, out = {}, []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        g = t.get("group")
+        if g is None:
+            out.append([t])
+        elif g in seen:
+            seen[g].append(t)
+        else:
+            seen[g] = [t]
+            out.append(seen[g])
+    return out
+
+
+def unit_remaining(unit, now):
+    """One unit's contribution to `remaining` (file-formats.md ETA computation): 0 when
+    every member is done; else MAX over unfinished members of max(0.2×est, est−elapsed).
+    A member with no startedAt has elapsed 0 and contributes its full estimate, which
+    makes an all-pending group contribute MAX of member estimates — the same rule."""
+    vals = []
+    for t in unit:
+        if t.get("status") == "done":
+            continue
+        est = task_est(t)
+        s = parse_ts(t.get("startedAt"))
+        elapsed = minutes(s, now) if s else 0.0
+        vals.append(max(0.2 * est, est - elapsed))
+    return max(vals) if vals else 0.0
+
+
+def unit_slip_value(unit, now):
+    """One unit's contribution to the 150%-slip left side — the SAME aggregation as
+    originalTotalMin (F1: sequential sum + MAX per parallel group, BOTH sides). Per
+    member: done → actualMin (derived when the log write was skipped; estimate as the
+    last resort), running → max(estimate, elapsed), pending → estimate."""
+    vals = []
+    for t in unit:
+        est = task_est(t)
+        st = t.get("status")
+        if st == "done":
+            a = derived_actual(t)
+            vals.append(a if a is not None else est)
+        elif st == "running":
+            s = parse_ts(t.get("startedAt"))
+            elapsed = minutes(s, now) if s else 0.0
+            vals.append(max(est, elapsed))
+        else:
+            vals.append(est)
+    return max(vals) if vals else 0.0
+
+
+def total_estimate(us):
+    """The fixed originalTotalMin aggregation (sequential sum + MAX per parallel group)
+    over every task's adjusted estimateMin. Exported on the status line as
+    estimateTotalMin so the model copies it into the state file at job start instead of
+    doing the arithmetic itself."""
+    return sum(max(task_est(t) for t in u) for u in us if u)
+
+
+def elapsed_min(state, now):
+    """Elapsed = endpoint − job startedAt − pausedTotalMin, floored at 0. Endpoint by
+    status: running → now; paused → pausedAt (fallback now); done → latest task
+    finishedAt (fallback now)."""
+    start = parse_ts(state.get("startedAt"))
+    if not start:
+        return None
+    paused_total = state.get("pausedTotalMin")
+    if not isinstance(paused_total, (int, float)) or isinstance(paused_total, bool):
+        paused_total = 0
+    status = state.get("status")
+    end = now
+    if status == "paused":
+        end = parse_ts(state.get("pausedAt")) or now
+    elif status == "done":
+        ends = [parse_ts(t.get("finishedAt")) for t in state.get("tasks") or []
+                if isinstance(t, dict)]
+        ends = [e for e in ends if e]
+        end = max(ends) if ends else now
+    return max(0.0, minutes(start, end) - paused_total)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
