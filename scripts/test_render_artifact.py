@@ -519,5 +519,26 @@ class TestFullPage(unittest.TestCase):
             self.assertIn("(widened to measured spread)", read_text(op))
 
 
+class AgentCounterDisplayTest(unittest.TestCase):
+    def test_task_counter_line(self):
+        s = state(tasks=[task(1, agentsDone=3, agentsExpected=7, status="running")])
+        _, page, _ = run_cli(s)
+        self.assertIn("3/7 agents", page)
+
+    def test_task_counter_without_expected_shows_question_mark(self):
+        s = state(tasks=[task(1, agentsDone=3, agentsStarted=5, status="running")])
+        _, page, _ = run_cli(s)
+        self.assertIn("3/? agents", page)
+
+    def test_job_level_workflow_line(self):
+        s = state(source="b", wfAgentsStarted=12, wfAgentsDone=8, tasks=[task(1)])
+        _, page, _ = run_cli(s)
+        self.assertIn("Workflow agents: 8/12 finished", page)
+
+    def test_absent_fields_render_nothing(self):
+        _, page, _ = run_cli(state(tasks=[task(1)]))
+        self.assertNotIn("agents", page.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

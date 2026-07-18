@@ -147,6 +147,13 @@ def task_rows(tasks, tmap, now):
             if t.get("effort"):
                 line = "%s · %s effort" % (line, t["effort"])
             name += '<br><span class="dim">%s</span>' % esc(line)
+        if isinstance(t.get("agentsDone"), int) and (
+                isinstance(t.get("agentsExpected"), int)
+                or isinstance(t.get("agentsStarted"), int)):
+            exp = t.get("agentsExpected")
+            name += '<br><span class="dim">%s</span>' % esc(
+                "%d/%s agents" % (t["agentsDone"],
+                                  exp if isinstance(exp, int) else "?"))
         cat = esc(t.get("category")) if t.get("category") else "—"
         est = task_est(t)
         est_txt = esc(fmt_min(est)) if est else "—"
@@ -269,11 +276,17 @@ def render(state, tokens, summary, now, push_status, superseded):
                   "chat or create the file <code>.claude/STOP</code> in the project "
                   "root. %s</p>" % esc(PUSH_STATUS[push_status]))
 
+    wf_line = ""
+    if isinstance(state.get("wfAgentsStarted"), int):
+        wf_line = '<p class="dim">%s</p>\n' % esc(
+            "Workflow agents: %s/%s finished"
+            % (state.get("wfAgentsDone", 0), state["wfAgentsStarted"]))
+
     page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
-            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s"
+            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s"
             % (esc("WhenDone: " + job), CSS, banner, eta_block,
-               task_rows(tasks, tmap, now), pause_box, footer))
+               task_rows(tasks, tmap, now), wf_line, pause_box, footer))
 
     stat = {"ok": True, "status": "superseded" if superseded else status,
             "etaText": etxt, "slipAlert": bool(slip_alert),
