@@ -46,8 +46,12 @@ included and unedited. Design rationale and threat model in [docs/design.md](doc
   phone.
 - **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
   ±50 %; correction factors move from your first logged data point and carry the label
-  low/medium/high confidence as history accumulates. No manual tuning, no cloud: the log is a
-  local JSONL, the statistics are a 200-line stdlib script.
+  low/medium/high confidence as history accumulates. The interval ramps slower than the
+  point estimate: until a category reaches high confidence (20 logged subtasks), the band is
+  a flat nominal ±50/±30 % — widened to the measured spread once 5 data points exist, and
+  marked "(nominal)" in the artifact so you can tell a default band from an earned one. No
+  manual tuning, no cloud: the log is a local JSONL, the statistics are a 200-line stdlib
+  script.
 - **Graceful stop/resume — including session death** — "stop after the current subtask" or a
   `.claude/STOP` file stops cleanly; a crashed session resumes in a new one (interrupted
   subtasks are excluded from calibration, never guessed).

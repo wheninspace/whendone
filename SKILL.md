@@ -435,7 +435,7 @@ Remote Control").
 
 ## Red flags
 
-- A point time without an interval in the artifact → always show one (symmetric ± at low/medium confidence, or the asymmetric `(−A/+B min)` form at high confidence).
+- A point time without an interval in the artifact → always show one (symmetric `± N min (nominal)` at low/medium confidence, the asymmetric `(−A/+B min)` form marked `(widened to measured spread)` when the envelope rule widened any band, or the plain asymmetric form at high confidence).
 - "I'll update the artifact later, several subtasks in one batch" → a checkpoint is EVERY boundary.
 - Reading calibration.jsonl into context at ANY time — job start, checkpoints, accuracy
   reports — the script reads it; you never do.

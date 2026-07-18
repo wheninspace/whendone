@@ -22,10 +22,13 @@ Content requirements (top to bottom):
 
 1. **Status banner:** RUNNING (blue) / PAUSED (yellow) / DONE (green) + **"Last updated HH:MM"**
    in large type — the reader must see the view updates per checkpoint, not live.
-2. **ETA block:** "Done ~HH:MM ± N min" (low/medium confidence, flat nominal bounds) — or, at
-   high confidence, the asymmetric form "Done ~HH:MM (−A/+B min)" per the interval rule in
-   references/file-formats.md's ETA computation — NEVER a point time without an interval —
-   plus start time, elapsed time, N of M subtasks done.
+2. **ETA block:** at low/medium confidence "Done ~HH:MM ± N min (nominal)" — the "(nominal)"
+   marker is part of the rendered text, the viewer must see the band is a default, not
+   measured — or, when any task's band was widened per the interval rule, the asymmetric
+   "Done ~HH:MM (−A/+B min) (widened to measured spread)"; at high confidence the asymmetric
+   form "Done ~HH:MM (−A/+B min)" per the interval rule in references/file-formats.md's ETA
+   computation. NEVER a point time without an interval — plus start time, elapsed time,
+   N of M subtasks done.
    Below the elapsed line, one dim token line when available: "Tokens: 412k spent (output +
    fresh input) · 3.1M cache reads" — never sum cache reads into the headline number (they
    cost ~10x less); job-level only. Per-task tokens go in the Actual column as a second dim
@@ -100,7 +103,7 @@ Skeleton (adapt content, keep structure and theme handling):
   .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
 </style>
 <div class="banner running">🔄 RUNNING — last updated 14:35</div>
-<div class="eta"><strong>Done ~16:40 ± 35 min</strong><br>
+<div class="eta"><strong>Done ~16:40 ± 35 min (nominal)</strong><br>
   <span class="dim">Started 14:02 · 33 min elapsed · 2 of 6 subtasks done</span><br>
   <span class="dim">Tokens: 412k spent · 3.1M cache reads</span></div>
 <table>
