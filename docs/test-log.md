@@ -446,3 +446,93 @@ whendone monitored its own 12-subtask stage-3 execution:
 a symlink to this repo), not a fresh clone at a tag; **cross-session resume was again not
 exercised** (whole job ran in one session) and remains the least-tested path; no live
 Monitor-driven wake (see above); no GUI screenshot.
+
+## Stage 4 — Source-B (Workflow-engine) dogfood + live-Monitor monitoring run — 2026-07-18
+
+Stage 4 (Source B: Workflow-journal ingester; `scripts/workflow_journal.py` + the `sync_cycle_b`
+seam in `scripts/tail_progress.py`) was executed with superpowers:subagent-driven-development
+while whendone monitored the execution under a **live L1 Monitor watcher**. Three bodies of
+evidence: the **Source-B dogfood** (plan Task 11), the **live-Monitor monitoring run** itself,
+and a **documented (not-yet-run) cross-session resume drill**.
+
+### Source-B dogfood — live Workflow run, end-to-end
+
+A real 3-phase Workflow was launched via the Workflow tool (runId `wf_0580e207-b1b`, 6 agents:
+2 per phase, each `agent()` prompt tagged `[wd:understand]` / `[wd:review]` / `[wd:verify]` per
+the B1 declare-at-authoring convention). Phases declared in a Source-B state file
+(`source:"b"`, `workflowRunId`, per-phase `category`/`rawEstimateMin`/`wdTag`/`agentsExpected`).
+The state file lived in an isolated scratchpad dir so its pid lock did not collide with the
+concurrent meta-job's `.claude/whendone-tail.lock` (lock path is derived from the state file's
+directory — verified). First render + publish produced a **separate artifact**
+(`…/artifact/50e2ad95-…`) showing all three phases at `0/2 agents`.
+
+The lightweight agents completed in ~42 s — faster than a live L1 follow loop could show
+intermediate wakes — so the Source-B-specific finalize path was validated by driving one
+`tail_progress.py` sync cycle over the **completed** run (the follow-loop wrapper itself is
+unchanged shared Source-A machinery, already drilled in stage 3 D3/D4/D6/D7). That single cycle,
+on the NEW Source-B code, produced (all from unedited script output):
+
+- **Journal parsed** (v2 lines only, real agentIds/keys), completion record
+  `workflows/wf_0580e207-b1b.json` detected as the all-done signal.
+- **Per-phase attribution via `[wd:]` tags**, with spans read from the agent transcripts, not the
+  journal: Understand `19:11:21→29`, Review `19:11:31→42`, Verify `19:11:44→57` (UTC) — sequential,
+  correctly separated, proving tag attribution + transcript-timestamp timing.
+- **Display transitions** pending→running→done for all 3 phases; per-task `2/2 agents` and
+  job-level `Workflow agents: 6/6 finished` rendered (Task 6 counters).
+- **One calibration row per phase** appended by `finalize_b` at the completion record:
+  calibration.jsonl **67 → 70** (three rows), categories `research` / `review` / `testing`,
+  `model:"unknown"` (dogfood meta.json carried no `model` key — matches the survey's
+  "sometimes present"), `actualMin` computed from the spans. Verified by `wc -l` before/after and
+  the `--report` view (never read into context per Constraint 3).
+- **`all-done`** event emitted with `agentsStarted:6, agentsDone:6`; DONE banner rendered
+  (`Done — took 1 m (estimated 7.6 m)`); calibration summary regenerated (70 points); **pid lock
+  left clean** (one-shot released it).
+
+**Honest limits of the dogfood:** (1) agents ran lightweight analysis prompts (no file reads) —
+the target was validating the *monitoring pipeline*, not producing a substantive review; (2) the
+calibration rows are tagged `project:"scratchpad"` because the state file was placed in the
+scratchpad dir (to avoid the lock collision) — `append_calibration` derives `project` from the
+state file's parent dir; a real Source-B job with state in the project's `.claude/` tags the
+correct project name; (3) the run finished before a live L1 follow could show *incremental*
+phase-by-phase wakes, so intermediate Source-B wake rendering was not separately captured (the
+finalize + all-done + rows path was fully validated as above).
+
+### Live-Monitor monitoring run (this session) — first real Monitor-driven wakes
+
+Unlike stages 2–3 (model-driven checkpoints, no live watcher wake), the stage-4 execution ran
+under a **real L1 Monitor watcher** (`tail_progress.py <state> --follow`, persistent) for the
+whole session. It woke the lead on each subtask completion and emitted `progress` / `stale` /
+`all-done` events; the lead republished the artifact in place on each `progress` wake (same file,
+same URL `…/artifact/57ead8a9-…`, favicon ⏱️). This is the first stage with genuine
+live-Monitor-wake evidence (the stage-3 limit "no live Monitor-driven wake" is now closed).
+
+**Per-wake cost (observed, this environment):** each wake delivered one compact JSON event line
+(~50–90 tokens) plus — because the watcher rewrites the artifact HTML each cycle — a harness
+"file modified" re-injection of the ~2.7 KB rendered page (~800–1,000 tokens), plus the lead's
+single Artifact publish call. So the observed marginal per-wake cost is ≈ **1 k tokens of
+injected context + one publish turn**, consistent with stage 3's component estimate (one event
+line measured at 54 cl100k tokens + a short turn + a publish). The HTML re-injection is
+environment-specific (Claude Code echoing a changed tracked file back to the model); a headless
+watcher that renders to a non-watched path would not incur it.
+
+### Cross-session resume drill (Source B, B12) — documented, NOT run this session
+
+A Workflow run dies with its launching session, so a genuine cross-session Source-B resume cannot
+be exercised within a single session; it is recorded here as the exact manual procedure for a
+follow-up run (still the least-tested path, as in stages 2–3):
+
+1. Declare + launch a Source-B job (as above); let ≥1 phase reach `done` (with its `actualMin`
+   logged); note `wc -l ~/.claude/whendone-data/calibration.jsonl`.
+2. Request stop → whendone runs the stop procedure (watcher stopped first, final one-shot sync,
+   `status:"paused"` render, push, `.claude/STOP` deleted).
+3. **Open a fresh Claude Code session.** whendone should summarize the paused state, confirm the
+   `artifactUrl` is the user's, and re-mint `artifactFile` in the new session's scratchpad.
+4. Relaunch via `Workflow({scriptPath, resumeFromRunId})` → a **new runId** → update
+   `workflowRunId`, restart the watcher at L1 (B12). Cached-prefix replays may surface as
+   near-instant started/result pairs.
+5. **Verify:** phases already `done` keep their `actualMin` and are **not** re-appended
+   (`wc -l` on calibration.jsonl unchanged for those phases across the resume); the artifact URL
+   is the same. F9 rebaseline applies only if the phase list changed during the pause.
+
+The done-is-done guard this drill checks is unit-tested (`test_finalize_never_reappends_done_phase`
+in `scripts/test_tail_progress.py`); the drill is the live cross-session confirmation of it.
