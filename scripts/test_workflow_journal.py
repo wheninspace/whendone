@@ -163,5 +163,83 @@ class FormatAssumptionTest(unittest.TestCase):
         self.assertTrue(wj.AID_RE.fullmatch(J_STARTED["agentId"]))
 
 
+def make_run(root, sid="sidA", run_id="wf_test01-abc"):
+    """<root>/proj/<sid>/subagents/workflows/<run_id>/ + session dir; returns run_dir."""
+    run_dir = os.path.join(root, "proj", sid, "subagents", "workflows", run_id)
+    os.makedirs(run_dir)
+    return run_dir
+
+
+class FindRunDirTest(unittest.TestCase):
+    def test_finds_and_validates(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_dir = make_run(d)
+            self.assertEqual(wj.find_run_dir(["sidA"], "wf_test01-abc", d), run_dir)
+            self.assertIsNone(wj.find_run_dir(["sidA"], "wf_missing-run", d))
+            self.assertIsNone(wj.find_run_dir(["../evil"], "wf_test01-abc", d))
+            self.assertIsNone(wj.find_run_dir(["sidA"], "../../etc", d))
+            self.assertIsNone(wj.find_run_dir(["sidA"], None, d))
+
+    def test_run_finished_via_completion_record(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_dir = make_run(d)
+            self.assertFalse(wj.run_finished(run_dir))
+            wf_dir = os.path.join(d, "proj", "sidA", "workflows")
+            os.makedirs(wf_dir)
+            with open(os.path.join(wf_dir, "wf_test01-abc.json"), "w") as f:
+                f.write("{}")
+            self.assertTrue(wj.run_finished(run_dir))
+
+
+class AgentReadersTest(unittest.TestCase):
+    def test_agent_first_ts_and_tag(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "agent-%s.jsonl" % AID1)
+            write_lines(p, [AGENT_FIRST_LINE, AGENT_LAST_LINE])
+            start, tag = wj.agent_first(p)
+            self.assertEqual(start, token_usage.parse_ts(T0).isoformat())
+            self.assertEqual(tag, "probe")
+
+    def test_agent_first_untagged_and_list_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.jsonl")
+            entry = dict(AGENT_FIRST_LINE,
+                         message={"role": "user", "content": [
+                             {"type": "text", "text": "no tag here"}]})
+            write_lines(p, [entry])
+            start, tag = wj.agent_first(p)
+            self.assertEqual(start, token_usage.parse_ts(T0).isoformat())
+            self.assertIsNone(tag)
+
+    def test_agent_first_tag_beyond_scan_window_ignored(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.jsonl")
+            entry = dict(AGENT_FIRST_LINE,
+                         message={"role": "user",
+                                  "content": "x" * (wj.TAG_SCAN_CHARS + 10) + "[wd:late]"})
+            write_lines(p, [entry])
+            self.assertIsNone(wj.agent_first(p)[1])
+
+    def test_agent_last_ts_skips_malformed(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.jsonl")
+            write_lines(p, [AGENT_FIRST_LINE, AGENT_LAST_LINE])
+            with open(p, "a", encoding="utf-8") as f:
+                f.write("garbage\n")
+            self.assertEqual(wj.agent_last_ts(p), token_usage.parse_ts(T1).isoformat())
+
+    def test_agent_first_unreadable(self):
+        self.assertEqual(wj.agent_first("/nonexistent"), (None, None))
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(wj.agent_last_ts(os.path.join(d, "nope")))
+
+    def test_agent_model_from_meta(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "agent-%s.meta.json" % AID1), "w") as f:
+                json.dump(META_WITH_MODEL, f)
+            self.assertEqual(wj.agent_model(d, AID1), META_WITH_MODEL["model"])
+            self.assertIsNone(wj.agent_model(d, AID2))
+
+
 if __name__ == "__main__":
     unittest.main()
