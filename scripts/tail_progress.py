@@ -636,6 +636,9 @@ def group_row(state, group_id):
 def handle_completion(state_path, state, t, started, finished, args):
     """Today's checkpoint order, in code: (b) done-marker -> (b2) tokens+alias ->
     (c) append -> (d) actualMin. Every step past (b) is fail-soft."""
+    if state.get("source") == "c":
+        return          # spec §5.1: Source C never logs calibration — hard guard
+
     # (b) durable done-marker FIRST
     t["status"] = "done"
     if started and not t.get("startedAt"):

@@ -542,6 +542,57 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
 
+class SourceCNeverCalibratesTest(unittest.TestCase):
+    """Spec §5.1: no calibration rows are ever written from Source C jobs."""
+
+    def setUp(self):
+        self._own = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self._own.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name
+        self._own.cleanup()
+
+    def _calib_path(self):
+        return os.path.join(self._own.name, "calibration.jsonl")
+
+    def test_full_source_c_completion_appends_nothing(self):
+        env = SyncEnv([
+            todo_entry(T0, [item("only step", "in_progress")], mid="m1"),
+            todo_entry(T1, [item("only step", "completed")], mid="m2"),
+        ], mkstate(source="c", tasks=[], originalTotalMin=None))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(lines[-1]["event"], "all-done")
+            self.assertFalse(os.path.exists(self._calib_path()))
+        finally:
+            env.cleanup()
+
+    def test_handle_completion_refuses_source_c_outright(self):
+        # Defense-in-depth: even a future caller that routes a C state here logs nothing
+        st = mkstate(source="c", tasks=[mktask(1, status="running")])
+        t = st["tasks"][0]
+        with tempfile.TemporaryDirectory() as sd:
+            sp = os.path.join(sd, "state.json")
+            with open(sp, "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            tp.handle_completion(sp, st, t, T0, T1, unittest.mock.Mock(projects_dir=None))
+        self.assertNotEqual(t["status"], "done")        # guard fired before any write
+        self.assertFalse(os.path.exists(self._calib_path()))
+
+    def test_source_a_control_still_appends(self):
+        # Control: the guard must not leak into Source A behavior
+        env = SyncEnv([
+            todo_entry(T0, [item("task 1", "in_progress")], mid="m1"),
+            todo_entry(T1, [item("task 1", "completed")], mid="m2"),
+        ], mkstate(tasks=[mktask(1)]))
+        try:
+            env.run_one_shot()
+            self.assertTrue(os.path.exists(self._calib_path()))
+        finally:
+            env.cleanup()
+
+
 class FinishCycleTest(unittest.TestCase):
     def setUp(self):
         self.calib = tempfile.TemporaryDirectory()
