@@ -9,3 +9,4 @@ docs/reviews/
 
 # WhenDone runtime state — never committed
 .claude/whendone-state.json
+.claude/whendone-tail.lock
