@@ -246,8 +246,10 @@ class OneShotTest(unittest.TestCase):
             env.cleanup()
 
     def test_paused_and_unsupported_source_are_noops(self):
+        # source "b" is now an observed source (Task 4) — "c" pins the
+        # still-unsupported contract; see also test_source_c_still_unsupported.
         for st, want in ((mkstate(status="paused", tasks=[mktask(1)]), "no-op"),
-                         (mkstate(source="b", tasks=[mktask(1)]), "unsupported-source")):
+                         (mkstate(source="c", tasks=[mktask(1)]), "unsupported-source")):
             env = SyncEnv([todo_entry(T1, [item("task 1", "completed")])], st)
             try:
                 rc, lines = env.run_one_shot()
@@ -590,6 +592,163 @@ class FollowTest(unittest.TestCase):
             rc, lines = self.run_follow(env)
             self.assertEqual(rc, 0)
             self.assertEqual(lines[-1]["event"], "no-op")
+        finally:
+            env.cleanup()
+
+
+def wf_started(aid):
+    return {"type": "started", "key": "v2:" + "0" * 63 + "1", "agentId": aid}
+
+
+def wf_result(aid):
+    return dict(wf_started(aid), type="result", result="ok")
+
+
+def agent_entry(ts, text):
+    return {"type": "user", "timestamp": ts,
+            "message": {"role": "user", "content": text}}
+
+
+B_A1, B_A2, B_A3 = "a" * 17, "b1" + "c" * 15, "d" * 17
+BT0, BT1, BT2 = ("2026-07-18T09:05:00.000Z", "2026-07-18T09:20:00.000Z",
+                 "2026-07-18T09:35:00.000Z")
+
+
+def mkstate_b(**kw):
+    d = mkstate(source="b", workflowRunId="wf_test01-abc",
+                tasks=[dict(mktask(1, name="Scan", category="review"),
+                            wdTag="scan", agentsExpected=2),
+                       dict(mktask(2, name="Fix", category="judgment-coding"),
+                            wdTag="fix", agentsExpected=1)])
+    d.update(kw)
+    return d
+
+
+class WfEnv(SyncEnv):
+    """SyncEnv + a workflow run dir under projects/proj/sidA/."""
+    def __init__(self, state_dict, journal=(), agents=()):
+        super().__init__([], state_dict)
+        self.run_dir = os.path.join(self.projects, "proj", "sidA",
+                                    "subagents", "workflows", "wf_test01-abc")
+        os.makedirs(self.run_dir)
+        write_jsonl(os.path.join(self.run_dir, "journal.jsonl"), list(journal))
+        for aid, entries in agents:
+            write_jsonl(os.path.join(self.run_dir, "agent-%s.jsonl" % aid),
+                        list(entries))
+
+    def finish_run(self):
+        wf = os.path.join(self.projects, "proj", "sidA", "workflows")
+        os.makedirs(wf, exist_ok=True)
+        with open(os.path.join(wf, "wf_test01-abc.json"), "w") as f:
+            f.write("{}")
+
+
+class SourceBObserveTest(unittest.TestCase):
+    def test_phase_starts_and_counters(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1), wf_started(B_A2)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")]),
+                            (B_A2, [agent_entry(BT1, "[wd:scan] go")])])
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            st = env.state()
+            t1 = st["tasks"][0]
+            self.assertEqual(t1["status"], "running")
+            self.assertEqual(t1["startedAt"],
+                             tp.token_usage.parse_ts(BT0).isoformat())
+            self.assertEqual((t1["agentsStarted"], t1["agentsDone"]), (2, 0))
+            self.assertEqual((st["wfAgentsStarted"], st["wfAgentsDone"]), (2, 0))
+            self.assertEqual(st["tasks"][1]["status"], "pending")
+        finally:
+            env.cleanup()
+
+    def test_display_done_when_expected_met_and_none_inflight(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1), wf_result(B_A1),
+                             wf_started(B_A2), wf_result(B_A2)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A2, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT2, "x")])])
+        try:
+            rc, lines = env.run_one_shot()
+            st = env.state()
+            t1 = st["tasks"][0]
+            self.assertEqual(t1["status"], "done")
+            self.assertEqual(t1["finishedAt"],
+                             tp.token_usage.parse_ts(BT2).isoformat())
+            self.assertIsNone(t1["actualMin"])  # no row before finalize (B4)
+            ev = [l for l in lines if l.get("event") == "progress"]
+            self.assertTrue(ev and ev[-1]["agentsDone"] == 2)
+        finally:
+            env.cleanup()
+
+    def test_late_agent_reverts_display_done(self):
+        st = mkstate_b()
+        st["tasks"][0].update(status="done", startedAt="2026-07-18T09:05:00+00:00",
+                              finishedAt="2026-07-18T09:20:00+00:00",
+                              agentsStarted=2, agentsDone=2)
+        env = WfEnv(st,
+                    journal=[wf_started(B_A1), wf_result(B_A1),
+                             wf_started(B_A2), wf_result(B_A2),
+                             wf_started(B_A3)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A2, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A3, [agent_entry(BT2, "[wd:scan] go")])])
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["status"], "running")
+        finally:
+            env.cleanup()
+
+    def test_untagged_agents_counted_job_level_only(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "no tag at all")])])
+        try:
+            env.run_one_shot()
+            st = env.state()
+            self.assertEqual(st["wfAgentsStarted"], 1)
+            self.assertEqual(st["tasks"][0]["status"], "pending")
+        finally:
+            env.cleanup()
+
+    def test_run_dir_missing_tail_unavailable_once(self):
+        env = SyncEnv([], mkstate_b(workflowRunId="wf_absent-run1"))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            evs = [l for l in lines if l.get("event") == "tail-unavailable"]
+            self.assertEqual(len(evs), 1)
+            self.assertIn("run dir", evs[0]["reason"])
+        finally:
+            env.cleanup()
+
+    def test_drift_event_once_and_no_phase_transitions(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[dict(wf_started(B_A1), key="v9:" + "0" * 64)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")])])
+        try:
+            rc, lines = env.run_one_shot()
+            drift = [l for l in lines if l.get("event") == "journal-format-drift"]
+            self.assertEqual(len(drift), 1)
+            st = env.state()
+            self.assertTrue(st["wfDriftNotified"])
+            self.assertEqual(st["tasks"][0]["status"], "pending")
+            rc2, lines2 = env.run_one_shot()   # second cycle: no repeat
+            self.assertFalse([l for l in lines2
+                              if l.get("event") == "journal-format-drift"])
+        finally:
+            env.cleanup()
+
+    def test_source_c_still_unsupported(self):
+        env = SyncEnv([], mkstate(source="c"))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(lines[0]["event"], "unsupported-source")
         finally:
             env.cleanup()
 
