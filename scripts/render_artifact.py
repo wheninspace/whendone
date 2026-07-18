@@ -295,6 +295,85 @@ def elapsed_min(state, now):
     return max(0.0, minutes(start, end) - paused_total)
 
 
+def task_band(t, summary):
+    """(low, high, tier, widened) per file-formats.md's ONE fixed interval rule, keyed on
+    the task's category's data-point count n (mirrors calibration_summary.confidence):
+    n>=20 -> pure [raw*min(q1,factor), raw*max(q3,factor)]; 5<=n<20 -> flat +-30% on the
+    adjusted estimate, widened to the envelope of the flat band and the q1/q3 band (take
+    the lower low and the higher high) — the reported band is never tighter than the
+    measured spread; n<5 -> flat +-50%, no q1/q3 exist, never fabricated."""
+    est, raw = task_est(t), task_raw(t)
+    c = summary.get(t.get("category")) or {}
+    n, factor = c.get("n", 0), c.get("factor", 1.0)
+    q1, q3 = c.get("q1"), c.get("q3")
+    if n >= 20 and q1 is not None and q3 is not None:
+        return raw * min(q1, factor), raw * max(q3, factor), "high", False
+    pct = 0.3 if n >= 5 else 0.5
+    lo, hi = est * (1 - pct), est * (1 + pct)
+    widened = False
+    if q1 is not None and q3 is not None:
+        elo, ehi = raw * min(q1, factor), raw * max(q3, factor)
+        if elo < lo:
+            lo, widened = elo, True
+        if ehi > hi:
+            hi, widened = ehi, True
+    return lo, hi, ("medium" if n >= 5 else "low"), widened
+
+
+def interval(us, summary):
+    """Sum per-unit lows/highs over units that are not fully done ("pending AND running
+    tasks"). Within a parallel group: MAX of member lows / MAX of member highs over
+    unfinished members — the same MAX-per-group aggregation the ETA and slip rules use
+    (the prose states the rule per task and is silent on groups; 'BOTH sides use the
+    same aggregation' decides it)."""
+    lowsum = highsum = 0.0
+    any_widened = any_high = False
+    for unit in us:
+        lows, highs = [], []
+        for t in unit:
+            if t.get("status") == "done":
+                continue
+            lo, hi, tier, w = task_band(t, summary)
+            lows.append(lo)
+            highs.append(hi)
+            any_widened = any_widened or w
+            any_high = any_high or tier == "high"
+        if lows:
+            lowsum += max(lows)
+            highsum += max(highs)
+    return lowsum, highsum, any_widened, any_high
+
+
+def eta_text(state, us, summary, now):
+    """The rendered ETA headline. Source c (spec §2): pace-based from item completion
+    rate, visibly labeled uncalibrated, no calibrated interval. Sources a/b: point ETA
+    from the in-flight rule + the fixed interval rule, marker included."""
+    if state.get("source") == "c":
+        done = sum(1 for u in us for t in u if t.get("status") == "done")
+        total = sum(len(u) for u in us)
+        el = elapsed_min(state, now)
+        if done and total > done and el:
+            eta = now + timedelta(minutes=el / done * (total - done))
+            return "Done ~%s (uncalibrated — pace-based)" % hhmm(eta, now)
+        if total and done == total:
+            return "Done (uncalibrated)"
+        return "ETA not yet known (uncalibrated)"
+    remaining = sum(unit_remaining(u, now) for u in us)
+    lowsum, highsum, widened, high = interval(us, summary)
+    eta = now + timedelta(minutes=remaining)
+    a = max(0, round(remaining - lowsum))
+    b = max(0, round(highsum - remaining))
+    if a == 0 and b == 0:
+        b = 1  # the interval never reads 0 while anything is pending/running
+    if widened:
+        return "Done ~%s (%s%d/+%d min) (widened to measured spread)" % (
+            hhmm(eta, now), MINUS, a, b)
+    if high:
+        return "Done ~%s (%s%d/+%d min)" % (hhmm(eta, now), MINUS, a, b)
+    n = max(1, round((highsum - lowsum) / 2))
+    return "Done ~%s ± %d min (nominal)" % (hhmm(eta, now), n)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)

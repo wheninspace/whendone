@@ -276,5 +276,89 @@ class TestComputationCore(unittest.TestCase):
         self.assertEqual(ra.derived_actual(t), 0.5)
 
 
+MEDIUM_SUMMARY = {"testing": {"factor": 1.0, "n": 12, "q1": 0.50, "q3": 2.00}}
+HIGH_SUMMARY = {"testing": {"factor": 1.2, "n": 25, "q1": 0.90, "q3": 1.50}}
+
+
+class TestInterval(unittest.TestCase):
+    def setUp(self):
+        self.now = ra.parse_ts(NOW)
+
+    def test_low_confidence_flat_50(self):
+        lo, hi, tier, widened = ra.task_band(task(estimateMin=10), {})
+        self.assertEqual((lo, hi, tier, widened), (5.0, 15.0, "low", False))
+
+    def test_medium_widens_to_envelope(self):
+        # flat ±30% on est 10 = [7,13]; q-band on raw 10 = [10*0.5, 10*2.0] = [5,20]
+        lo, hi, tier, widened = ra.task_band(task(), MEDIUM_SUMMARY)
+        self.assertEqual((lo, hi, tier, widened), (5.0, 20.0, "medium", True))
+
+    def test_medium_no_widening_when_flat_band_wider(self):
+        s = {"testing": {"factor": 1.0, "n": 12, "q1": 0.95, "q3": 1.05}}
+        lo, hi, tier, widened = ra.task_band(task(), s)
+        self.assertEqual((lo, hi, tier, widened), (7.0, 13.0, "medium", False))
+
+    def test_high_uses_pure_iqr_band(self):
+        # raw 10: [10*min(0.9,1.2), 10*max(1.5,1.2)] = [9,15]
+        lo, hi, tier, widened = ra.task_band(task(rawEstimateMin=10, estimateMin=12),
+                                             HIGH_SUMMARY)
+        self.assertEqual((lo, hi, tier, widened), (9.0, 15.0, "high", False))
+
+    def test_interval_group_takes_max_not_sum(self):
+        us = ra.units([task(1, group="g", estimateMin=10), task(2, group="g", estimateMin=10)])
+        lowsum, highsum, w, h = ra.interval(us, {})
+        self.assertEqual((lowsum, highsum), (5.0, 15.0))  # MAX per group, not 10/30
+
+    def test_eta_text_nominal(self):
+        # two pending tasks est 10, no summary: remaining 20 -> ETA 10:20;
+        # band [10,30] -> N = 10
+        s = state(tasks=[task(1), task(2)])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
+        self.assertEqual(txt, "Done ~10:20 ± 10 min (nominal)")
+
+    def test_eta_text_widened_marker(self):
+        # per task widened band [5,20]; two tasks: low 10 high 40; remaining 20
+        s = state(tasks=[task(1), task(2)])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), MEDIUM_SUMMARY, self.now)
+        self.assertEqual(txt, "Done ~10:20 (−10/+20 min) (widened to measured spread)")
+
+    def test_eta_text_high_asymmetric_no_marker(self):
+        # est 12 raw 10, band [9,15] per task; two tasks: remaining 24, low 18, high 30
+        s = state(tasks=[task(1, rawEstimateMin=10, estimateMin=12),
+                         task(2, rawEstimateMin=10, estimateMin=12)])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), HIGH_SUMMARY, self.now)
+        self.assertEqual(txt, "Done ~10:24 (−6/+6 min)")
+
+    def test_ab_clamped_at_zero(self):
+        # High-confidence running task, est 12 raw 10, started 09:51 (elapsed 9):
+        # remaining = max(0.2*12, 12-9) = 3; band [9,15] -> A = max(0, 3-9) = 0 (clamped,
+        # would be negative), B = 15-3 = 12. (The clamp only shows in asymmetric branches;
+        # the nominal branch uses half band width and never computes A/B.)
+        s = state(tasks=[task(rawEstimateMin=10, estimateMin=12, status="running",
+                              startedAt="2026-07-18T09:51:00+02:00")])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), HIGH_SUMMARY, self.now)
+        self.assertIn("(−0/+12 min)", txt)
+
+    def test_interval_never_zero_while_running(self):
+        # degenerate: est 0 task running -> bands 0; floor B to 1
+        s = state(tasks=[task(estimateMin=0, rawEstimateMin=0, status="running",
+                              startedAt="2026-07-18T09:59:00+02:00")])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
+        self.assertNotIn("± 0 min", txt)
+        self.assertNotIn("+0 min", txt)
+
+    def test_source_c_pace_based(self):
+        # 2 of 4 done, elapsed 60 -> pace 30/task -> 2 left -> ETA 11:00
+        s = state(source="c", tasks=[task(1, status="done"), task(2, status="done"),
+                                     task(3), task(4)])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
+        self.assertEqual(txt, "Done ~11:00 (uncalibrated — pace-based)")
+
+    def test_source_c_no_completions_yet(self):
+        s = state(source="c", tasks=[task(1), task(2)])
+        txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
+        self.assertEqual(txt, "ETA not yet known (uncalibrated)")
+
+
 if __name__ == "__main__":
     unittest.main()
