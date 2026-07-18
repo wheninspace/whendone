@@ -227,10 +227,16 @@ def render(state, tokens, summary, now, push_status, superseded):
     start = parse_ts(state.get("startedAt"))
     el = elapsed_min(state, now)
     if status == "done":
-        etxt = "Done — took %s" % (fmt_min(round(el)) if el is not None else "?")
-        orig = state.get("originalTotalMin")
-        if isinstance(orig, (int, float)) and not isinstance(orig, bool):
-            etxt += " (estimated %s)" % fmt_min(orig)
+        if state.get("source") == "c":
+            # Source C is never calibrated (references/source-c.md): quote the same
+            # "(uncalibrated)" label eta_text() uses mid-job, verbatim, at job end too —
+            # no elapsed/estimate arithmetic to present since none was ever calibrated.
+            etxt = "Done (uncalibrated)"
+        else:
+            etxt = "Done — took %s" % (fmt_min(round(el)) if el is not None else "?")
+            orig = state.get("originalTotalMin")
+            if isinstance(orig, (int, float)) and not isinstance(orig, bool):
+                etxt += " (estimated %s)" % fmt_min(orig)
     elif status == "paused":
         etxt = "Paused — %d of %d subtasks done" % (done_count, total)
     else:
