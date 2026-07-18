@@ -101,6 +101,11 @@ Source-B additive fields (stage 4): job-level `workflowRunId`, `wfAgentsStarted`
 and the tag convention live in `references/source-b.md` (kept off this file to
 protect the Source-A trigger-path token budget).
 
+Source-C state (`source: "c"`): `tasks` are mirrored from the TodoWrite list by
+`tail_progress.py` and carry only `nr`/`name`/`status`/`startedAt`/`finishedAt` — no
+estimates, no categories, `originalTotalMin` null, and never a calibration row
+(references/source-c.md).
+
 `staleNotifiedAt` = optional per-task ISO timestamp, stage-3: set by the tailer when it emits
 that task's one staleness event; presence suppresses repeats. Never cleared — a
 resumed/restarted task gets a fresh row in a rebuilt plan.
