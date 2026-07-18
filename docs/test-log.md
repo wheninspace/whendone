@@ -365,3 +365,84 @@ longer than the raw estimate — exactly the correction whendone exists to make.
 - **No GUI screenshot** was captured (headless environment). The hero image is still rendered
   from `assets/demo-artifact.html`; capturing a real screenshot from an artifact like the one
   above remains an author step.
+
+## Stage 3 — Source-A tailer/watcher dogfood + monitoring run — 2026-07-18
+
+Stage 3 (declare-once, tail-thereafter watcher; `scripts/tail_progress.py`) was executed with
+superpowers:subagent-driven-development while whendone monitored the execution. Two independent
+bodies of evidence came out of it: a **CLI integration dogfood** of the new tailer (plan Task 10),
+and the **monitoring run itself** as live proof of the render/publish/calibration loop.
+
+### CLI integration dogfood (Task 10)
+
+The new `tail_progress.py` was driven end-to-end through its **real CLI via subprocess** (real
+argv, stdout, exit codes, process lifecycle — not the in-process unittest path), in a fully
+isolated scratch project with an isolated `WHENDONE_DATA_DIR`, against realistic transcript
+fixtures (TodoWrite `in_progress`/`completed` + subagent dispatch/result, the shapes verified live
+per plan decision D13). **21/21 drills PASS:**
+
+| Drill | What it exercised | Result |
+|---|---|---|
+| D1 | L3 one-shot: observe 2 TodoWrite completions → 2 tasks `done`, transcript timestamps stamped, render HTML, 2 isolated calibration rows, `progress` event w/ `etaText` | PASS |
+| D2 | Idempotent re-scan: no new calibration rows, `done` tasks untouched | PASS |
+| D3 | `--follow --exit-on-event` all-done via real subprocess + pid lock created & released + 3rd calibration row | PASS |
+| D4 | Duplicate tailer: live foreign lock → `already-running`, exit 4 | PASS |
+| D5 | `--job-id` mismatch → `ownership-lost`, exit 3, no writes | PASS |
+| D6 | Staleness (F13): running task, old `startedAt`, empty transcript → exactly one `stale` event, `staleNotifiedAt` persisted | PASS |
+| D7 | `status: paused` → `no-op`, exit 0 | PASS |
+| D8 | `source: "b"` → `unsupported-source`, no writes | PASS |
+
+**Isolation verified:** the real `~/.claude/whendone-data/calibration.jsonl` ended with **0
+dogfood rows** — toy timings went only to the isolated dir and never polluted the real
+per-category factors.
+
+**Honest limit — no live Monitor-driven wake:** this session used the model-driven monitoring
+protocol (the model does the checkpoint work), NOT a live Monitor watcher waking the model on a
+`progress` event. So no real "wake turn" exists in any transcript to measure. The README's
+per-wake figure (~1–3k tokens) is therefore a **component estimate** (one `progress` event line
+read — measured at 54 cl100k tokens — + a short assistant turn + one Artifact publish), clearly
+labelled as such, with a live-Monitor-wake measurement **deferred**. The underlying `--follow`
+CLI those levels invoke is fully exercised (D3/D4/D6/D7) including exit codes and lock lifecycle;
+what was not drilled is a *persistent* Monitor watcher / background-Bash relaunch cycle (skipped
+to avoid a lingering background process).
+
+### Monitoring run (this session) — live render/publish/calibration evidence
+
+whendone monitored its own 12-subtask stage-3 execution:
+
+- **Artifact:** one artifact published at job start and republished in place at each subtask
+  boundary and at DONE (~13 publishes, same file, same URL, favicon `⏱️`), each render produced
+  by `render_artifact.py` against the live multi-model state. This dogfoods the render/publish
+  half of the loop end-to-end (the half stage 3 automates in the tailer).
+- **State + calibration:** `.claude/whendone-state.json` tracked all 12 tasks
+  pending→running→done; **12 calibration rows** appended via `append_calibration.py`. The
+  same-family alias-upgrade guard was exercised — Task 4 and Task 11 windows were briefly
+  opus-dominated (an opus *reviewer* outweighing the sonnet *implementer* in the token window),
+  and the guard correctly refused to upgrade `sonnet`→opus for Task 4 (logged as the alias),
+  while Task 11's larger sonnet implementer kept its window sonnet-dominated (upgraded to
+  `claude-sonnet-5`).
+- **Slip:** never fired — peak `slipTotalMin` ≈ 136.6 stayed under the 1.5×`originalTotalMin`
+  (176.4) threshold, even with two review/fix loops (Tasks 6, 9) and the size-gate iteration
+  (Task 11) running long.
+- **Accuracy this run:** took **142 min vs 117.6 estimated (+21 %)** — the overrun concentrated
+  in the three tasks with review/fix loops; the rest ran under estimate.
+- **Tests:** 155 → **196 green**, warning-clean (`-W error::ResourceWarning`).
+
+**Regenerated calibration summary** (`calibration_summary.py`, at job end — 57 data points):
+
+```
+| Category | Factor (blended) | Data points | Confidence | Spread (IQR) |
+|---|---|---|---|---|
+| documentation | 0.98 | 21 | high | 0.59–1.40 |
+| judgment-coding | 0.81 | 22 | high | 0.49–1.02 |
+| mechanical-implementation | 0.87 | 7 | medium | 0.69–0.85 |
+| review | 0.86 | 2 | low | — |
+| testing | 0.67 | 5 | medium | 0.21–0.61 |
+```
+
+`documentation` and `judgment-coding` both crossed into **high confidence** (n ≥ 20) this run.
+
+**Honest limits (unchanged from stage 2):** ran from the dev working tree (installed skill dir is
+a symlink to this repo), not a fresh clone at a tag; **cross-session resume was again not
+exercised** (whole job ran in one session) and remains the least-tested path; no live
+Monitor-driven wake (see above); no GUI screenshot.
