@@ -23,6 +23,27 @@
   Interval/slip formulas are now stated once in `references/file-formats.md` (still
   pinned in the `calibration_summary.py` footer) and implemented in code.
 
+### Stage 3 — watcher + Source A conversion
+
+- **Declare-once, tail-thereafter:** new `scripts/tail_progress.py` (stdlib-only) observes
+  TodoWrite transitions and subagent completions from the session transcript, owns state
+  transitions, calibration appends (incl. synthetic parallel-group rows), token refresh, and
+  rendering; the model's per-boundary work is one artifact publish on wake. The manual
+  checkpoint protocol (1a–1d) and its alias-upgrade guard moved into the script; `checkpoint.py`
+  (round-3 F7) confirmed superseded, never built.
+- **Watcher fallback ladder:** Monitor (`--follow`) → background Bash (`--follow
+  --exit-on-event`) → boundary-driven one-shot; pid lockfile against duplicate tailers;
+  per-cycle jobId ownership check; debounce coalescing.
+- **Liveness alerting (F13):** `stale` event + one push per hung task (default 10 min,
+  `staleAfterMin`).
+- **SKILL.md split (F16 absorbed):** thin core + `references/source-a.md` (+ B/C stubs);
+  measured sizes in README. Resume rebaseline documented (F9); checkpoint-gap question moot
+  under tailing (F14, see docs/design.md).
+- **State-model v3 (additive):** `staleAfterMin`, `pushStatus`, `client`, per-task
+  `staleNotifiedAt`; tailer event-line schema in `references/file-formats.md`.
+- New/changed script interfaces: `tail_progress.py` (new), `token_usage.transcript_paths`,
+  `append_calibration.append_obj` (extractions, behavior unchanged).
+
 ## v0.2.1 — 2026-07-18
 
 Doc/protocol correctness fixes plus one additive script feature, closed after a third
