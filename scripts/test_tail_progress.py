@@ -444,14 +444,15 @@ class FinishCycleTest(unittest.TestCase):
             env.cleanup()
 
     def test_render_failure_is_fail_soft(self):
+        # artifactFile stays a validly-hardened path (see RenderOutPathHardeningTest for
+        # the missing-parent/invalid-path cases, now intercepted upstream in
+        # _render_out_path itself); the render step's own failure is forced directly.
         env, _ = self._env([todo_entry(T0, [item("task 1", "in_progress")]),
                             todo_entry(T1, [item("task 1", "completed")])],
                            mkstate(tasks=[mktask(1), mktask(2)]))
-        st = env.state(); st["artifactFile"] = os.path.join(env.dir.name, "no", "such", "dir", "a.html")
-        with open(env.state_path, "w", encoding="utf-8") as f:
-            json.dump(st, f)
         try:
-            rc, lines = env.run_one_shot()
+            with unittest.mock.patch.object(tp.render_artifact, "main", return_value=1):
+                rc, lines = env.run_one_shot()
             self.assertEqual(rc, 0)                      # job never wedged
             ev = [l for l in lines if l["event"] == "progress"][-1]
             self.assertFalse(ev["rendered"])
@@ -921,6 +922,34 @@ class SourceBFinalizeTest(unittest.TestCase):
             self.assertEqual(rows[0]["model"], "claude-haiku-4-5-20251001")
         finally:
             env.cleanup()
+
+
+class RenderOutPathHardeningTest(unittest.TestCase):
+    def test_valid_absolute_html_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "out.html")
+            self.assertEqual(tp._render_out_path({"artifactFile": p}), p)
+
+    def test_symlink_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            target = os.path.join(d, "target.html")
+            open(target, "w").close()
+            link = os.path.join(d, "link.html")
+            os.symlink(target, link)
+            self.assertNotEqual(tp._render_out_path({"artifactFile": link}), link)
+
+    def test_wrong_suffix_and_missing_parent_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertNotEqual(
+                tp._render_out_path({"artifactFile": os.path.join(d, "x.sh")}),
+                os.path.join(d, "x.sh"))
+            gone = os.path.join(d, "no-such-dir", "x.html")
+            self.assertNotEqual(tp._render_out_path({"artifactFile": gone}), gone)
+
+    def test_fallback_jobid_sanitized(self):
+        out = tp._render_out_path({"jobId": "../../etc/passwd"})
+        self.assertNotIn("..", os.path.basename(out))
+        self.assertTrue(out.startswith(tempfile.gettempdir()))
 
 
 if __name__ == "__main__":

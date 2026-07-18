@@ -591,11 +591,18 @@ def handle_completion(state_path, state, t, started, finished, args):
 
 
 def _render_out_path(state):
+    """Validate-not-trust (stage-4 hardening): artifactFile comes from the state
+    file, an untrusted source. The protocol layer already re-mints it in the
+    session scratchpad; this is defense-in-depth, and any rejection falls back
+    to the tempdir default rather than blocking the render (fail-soft)."""
     af = state.get("artifactFile")
-    if isinstance(af, str) and os.path.isabs(af):
-        return af
-    return os.path.join(tempfile.gettempdir(),
-                        "whendone-render-%s.html" % (state.get("jobId") or "job"))
+    if isinstance(af, str) and os.path.isabs(af) and af.endswith(".html") \
+            and not os.path.islink(af):
+        parent = os.path.dirname(af)
+        if os.path.isdir(parent) and not os.path.islink(parent):
+            return af
+    job = re.sub(r"[^A-Za-z0-9T-]", "", str(state.get("jobId") or "job"))[:32] or "job"
+    return os.path.join(tempfile.gettempdir(), "whendone-render-%s.html" % job)
 
 
 def render_now(state_path, tok_arg, out_path, now, state):
