@@ -834,7 +834,8 @@ class SourceCFollowTest(unittest.TestCase):
             todo_entry(T0, [item("only step", "completed")], mid="m1"),
         ], mkstate(source="c", tasks=[], originalTotalMin=None))
         try:
-            self._follow(env, extra=("--max-cycles", "3"))
+            rc, lines = self._follow(env, extra=("--max-cycles", "3"))
+            self.assertEqual(lines[-1]["event"], "all-done")
             lock = os.path.join(os.path.dirname(env.state_path), "whendone-tail.lock")
             self.assertFalse(os.path.exists(lock))
         finally:
