@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.1 — 2026-07-18
+
+Doc/protocol correctness fixes plus one additive script feature, closed after a third
+(round-3) adversarial review. No new scripts, no jsonl schema change.
+
+- **Slip-formula symmetry (F1, headline correctness fix):** the slip check is now
+  symmetric — running early no longer masks the same magnitude of running late, so the
+  headline notification can't false-negative on the fan-out case where early and late
+  subtasks offset each other.
+- **No-publish control (F3):** a `<project>/.claude/whendone-no-publish` marker file and
+  an optional `"publish": false` state-file flag both suppress the Artifact publish and
+  fall back to the in-chat table — for NDA/confidential-repo use. The state-file field is
+  optional and additive; old state files without it remain valid and publish as before.
+- **Constant artifact description (F8):** the Artifact tool's `description` parameter is
+  now pinned to a fixed, non-identifying string; job/project/subtask text is never
+  interpolated into it.
+- **ETA interval envelope-widening (F2):** the flat low/medium-confidence band is now
+  clamped so it's never tighter than the observed IQR once one is available (n≥5); the
+  rendered artifact carries a visible "nominal" / widened-band marker so the viewer is
+  never shown an unqualified interval narrower than the tool's own data. README adds a
+  ramp note on how the interval matures from flat-nominal to empirical.
+- **Project-mix caveat (F10, advisory):** the calibration summary now surfaces a caveat
+  when a category's factor is pooled across projects of noticeably different size/shape.
+- **Token-cost doc corrections and install-tag reconcile (F4, F5):** corrected
+  token-usage figures in the docs and reconciled the install-tag references.
+
 ## v0.2.0 — 2026-07-17
 
 Hardened after a second (round-2) adversarial review — 6 personas + 3 README readers plus
