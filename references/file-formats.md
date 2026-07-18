@@ -31,6 +31,7 @@ write at job start — neither is a soft note:
   "resumedAt": null,
   "status": "running | paused | done",
   "publish": true,
+  "source": "a",
   "tasks": [
     {
       "nr": 1,
@@ -40,6 +41,7 @@ write at job start — neither is a soft note:
       "estimateMin": 8,
       "model": "claude-haiku-4-5-20251001",
       "effort": null,
+      "group": null,
       "actualMin": 11.4,
       "status": "done | running | pending",
       "startedAt": "<ISO 8601 or null>",
@@ -74,6 +76,17 @@ resume too). Absent or `true` ⇒ publishing allowed (current behavior; pre-upgr
 stay valid). The set-once per-project form is the `<project-root>/.claude/whendone-no-publish`
 marker file, checked by existence only — the marker suppresses the artifact even for a fresh
 job that has no state file yet.
+
+`source` = optional string, state-model v2: which progress source produced this job — `"a"`
+(lead-model / subagent-driven, today's mode), `"b"` (Workflow-engine run), or `"c"` (plain
+solo/TodoWrite job, pace-based ETA only, rendered with a visible "uncalibrated" label and
+NEVER logged to calibration). Absent ⇒ `"a"` — pre-v2 state files stay valid.
+
+`group` = optional per-task value, state-model v2: tasks sharing the same non-null `group`
+value form ONE parallel group — dispatched together, aggregated by MAX everywhere the rules
+below say "per parallel group" (ETA remaining, interval bounds, slip check,
+`originalTotalMin`), and logged as one synthetic `parallel-group` row. Absent or `null` ⇒ a
+sequential task. Pre-v2 state files (no `group` anywhere) are all-sequential — valid.
 
 Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
 its `planFile`/`job` to the job being started — same job means a crashed or still-live prior
@@ -155,6 +168,13 @@ value (a fully DONE group contributes the MAX of its members' `actualMin`). Aler
 total `> 1.5 × originalTotalMin`. `originalTotalMin` uses this same aggregation (the same
 one as the displayed ETA) over ALL subtasks' initial `estimateMin` — computed once at job
 start and never revised.
+
+**Implemented in `scripts/render_artifact.py` (F6).** The renderer computes remaining, ETA,
+elapsed, the interval, per-task deviation, and the 150 %-slip check from this section's
+rules and prints a one-line JSON status (`etaText`, `slipAlert`, `estimateTotalMin`, counts)
+for the model to quote and act on. The model NEVER recomputes these — this file remains the
+normative statement the script's tests pin against. Group aggregation inside the interval
+follows the same sequential-sum + MAX-per-parallel-group rule as both other formulas.
 
 ## calibration.jsonl — global, append-only
 
