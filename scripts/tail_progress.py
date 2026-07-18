@@ -197,6 +197,50 @@ def observe(events, idx):
     return obs
 
 
+C_STATUS = {"pending": "pending", "in_progress": "running", "completed": "done"}
+
+
+def observe_c(events):
+    """Source C (spec §4.3): newest TodoWrite snapshot + first-seen start/finish
+    evidence per normalized item name, transcript timestamps only. Events are
+    ts-sorted, so the last 'todos' payload seen is the newest."""
+    snapshot, first_started, first_finished = None, {}, {}
+    for ts, kind, payload in events:
+        if kind != "todos":
+            continue
+        snapshot = payload
+        for it in payload:
+            key = normalize(it.get("content"))
+            if not key:
+                continue
+            st = it.get("status")
+            if st in ("in_progress", "completed") and key not in first_started:
+                first_started[key] = ts.isoformat()
+            if st == "completed" and key not in first_finished:
+                first_finished[key] = ts.isoformat()
+    return snapshot, first_started, first_finished
+
+
+def mirror_c(snapshot, first_started, first_finished):
+    """Materialize state tasks from the newest snapshot — no declared plan, the
+    list IS the plan. Statuses are revertible (mirror semantics, same posture as
+    Source B's display states); timestamps only ever come from transcript entries.
+    No estimates, no categories: pace-based ETA only, never calibrated (§5.1)."""
+    tasks = []
+    for it in snapshot or []:
+        content = it.get("content")
+        if not isinstance(content, str) or not content:
+            continue
+        status = C_STATUS.get(it.get("status"), "pending")
+        key = normalize(content)
+        tasks.append({
+            "nr": len(tasks) + 1, "name": content, "status": status,
+            "startedAt": first_started.get(key) if status != "pending" else None,
+            "finishedAt": first_finished.get(key) if status == "done" else None,
+        })
+    return tasks
+
+
 def plan_transitions(state, obs):
     starts, completions = [], []
     for t in state.get("tasks", []):

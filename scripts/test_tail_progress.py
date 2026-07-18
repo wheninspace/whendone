@@ -197,6 +197,61 @@ class ObserveTest(unittest.TestCase):
         self.assertEqual(obs, {})
 
 
+class SourceCObserveUnitTest(unittest.TestCase):
+    """Spec §4.3: Source C has no declared plan — the TodoWrite list IS the plan."""
+
+    def _ev(self, ts, todos):
+        return (tp.token_usage.parse_ts(ts), "todos", todos)
+
+    def test_latest_snapshot_wins_and_timestamps_are_first_seen(self):
+        events = [
+            self._ev(T0, [{"content": "Alpha", "status": "in_progress"},
+                          {"content": "Beta", "status": "pending"}]),
+            self._ev(T1, [{"content": "Alpha", "status": "completed"},
+                          {"content": "Beta", "status": "in_progress"}]),
+        ]
+        snap, started, finished = tp.observe_c(events)
+        self.assertEqual([i["content"] for i in snap], ["Alpha", "Beta"])
+        self.assertEqual(started["alpha"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(started["beta"], tp.token_usage.parse_ts(T1).isoformat())
+        self.assertEqual(finished["alpha"], tp.token_usage.parse_ts(T1).isoformat())
+        self.assertNotIn("beta", finished)
+
+    def test_no_todos_events_yields_none_snapshot(self):
+        snap, started, finished = tp.observe_c([])
+        self.assertIsNone(snap)
+        self.assertEqual((started, finished), ({}, {}))
+
+    def test_mirror_maps_statuses_and_positions(self):
+        snap = [{"content": "Alpha", "status": "completed"},
+                {"content": "Beta", "status": "in_progress"},
+                {"content": "Gamma", "status": "pending"},
+                {"content": "", "status": "pending"},          # skipped: empty
+                {"content": 7, "status": "pending"}]           # skipped: non-string
+        tasks = tp.mirror_c(snap, {"alpha": T0, "beta": T1}, {"alpha": T1})
+        self.assertEqual([(t["nr"], t["name"], t["status"]) for t in tasks],
+                         [(1, "Alpha", "done"), (2, "Beta", "running"),
+                          (3, "Gamma", "pending")])
+        self.assertEqual(tasks[0]["startedAt"], T0)
+        self.assertEqual(tasks[0]["finishedAt"], T1)
+        self.assertEqual(tasks[1]["finishedAt"], None)
+        self.assertNotIn("estimateMin", tasks[0])              # spec §5.1: no estimates
+        self.assertNotIn("category", tasks[0])
+
+    def test_mirror_revert_clears_finishedAt(self):
+        # completed -> pending revert: status mirrors the newest snapshot;
+        # a non-done task never displays a finish time
+        snap = [{"content": "Alpha", "status": "pending"}]
+        tasks = tp.mirror_c(snap, {"alpha": T0}, {"alpha": T1})
+        self.assertEqual(tasks[0]["status"], "pending")
+        self.assertIsNone(tasks[0]["startedAt"])
+        self.assertIsNone(tasks[0]["finishedAt"])
+
+    def test_unknown_status_degrades_to_pending(self):
+        tasks = tp.mirror_c([{"content": "Alpha", "status": "someday"}], {}, {})
+        self.assertEqual(tasks[0]["status"], "pending")
+
+
 class OneShotTest(unittest.TestCase):
     def test_completion_marks_done_and_stamps_transcript_times(self):
         env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
