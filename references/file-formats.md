@@ -30,6 +30,7 @@ write at job start — neither is a soft note:
   "pausedTotalMin": 0,
   "resumedAt": null,
   "status": "running | paused | done",
+  "publish": true,
   "tasks": [
     {
       "nr": 1,
@@ -66,6 +67,13 @@ without them (pre-upgrade or hand-built) stays valid and simply renders no execu
 `status: "paused"`; consumed and cleared back to `null` by Resume step 5 once its pause length
 has been folded into `pausedTotalMin` (see "Pause accounting" below). Optional — a state file
 without this field (pre-upgrade) stays valid; treat a missing field the same as `null`.
+
+`publish` = optional boolean. `false` means this job never writes or publishes an artifact —
+the job runs in chat-table-only mode (SKILL.md job-start step 8's no-publish gate, honored on
+resume too). Absent or `true` ⇒ publishing allowed (current behavior; pre-upgrade state files
+stay valid). The set-once per-project form is the `<project-root>/.claude/whendone-no-publish`
+marker file, checked by existence only — the marker suppresses the artifact even for a fresh
+job that has no state file yet.
 
 Concurrency guard: at job start, if this file already exists with `status: "running"`, compare
 its `planFile`/`job` to the job being started — same job means a crashed or still-live prior

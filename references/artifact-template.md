@@ -4,7 +4,10 @@ Write the artifact HTML to a file in the session scratchpad (e.g. `whendone-<job
 and publish with the Artifact tool. Reuse the SAME file path at every checkpoint during the
 session (→ same URL). On resume in a NEW session: pass `url` from whendone-state.json to the
 Artifact tool to update the existing artifact. Favicon: `⏱️` — keep it identical across all
-updates. `<title>`: the job's name.
+updates. `<title>`: the job's name. `description`: ALWAYS the fixed string
+`WhenDone progress monitor` — a constant cannot leak; never interpolate job, project, or
+subtask text into it (it is the gallery-card subtitle, visible on the user's gallery and any
+shared link).
 
 **Escaping (hard rule):** HTML-escape every interpolated string — job name, project name,
 subtask names, plan-file path (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`,

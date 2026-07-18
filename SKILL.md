@@ -29,6 +29,9 @@ The user can also say **"run without the artifact"**: keep calibration logging a
 progress table, but skip the claude.ai publish entirely for this job — e.g. an NDA/confidential
 repo where nothing should reach claude.ai. Treat this identically to the "Artifact tool absent
 entirely" row in the Error-handling table below, just user-invoked instead of environment-forced.
+The persistent, set-once form of the same thing is the no-publish gate in job-start step 8: a
+`<project-root>/.claude/whendone-no-publish` marker file (an NDA-repo template can ship it) or
+`"publish": false` in the state file — no per-session phrase needed.
 
 ## At job start
 
@@ -86,8 +89,17 @@ entirely" row in the Error-handling table below, just user-invoked instead of en
    whether q1/q3 happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %,
    medium ±30 %. Never mention factor values in chat or artifact (anchoring pollutes future raw
    estimates).
-8. Sensitivity check before first publish: if the job name, project name, plan-file path, or
-   any subtask name looks like it identifies a client, a person, or confidential internal work,
+8. Publish gate, then sensitivity check — both before the first publish. HARD GATE first:
+   if `<project-root>/.claude/whendone-no-publish` exists (existence check only — presence
+   suffices regardless of symlink target; a stray marker only ever suppresses an artifact,
+   which is harmless, so no realpath precondition applies here), or a state file being
+   resumed carries `"publish": false`, run the ENTIRE job in chat-table-only mode: skip the
+   sensitivity check below, skip step 11's artifact write and publish (still write the state
+   file, with `"publish": false` and `artifactUrl`/`artifactFile` null), and follow the
+   "Artifact tool absent entirely" row of the Error-handling table for the rest of the job.
+   Then the soft check: if the job name, project name, plan-file path, any subtask name, or
+   any text bound for the artifact (including its description/subtitle) looks like it
+   identifies a client, a person, or confidential internal work,
    flag it to the user and let them rename or approve before the artifact goes up. Re-run this
    check whenever the task list changes later (resume rebuild, added subtasks) or new free-text
    notes enter the artifact — a link, once shared, keeps showing all future updates. Flag:
@@ -113,7 +125,13 @@ entirely" row in the Error-handling table below, just user-invoked instead of en
       references/file-formats.md).
     - **Gitignore precondition:** ensure the state file is ignored (see file-formats.md) before
       the first write.
-11. Write the artifact HTML per the template and publish; save URL + task list + estimates in
+11. If the step-8 no-publish gate fired: skip the artifact HTML and publish entirely; write the
+    state file as below but with `"publish": false` and `artifactUrl`/`artifactFile` null, and
+    keep the in-chat progress table instead. Otherwise: write the artifact HTML per the template
+    and publish — with the Artifact tool's `description` parameter set to the FIXED string
+    `WhenDone progress monitor`; never interpolate job/project/subtask text into `description`
+    (the gallery-card subtitle is an egress field; the tool prompt's "say what the page does"
+    pull does not override this) — then save URL + task list + estimates in
     `.claude/whendone-state.json` (`status: "running"`, `jobId` = compacted start timestamp).
     Set `originalTotalMin` using the SAME aggregation as the displayed ETA — sequential sum
     + MAX per parallel group, never a sum of every group member — over every subtask's
@@ -347,7 +365,11 @@ below once the file is confirmed to parse.
    user did not recognize `artifactUrl` at step 1's confirmation (or didn't confirm), this IS the
    new-artifact case: publish without a `url` parameter (mint a fresh artifact), save the new
    URL as `artifactUrl`, and state in chat that a new artifact was created because the saved
-   URL wasn't confirmed as the user's own. Otherwise, publish with the Artifact tool's url
+   URL wasn't confirmed as the user's own.
+   If the state file carries `"publish": false`, or `<project-root>/.claude/whendone-no-publish`
+   exists, do not rebuild or publish any artifact — resume in chat-table-only mode (step 8's
+   no-publish gate applies to the whole job, resumes included).
+   Otherwise, publish with the Artifact tool's url
    parameter set to the saved `artifactUrl` — banner RUNNING. If that URL update fails: publish
    as a new artifact, update `artifactUrl`, and post the NEW full URL in chat, noting the old
    link is dead. On successful resume, restate the full URL in chat either way.
@@ -403,7 +425,7 @@ Remote Control").
 | PushNotification missing | Silent degradation |
 | python3/python/py all missing at job end | Skip regeneration, keep the previous summary, tell the user once |
 | Checkpoint(s) missed / subtasks batched | `actualMin: null` for every affected subtask — never reconstruct timestamps from memory; note it in chat; resume the protocol from now |
-| Artifact tool absent entirely (not just a failed publish), or the user said "run without the artifact" | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
+| Artifact tool absent entirely (not just a failed publish), the user said "run without the artifact", or the no-publish gate is set (`.claude/whendone-no-publish` marker / `"publish": false` in state) | Skip publishing for the whole job; keep a compact progress table in chat at each checkpoint |
 | token_usage.py fails or no session id | Show "tokens: n/a" in chat/status and omit the token elements from the published artifact; never block the job |
 
 ## Red flags

@@ -125,6 +125,11 @@ not current behavior.) If you run plan executions routinely, add one line to you
 - "run without the artifact" — chat-table-only mode: keep calibration logging and the in-chat
   progress table, skip the claude.ai publish entirely. For NDA/confidential repos where nothing
   should leave the machine, or you just don't want a gallery entry for this job
+- Set-once, per project: create an empty `<project>/.claude/whendone-no-publish` marker file
+  (commit it to an NDA-repo template if you like) or put `"publish": false` in
+  `.claude/whendone-state.json` — every whendone job in that project then runs chat-table-only,
+  no per-session phrase needed. The artifact's gallery description is a fixed constant either
+  way, never job text
 - "stop after the current subtask" — graceful stop (or create `.claude/STOP` in the project root)
 - "resume the job" — pick a paused or crashed job back up, new session included
 - "how accurate is whendone?" — a script-computed accuracy report from your own history
@@ -133,7 +138,7 @@ not current behavior.) If you run plan executions routinely, add one line to you
 
 | Data | Where it goes |
 |---|---|
-| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link |
+| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all |
 | State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
 | Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
 | Session transcript | read locally by the token script — usage numbers only, never content |
