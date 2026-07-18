@@ -107,6 +107,46 @@ class ParseJournalTest(unittest.TestCase):
             finally:
                 token_usage.MAX_TRANSCRIPT_BYTES = orig
 
+    def test_oversized_by_line_count_raises(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "journal.jsonl")
+            good = [dict(J_STARTED, agentId="a%016x" % i) for i in range(5)]
+            write_lines(p, good)
+            orig = token_usage.MAX_TRANSCRIPT_LINES
+            token_usage.MAX_TRANSCRIPT_LINES = 2
+            try:
+                with self.assertRaises(wj.JournalTooLarge):
+                    wj.parse_journal(p)
+            finally:
+                token_usage.MAX_TRANSCRIPT_LINES = orig
+
+    def test_non_dict_json_line_is_bad(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "journal.jsonl")
+            write_lines(p, [[1, 2, 3]])
+            agents, stats = wj.parse_journal(p)
+            self.assertEqual(agents, {})
+            self.assertEqual(stats, {"total": 1, "bad": 1})
+
+    def test_drift_ratio_boundary_exclusive(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "journal.jsonl")
+            good = [dict(J_STARTED, agentId="a%016x" % i) for i in range(8)]
+            bad = [dict(J_STARTED, type="phase") for _ in range(2)]
+            write_lines(p, good + bad)
+            agents, stats = wj.parse_journal(p)
+            self.assertEqual(stats, {"total": 10, "bad": 2})
+            self.assertFalse(wj.drifted(stats))
+
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "journal.jsonl")
+            good = [dict(J_STARTED, agentId="a%016x" % i) for i in range(7)]
+            bad = [dict(J_STARTED, type="phase") for _ in range(3)]
+            write_lines(p, good + bad)
+            agents, stats = wj.parse_journal(p)
+            self.assertEqual(stats, {"total": 10, "bad": 3})
+            self.assertTrue(wj.drifted(stats))
+
     def test_missing_file_is_empty_not_error(self):
         agents, stats = wj.parse_journal("/nonexistent/journal.jsonl")
         self.assertEqual((agents, stats), ({}, {"total": 0, "bad": 0}))
