@@ -102,6 +102,72 @@ class TestCliContract(unittest.TestCase):
         self.assertIn("&lt;script&gt;", page)
 
 
+SUMMARY_MD = """# Calibration summary
+
+Regenerated: 2026-07-18 (37 data points). Regenerated from calibration.jsonl by
+scripts/calibration_summary.py at every job end.
+
+## Per category
+
+| Category | Factor (blended) | Data points | Confidence | Spread (IQR) |
+|---|---|---|---|---|
+| debugging | 1.40 | 12 | medium | 0.50–2.00 |
+| documentation | — (prior 1.0) | 0 | — | — |
+| testing | 1.20 | 25 | high | 0.90–1.50 |
+
+## How to use when estimating
+
+(prose elided)
+
+## Per-category q1/q3 (machine-usable)
+
+- debugging: q1=0.50 q3=2.00
+- testing: q1=0.90 q3=1.50
+"""
+
+
+class TestLoadSummary(unittest.TestCase):
+    def _load(self, text):
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "s.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            return ra.load_summary(path)
+
+    def test_parses_factor_n_q1_q3(self):
+        s = self._load(SUMMARY_MD)
+        self.assertEqual(s["debugging"], {"factor": 1.40, "n": 12, "q1": 0.50, "q3": 2.00})
+        self.assertEqual(s["testing"], {"factor": 1.20, "n": 25, "q1": 0.90, "q3": 1.50})
+
+    def test_prior_row_is_factor_one_no_iqr(self):
+        s = self._load(SUMMARY_MD)
+        self.assertEqual(s["documentation"], {"factor": 1.0, "n": 0, "q1": None, "q3": None})
+
+    def test_missing_file_returns_empty(self):
+        self.assertEqual(ra.load_summary("/nonexistent/summary.md"), {})
+
+    def test_header_and_separator_rows_ignored(self):
+        s = self._load(SUMMARY_MD)
+        self.assertNotIn("---", s)
+        self.assertNotIn("Category", s)
+
+    def test_parses_real_emitter_output(self):
+        # Format-drift guard: parse what calibration_summary.py ACTUALLY writes today.
+        import calibration_summary as cs
+        rows = [json.dumps({"date": "2026-07-16", "project": "p", "job": "j",
+                            "category": "testing", "rawEstimateMin": 8, "actualMin": 10.0,
+                            "model": "claude-sonnet-5", "client": "cli"})] * 6
+        with tempfile.TemporaryDirectory() as td:
+            jp, op = os.path.join(td, "c.jsonl"), os.path.join(td, "s.md")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows) + "\n")
+            self.assertEqual(cs.main(jp, op), 0)
+            s = ra.load_summary(op)
+        self.assertEqual(s["testing"]["n"], 6)
+        self.assertIsNotNone(s["testing"]["q1"])
+        self.assertGreater(s["testing"]["factor"], 1.0)
+
+
 class TestHelpers(unittest.TestCase):
     def test_parse_ts_requires_timezone(self):
         self.assertIsNotNone(ra.parse_ts("2026-07-18T10:00:00+02:00"))

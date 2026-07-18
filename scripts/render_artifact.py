@@ -148,9 +148,34 @@ def render(state, tokens, summary, now, push_status, superseded):
     return page, stat
 
 
+TABLE_ROW = re.compile(r"^\|\s*([a-z][a-z-]*)\s*\|\s*([0-9.]+|— \(prior 1\.0\))\s*\|\s*(\d+)\s*\|")
+Q_LINE = re.compile(r"^- ([a-z][a-z-]*): q1=([0-9.]+) q3=([0-9.]+)\s*$")
+
+
 def load_summary(path):
-    """Extended in Task 2. Fail-soft placeholder: no calibration data."""
-    return {}
+    """Parse calibration-summary.md (the exact format calibration_summary.py emits) into
+    {category: {"factor", "n", "q1", "q3"}}. The factor stays script-side — it never
+    enters model context (F6). Missing/unreadable file or unmatched lines are skipped:
+    absent categories fall back to factor 1.0 / n 0 / flat ±50% bands (fail-soft)."""
+    cats = {}
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return cats
+    for line in text.splitlines():
+        line = line.strip()
+        m = TABLE_ROW.match(line)
+        if m:
+            factor = 1.0 if m.group(2).startswith("—") else float(m.group(2))
+            cats[m.group(1)] = {"factor": factor, "n": int(m.group(3)),
+                                "q1": None, "q3": None}
+            continue
+        q = Q_LINE.match(line)
+        if q and q.group(1) in cats:
+            cats[q.group(1)]["q1"] = float(q.group(2))
+            cats[q.group(1)]["q3"] = float(q.group(3))
+    return cats
 
 
 def main(argv=None):
