@@ -238,6 +238,55 @@ WhenDone combines the calibration approach from the first with the artifact/comp
 philosophy from the second and the parallel-ETA logic from the third, and adds the pause/resume
 and notification layer none of them have.
 
+## Stage 3: declare-once, tail-thereafter — design rationale
+
+**Crash-ordering analysis (implemented by `tail_progress.py::handle_completion`).** A crash
+between (b) and (b2), or during (b2) itself, loses at most the token refresh and/or leaves the
+model as the still-unresolved alias — cosmetic, and self-heals at the next checkpoint that
+finds a bare alias (the task is already durably marked done from (b), so Resume never redoes
+it). A crash between (b2) and (c) loses at most one calibration row — harmless, same reason. A
+crash between (c) and (d) leaves `actualMin` null in the state file (display-only, cosmetic)
+but the log already holds the row, with the resolved model if (b2) matched. A crash after (d)
+but before step 6 runs (e.g. during the republish in step 2) leaves the next subtask simply
+`pending` with no `startedAt` stamped — Resume then starts it fresh like any other pending
+task, rather than finding a task stuck "running" that never actually started. All of
+(b)/(b2)/(c) gaps are strictly safer than the reverse order (log first, mark done second),
+which can double-log AND re-execute a finished subtask.
+
+One consequence, by design: the checkpoint overhead in steps 2-5 (token refresh, artifact
+republish, slip check) falls INSIDE the next task's measured window rather than an uncounted
+gap — this is deliberate, since it keeps calibrated ETAs honest about wall-clock time for
+whendone-monitored jobs. (Token refresh itself now happens earlier, in step 1(b2), before the
+next-task start timestamp is captured in step 1(c) — so it is NOT part of this overlap; only
+steps 2-5's artifact republish and slip check are.) Under stage-3 tailing this attribution
+question is largely **moot (F14)**: both `startedAt` and `finishedAt` come from transcript
+entry timestamps, so there is no model-executed gap between them to attribute.
+
+The script keeps these out of the factors; it reports wall-clock/max-adjusted and
+wall-clock/sum-adjusted medians as bookkeeping — informative about which aggregator tracks
+wall-clock more closely, not proof that either rule is the statistically correct one.
+
+The watcher itself follows a demotion ladder rather than requiring one specific mechanism: try
+Monitor first (a persistent watch running `tail_progress.py --follow`) because it needs no
+polling and gives the lowest latency; if Monitor is unavailable, denied, or fails, fall back to
+a background Bash job running the same `--follow` loop with `--exit-on-event`, and if that too
+is unavailable, fall back further to one-shot boundary-driven runs triggered by the model at
+natural checkpoints — each demotion is stated once in chat rather than silently swallowed. The
+tailer re-scans the tailed transcript(s) in full every cycle instead of tracking a byte/line
+cursor (D4): correctness comes from comparing transcript state against the state file's task
+statuses, not from stream position, so a cursor that drifted, wrapped, or pointed at a
+rotated/truncated file can never cause a missed or duplicated transition — only
+pending/running→done transitions act, and an already-`done` task is never re-transitioned or
+re-appended, which kills the cursor-drift bug class outright at the cost of local-only CPU
+that is accepted as cheap. The `.claude/whendone-tail.lock` pid lockfile exists because exactly
+one process may hold single-writer ownership of `whendone-state.json` at a time; without it a
+duplicate `--follow` invocation (e.g. from a relaunch race, or a second session attaching to
+the same job) could interleave two writers' atomic rewrites and double-append calibration rows
+for the same completion. Finally, the tailer exits as soon as `status` leaves `"running"`
+(stopped, paused, or done) rather than continuing to watch, because ownership of the state file
+is meant to pass back to the model at exactly that moment — a watcher that kept running past a
+stop/pause request would race the model's own edits to the same file.
+
 ## Future ideas (deferred)
 
 Recorded here rather than acted on, mostly because they need Claude Code hooks that either don't
