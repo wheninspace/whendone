@@ -252,6 +252,97 @@ class SourceCObserveUnitTest(unittest.TestCase):
         self.assertEqual(tasks[0]["status"], "pending")
 
 
+class SourceCSyncTest(unittest.TestCase):
+    def _env(self, entries, **kw):
+        return SyncEnv(entries, mkstate(source="c", tasks=[],
+                                        originalTotalMin=None, **kw))
+
+    def test_mirror_creates_tasks_marks_progress_and_labels_uncalibrated(self):
+        env = self._env([
+            todo_entry(T0, [item("collect inputs", "in_progress"),
+                            item("write summary", "pending")], mid="m1"),
+            todo_entry(T1, [item("collect inputs", "completed"),
+                            item("write summary", "in_progress")], mid="m2"),
+        ])
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            st = env.state()
+            self.assertEqual([(t["name"], t["status"]) for t in st["tasks"]],
+                             [("collect inputs", "done"), ("write summary", "running")])
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertEqual((ev["done"], ev["total"]), (1, 2))
+            self.assertEqual(ev["justDone"], ["collect inputs"])
+            self.assertIn("uncalibrated", ev.get("etaText") or "")
+        finally:
+            env.cleanup()
+
+    def test_all_done_event_when_every_item_completes(self):
+        env = self._env([
+            todo_entry(T0, [item("only step", "in_progress")], mid="m1"),
+            todo_entry(T1, [item("only step", "completed")], mid="m2"),
+        ])
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+        finally:
+            env.cleanup()
+
+    def test_removed_and_reverted_items_follow_newest_snapshot(self):
+        env = self._env([
+            todo_entry(T0, [item("a", "completed"), item("b", "in_progress")], mid="m1"),
+            todo_entry(T1, [item("a", "pending")], mid="m2"),   # b removed, a reverted
+        ])
+        try:
+            env.run_one_shot()
+            st = env.state()
+            self.assertEqual([(t["name"], t["status"]) for t in st["tasks"]],
+                             [("a", "pending")])
+        finally:
+            env.cleanup()
+
+    def test_no_snapshot_yet_is_quiet_no_change(self):
+        env = self._env([])                     # transcript has no TodoWrite at all
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(env.state()["tasks"], [])
+            # one_shot forces a render (progress event) but done/total are 0/0
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertEqual((ev["done"], ev["total"], ev["changed"]), (0, 0, False))
+        finally:
+            env.cleanup()
+
+    def test_non_running_status_is_noop(self):
+        env = self._env([], status="paused")
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(lines[0]["event"], "no-op")
+        finally:
+            env.cleanup()
+
+    def test_stale_flag_carries_across_mirror_rebuild(self):
+        env = self._env([todo_entry(T0, [item("long step", "in_progress")], mid="m1")])
+        try:
+            env.run_one_shot()
+            st = env.state()
+            st["tasks"][0]["staleNotifiedAt"] = T1     # as check_staleness would set
+            with open(env.state_path, "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("long step", "in_progress")], mid="m1"),
+                todo_entry(T2, [item("long step", "in_progress"),
+                                item("new item", "pending")], mid="m2"),
+            ])
+            env.run_one_shot()
+            st = env.state()
+            self.assertEqual(st["tasks"][0]["staleNotifiedAt"], T1)
+            self.assertEqual(len(st["tasks"]), 2)
+        finally:
+            env.cleanup()
+
+
 class OneShotTest(unittest.TestCase):
     def test_completion_marks_done_and_stamps_transcript_times(self):
         env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
@@ -302,10 +393,10 @@ class OneShotTest(unittest.TestCase):
             env.cleanup()
 
     def test_paused_and_unsupported_source_are_noops(self):
-        # source "b" is now an observed source (Task 4) — "c" pins the
-        # still-unsupported contract; see also test_source_c_still_unsupported.
+        # sources "b" and "c" are now observed sources (Tasks 4/3) — "x" pins the
+        # unknown-source contract.
         for st, want in ((mkstate(status="paused", tasks=[mktask(1)]), "no-op"),
-                         (mkstate(source="c", tasks=[mktask(1)]), "unsupported-source")):
+                         (mkstate(source="x", tasks=[mktask(1)]), "unsupported-source")):
             env = SyncEnv([todo_entry(T1, [item("task 1", "completed")])], st)
             try:
                 rc, lines = env.run_one_shot()
@@ -835,8 +926,8 @@ class SourceBObserveTest(unittest.TestCase):
         finally:
             env.cleanup()
 
-    def test_source_c_still_unsupported(self):
-        env = SyncEnv([], mkstate(source="c"))
+    def test_source_x_still_unsupported(self):
+        env = SyncEnv([], mkstate(source="x"))
         try:
             rc, lines = env.run_one_shot()
             self.assertEqual(lines[0]["event"], "unsupported-source")
