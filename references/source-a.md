@@ -18,13 +18,12 @@ the subtask's scope:
 | testing | 8 min | review | 10 min |
 | debugging | 20 min | deploy-infra | 15 min |
 
-Only THEN read `~/.claude/whendone-data/calibration-summary.md`, for the category factors
-(and q1/q3 at high confidence), and set `estimateMin` = rawEstimateMin × factor. File missing
-(first run) or factor shown as "— (prior 1.0)" → use 1.0. Always state an uncertainty
-interval with any ETA — but never compute one yourself: ETA, interval, deviation, and slip
-all come from `render_artifact.py`'s fixed rule (references/file-formats.md's ETA
-computation). Quote the script's `etaText` value. Never mention factor values in chat or
-artifact (anchoring pollutes future raw estimates).
+Only THEN read `~/.claude/whendone-data/calibration-summary.md` for the category factors (and
+q1/q3 at high confidence), and set `estimateMin` = rawEstimateMin × factor. File missing (first
+run) or factor shown as "— (prior 1.0)" → use 1.0. Always state an uncertainty interval with
+any ETA — never compute one yourself: ETA, interval, deviation, and slip all come from
+`render_artifact.py`'s fixed rule (file-formats.md's ETA computation); quote its `etaText`.
+Never mention factor values in chat or artifact (anchoring pollutes future raw estimates).
 
 Write the state file next: same hard write-target + gitignore preconditions as SKILL.md's
 core (cross-ref there) — extend the gitignore check to also cover
@@ -34,10 +33,9 @@ user asks otherwise), and `group` on parallel-group members.
 
 **In the SAME turn, create the TodoWrite list: one item per declared task, item `content`
 EXACTLY the task `name`.** Declared names must be unique — duplicates are unmatchable by
-design, since the tailer matches TodoWrite/dispatch text back to task names verbatim.
-Subagent dispatch `description`s must equal the task name too. Renaming a task mid-job breaks
-matching — if a rename is needed, update the state file and the TodoWrite list together with
-the watcher stopped.
+design, since the tailer matches TodoWrite/dispatch text back to task names verbatim. Subagent
+dispatch `description`s must equal the task name too. Renaming mid-job breaks matching — update
+the state file and TodoWrite list together, with the watcher stopped, if a rename is needed.
 
 First render + publish (cross-ref references/artifact-template.md for publish mechanics;
 `description` stays the fixed constant `WhenDone progress monitor`, favicon `⏱️`), set
@@ -79,23 +77,22 @@ Publish failures: retry at the next wake; after 3 straight misses, stop trying a
 ## Job end (`all-done`)
 
 Stop the watcher first — L1 via TaskStop, L2 has already exited on its own (do not relaunch
-it) — then run the existing job-end steps, reproduced here verbatim because this file now
-owns the detail (the core SKILL.md keeps one summary line):
+it) — then run the job-end steps (this file owns the detail; core SKILL.md keeps one summary
+line):
 
 1. Final artifact update: run `python3 <skill-dir>/scripts/token_usage.py
-   .claude/whendone-state.json` WITHOUT `--task` (full job + subagents + every task's row —
-   the one time per job the whole table is re-emitted), Write its output to the token temp
-   file, set the state's `status: "done"` first, then render via `render_artifact.py`
-   (`--now` = a fresh `date -Iseconds`) and publish — the script renders DONE and total actual
-   vs estimate; include the full artifact URL in the chat message.
+   .claude/whendone-state.json` WITHOUT `--task` (full job + subagents + every task's row, the
+   one time per job it's re-emitted), Write its output to the token temp file, set the state's
+   `status: "done"` first, then render via `render_artifact.py` (`--now` = a fresh
+   `date -Iseconds`) and publish — DONE banner, total actual vs estimate; include the full
+   artifact URL in chat.
 2. Push notification: "Job done."
-3. Regenerate the calibration summary — run via Bash: `python3
+3. Regenerate the calibration summary via Bash: `python3
    <skill-dir>/scripts/calibration_summary.py ~/.claude/whendone-data/calibration.jsonl
-   ~/.claude/whendone-data/calibration-summary.md` (resolve `<skill-dir>` to this skill's
-   actual directory). If `python3` is not found, try `python`, then `py -3`. If none exists:
-   skip regeneration, keep the previous summary, and tell the user once that calibration
-   updates require Python 3 — NEVER compute the statistics yourself. Skip regeneration
-   entirely if this job logged zero new valid data points.
+   ~/.claude/whendone-data/calibration-summary.md`. `python3` not found → try `python`, then
+   `py -3`; none exists → skip regeneration, keep the previous summary, tell the user once —
+   NEVER compute the statistics yourself. Skip entirely if this job logged zero new valid data
+   points.
 4. State: `status: "done"` (the file may remain; the next job overwrites it).
 
 ## Stop / pause / resume deltas
@@ -105,11 +102,10 @@ first**, then run one final one-shot sync (`tail_progress.py <state> --now
 "$(date -Iseconds)" --job-id <jobId>`) so the paused state is captured, then the existing
 stop steps (paused-state render, push, delete `.claude/STOP`) apply unchanged.
 
-**Resume:** the existing resume steps apply unchanged — summarize the found state and get
-confirmation before acting on it, confirm `artifactUrl` is recognized, re-mint `artifactFile`
-in THIS session's scratchpad (never the state file's path — untrusted), and the security
-preconditions (write-target validation, `planFile` canonicalization) stay in force (cross-ref
-SKILL.md core, which keeps them). Two Source-A additions on top:
+**Resume:** the existing resume steps apply unchanged (SKILL.md core keeps them) — summarize
+found state, confirm `artifactUrl` is recognized, re-mint `artifactFile` in THIS session's
+scratchpad (never the state file's path), security preconditions stay in force. Two Source-A
+additions on top:
 
 - **F9 rebaseline:** if the plan was restructured during the pause, recompute
   `originalTotalMin` over the new task set by taking `estimateTotalMin` from the NEXT

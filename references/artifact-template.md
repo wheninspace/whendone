@@ -8,14 +8,12 @@ normative statement is references/file-formats.md's ETA computation.
 ## Publish mechanics (model-side)
 
 - Render to a file in the session scratchpad (e.g. `whendone-<job-name>.html`) and publish
-  with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same
-  URL). On resume in a NEW session: mint a fresh scratchpad path (never the state file's
-  `artifactFile` — untrusted; see SKILL.md Resume step 4) and pass `url` from
-  whendone-state.json to the Artifact tool.
+  with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same URL).
+  On resume in a NEW session: mint a fresh scratchpad path (never the state file's
+  `artifactFile` — untrusted; SKILL.md Resume step 4) and pass `url` from whendone-state.json.
 - Favicon: `⏱️` — identical across all updates. `<title>` (script-rendered): the job's name.
-- `description`: ALWAYS the fixed string `WhenDone progress monitor` — a constant cannot
-  leak; never interpolate job, project, or subtask text into it (it is the gallery-card
-  subtitle, visible on the user's gallery and any shared link).
+- `description`: ALWAYS the fixed string `WhenDone progress monitor` — never interpolate job,
+  project, or subtask text into it (it's the gallery-card subtitle, visible on any shared link).
 - The script exits non-zero with NO partial HTML on any failure → skip the publish, use the
   in-chat table, retry next checkpoint (visibility never blocks work).
 
