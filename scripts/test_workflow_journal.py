@@ -315,9 +315,12 @@ class ContainmentTest(unittest.TestCase):
 
     def test_run_finished_rejects_non_run_id_basename(self):
         with tempfile.TemporaryDirectory() as base:
-            d = os.path.join(base, "not-a-run-id")
-            os.makedirs(d)
-            self.assertFalse(wj.run_finished(d))
+            run_dir = make_run(base, run_id="not-a-run-id")
+            wf_dir = os.path.join(base, "proj", "sidA", "workflows")
+            os.makedirs(wf_dir)
+            with open(os.path.join(wf_dir, "not-a-run-id.json"), "w") as f:
+                f.write("{}")
+            self.assertFalse(wj.run_finished(run_dir))
 
 
 if __name__ == "__main__":
