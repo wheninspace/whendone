@@ -287,6 +287,108 @@ for the same completion. Finally, the tailer exits as soon as `status` leaves `"
 is meant to pass back to the model at exactly that moment — a watcher that kept running past a
 stop/pause request would race the model's own edits to the same file.
 
+## Stage 4: Source B — journal survey, tag attribution, deferred calibration rows
+
+**The journal-format survey (verified 2026-07-18).** Before any Source-B code was written, 17
+real `journal.jsonl` files were surveyed under `~/.claude/projects/*/*/subagents/workflows/wf_*/`,
+spanning roughly five weeks and seven projects, plus a fresh live probe run (`wf_6d1be0bd-c7d`)
+run specifically to re-verify the survey against output produced in-session rather than trusting
+historical samples alone. All 17 plus the probe agreed on one v2 schema: exactly two line shapes,
+`started` and `result`, with no timestamps, phase names, or labels anywhere in the journal —
+`key` is an opaque hash of `(prompt, opts)`, and its `v2:` prefix is the only version marker the
+format exposes, so it's also the only thing the drift detector can key on
+(`scripts/workflow_journal.py`'s `KEY_RE`). `agentId` is 17 lowercase hex characters in every
+sampled line (the parser's `AID_RE` deliberately accepts a wider `[a-z0-9]{8,64}` band, so a
+future engine change to agentId length doesn't itself count as drift). Every agent transcript's
+first entry carries the `[wd:<slug>]` tag verbatim in its message content, and a completion record
+(`<session-dir>/workflows/<runId>.json`) appears only at run end — its existence is the
+deterministic all-done signal the finalize pass waits for.
+
+**Spec §5.4 correction.** The spec states that the journal supplies per-agent started/result
+events, which the survey confirms — but §5.4 also implies per-agent timing comes from the journal
+itself, and it doesn't: the journal carries no timestamps of any kind. Timing comes from the
+paired agent transcript's own entry timestamps (first entry ≈ start, last entry ≈ end), the same
+file shape `token_usage.py` already parses. The spec file is left as written — it's the decision
+record for what was planned — and this correction is recorded here instead, as the place
+implementation-detail corrections belong once a spec has shipped.
+
+**Why prompt-tag attribution (B1) over the alternatives.** Two other attribution schemes were on
+the table before B1: declared-barrier count windows (treat everything between two `phase()` calls
+as one window) and agents-counted-only (give up on per-phase attribution entirely and just show a
+job-wide agent count). Barrier windows mis-attribute as soon as a script uses `pipeline()` — an
+agent whose actual work spans a phase boundary gets silently assigned to whichever window's
+counting happened to be active when it finished, with no signal in the journal to catch the
+mistake. Agents-counted-only sidesteps that failure mode by refusing to attribute at all, but that
+throws away exactly the per-phase calibration this stage exists to add. Tagging every `agent()`
+prompt with `[wd:<slug>]` at authoring time sidesteps both: the tag is written by the lead,
+travels with the agent regardless of how the script's control flow interleaves phases, and is the
+only phase signal that has to reach disk at all — an untagged agent still counts job-wide, but
+attributes to nothing rather than to the wrong thing.
+
+**Why display states are revertible but calibration rows aren't (B4).** The state file's
+per-task status can legally flip back from `done` to `running` — a late `pipeline()` agent
+belonging to an already-`done` phase is not a bug, since the completion record hasn't been
+written yet and the journal makes no promise about agent completion ordering. That's fine for a
+display field, which exists to be looked at and is redrawn every cycle anyway. It would not be
+fine for a calibration row: those are appended once, read later by `calibration_summary.py`, and
+never revisited. So calibration rows wait for the run's completion record specifically — the one
+signal in the whole format that's guaranteed not to arrive early — and are computed once from the
+frozen set of attributed agents at that point. A display transition can be wrong for a few
+seconds and self-correct; a calibration row can't be un-appended, so it's held to a stricter bar
+than the field it summarizes.
+
+**Why one row per phase, at the phase's declared category (B4, user-approved).** The alternative
+shapes considered were one row per agent and a synthetic group row like Source A's parallel-group
+bookkeeping. Per-agent rows were rejected because there's no per-agent estimate to divide by —
+the lead declares an estimate per phase, not per agent, so a per-agent ratio would need a
+denominator that was never actually estimated, i.e. a fabricated one. A synthetic group row
+(mirroring the Source-A parallel-group row that logs `maxAdjusted`/`sumAdjusted`) doesn't fit
+either, for the same reason in reverse: that row exists to compare wall-clock against the *rule's*
+operands for a group of individually-estimated subtasks, and a Workflow phase has no per-member
+estimates to aggregate in the first place. One row per phase, at the category the lead declared
+for that phase, is the only shape with a real estimate behind it. It also has a side effect worth
+stating plainly: the phase estimate was always implicitly a wall-clock estimate for however much
+of the phase runs in parallel, so the factor learned from `span = min(start)/max(end)` over the
+phase's attributed agents honestly folds in whatever parallel speedup the phase actually got —
+the factor isn't pretending phases ran serially when they didn't.
+
+**The degrade ladder (B5).** A journal line only counts as valid if its `type` is `started` or
+`result`, its `agentId` matches the hex pattern, and its `key` carries the `v2:` prefix over a
+64-hex hash — that's the version detector. Above a 20% invalid-line ratio (or a journal that's
+unparseable or missing entirely) the tailer degrades rather than crashing: format drift falls back
+to job-level agent counts only, with no phase attribution and no calibration rows, while a run
+directory that can't be found or a journal too large to parse safely falls back further, to
+`tail-unavailable` — the declared per-phase estimates still render and the ETA still runs on
+them, just without live updates.
+
+**Once-per-reason emission, and a correction to B10's own wording (B10).** Monitor turns every
+stdout line into a model wake, so a tailer that re-emitted the same failure on every cycle would
+cost a wake per cycle for information the model has already seen. B10 was originally written as
+"once per watcher run" for both failure events, but the two ended up implemented differently, and
+the implementation is the one worth keeping. `tail-unavailable` is emitted once per
+`(event, reason)` pair via `_emit_once`, which tracks what it's already emitted in an in-process
+set (`args._b_emitted`) — that scoping really is per watcher run, since the set doesn't survive
+past the process. `journal-format-drift` instead gates on the persisted `wfDriftNotified`
+state-file flag, which is written to disk the first time drift fires and never cleared — so it
+survives a watcher restart, and a resumed watcher that reads the same still-drifted journal stays
+silent instead of re-alerting. That's the better choice specifically for drift: drift is a
+property of the engine's output format, not of any one watcher process, so re-announcing it every
+time the watcher happens to restart would just be noise about a fact the user was already told.
+`tail-unavailable`, by contrast, is closer to a transient condition (a run directory that hasn't
+appeared yet, a momentarily oversized file) where re-checking on a fresh watcher run is more
+defensible than suppressing it forever.
+
+**Riders.** Two smaller changes rode along with this stage. `token_usage.transcript_paths()` now
+also globs `subagents/workflows/wf_*/agent-*.jsonl` (B8) — without it, every agent transcript
+spawned by a Workflow run was invisible to the token display, so a Source-B job's token line
+would read as empty however much work the agents actually did. And `tail_progress.py`'s
+`_render_out_path` (B14) now validates rather than trusts the state file's `artifactFile` string:
+since `artifactFile` comes from the same untrusted-input class as everything else in the state
+file, the renderer now requires an absolute, non-symlinked `.html` path with a non-symlinked
+parent directory before using it, and falls back to a sanitized-jobId path in the system tempdir
+otherwise — consistent with the fail-soft posture everywhere else in the tailer: a rejected path
+degrades the render location, it never blocks the render.
+
 ## Future ideas (deferred)
 
 Recorded here rather than acted on, mostly because they need Claude Code hooks that either don't

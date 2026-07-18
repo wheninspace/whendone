@@ -169,6 +169,7 @@ def transcript_paths(session_ids, projects_dir):
             continue
         for t in glob.glob(os.path.join(projects_dir, "*", sid + ".jsonl")):
             subs = glob.glob(os.path.join(os.path.dirname(t), sid, "subagents", "agent-*.jsonl"))
+            subs += glob.glob(os.path.join(os.path.dirname(t), sid, "subagents", "workflows", "wf_*", "agent-*.jsonl"))
             out.append((t, sorted(subs)))
     return out
 

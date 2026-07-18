@@ -331,6 +331,19 @@ class TranscriptPathsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(tu.transcript_paths(["sidz"], d), [])
 
+    def test_includes_workflow_agent_transcripts(self):
+        with tempfile.TemporaryDirectory() as d:
+            proj = os.path.join(d, "proj-x")
+            wfdir = os.path.join(proj, "sid1", "subagents", "workflows", "wf_ab12-cd")
+            os.makedirs(os.path.join(proj, "sid1", "subagents"), exist_ok=True)
+            os.makedirs(wfdir)
+            open(os.path.join(proj, "sid1.jsonl"), "w").close()
+            open(os.path.join(proj, "sid1", "subagents", "agent-a.jsonl"), "w").close()
+            open(os.path.join(wfdir, "agent-b.jsonl"), "w").close()
+            _, subs = tu.transcript_paths(["sid1"], d)[0]
+            self.assertEqual(len(subs), 2)
+            self.assertTrue(any("workflows" in s for s in subs))
+
 
 if __name__ == "__main__":
     unittest.main()

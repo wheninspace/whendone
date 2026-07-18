@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import token_usage
 import append_calibration
 import render_artifact
+import workflow_journal
 
 DISPATCH_TOOLS = ("Task", "Agent")
 DEFAULT_STALE_MIN = 10
@@ -232,7 +233,10 @@ def sync_cycle(state_path, now, args):
     if args.job_id and state.get("jobId") != args.job_id:
         out.append({"event": "ownership-lost", "expected": args.job_id})
         emit(out[-1]); return state, out
-    if state.get("source", "a") != "a":
+    src = state.get("source", "a")
+    if src == "b":
+        return sync_cycle_b(state_path, state, now, args, out)
+    if src != "a":
         out.append({"event": "unsupported-source", "source": state.get("source")})
         emit(out[-1]); return state, out
     if state.get("status") != "running":
@@ -259,20 +263,247 @@ def sync_cycle(state_path, now, args):
 
     changed = bool(starts or completions)
     args._last_ts = last_ts                      # Task 6's staleness input
-    just_done = (getattr(args, "_pending_names", None) or []) + just_done
     # D11: all-done bypasses the debounce gate outright (and finish_cycle's own
     # render call catches a same-cycle slipAlert too, since etaAlertSent gates
     # on job-level state.status, not on task-level done==total) — only a plain
     # progress completion stays subject to _render_ok.
     all_done_now = bool(completions) and bool(state.get("tasks")) and all(
         isinstance(t, dict) and t.get("status") == "done" for t in state["tasks"])
-    if (changed and getattr(args, "_render_ok", True)) or getattr(args, "_force_render", False) \
-            or all_done_now:
+    return _maybe_finish(state_path, state, now, args, out, changed, just_done, all_done_now)
+
+
+def _maybe_finish(state_path, state, now, args, out, changed, just_done, all_done_now):
+    """Shared debounce/render tail (D11). all_done bypasses the gate outright;
+    plain progress respects _render_ok; a gated change is coalesced into
+    _pending_names for the next allowed render."""
+    just_done = (getattr(args, "_pending_names", None) or []) + just_done
+    if (changed and getattr(args, "_render_ok", True)) \
+            or getattr(args, "_force_render", False) or all_done_now:
         args._pending_names, args._pending = [], False
-        out.extend(finish_cycle(state_path, state, now, last_ts, changed, just_done, args))
+        out.extend(finish_cycle(state_path, state, now,
+                                getattr(args, "_last_ts", None), changed,
+                                just_done, args))
     elif changed:
-        args._pending, args._pending_names = True, just_done   # debounced; coalesced later
+        args._pending, args._pending_names = True, just_done
     return state, out
+
+
+def _emit_once(args, out, ev):
+    """B10: Monitor turns every stdout line into a wake — B setup failures are
+    emitted once per (event, reason) per watcher run."""
+    seen = getattr(args, "_b_emitted", None)
+    if seen is None:
+        seen = args._b_emitted = set()
+    key = (ev.get("event"), ev.get("reason"))
+    if key in seen:
+        return
+    seen.add(key)
+    out.append(ev)
+    emit(ev)
+
+
+def observe_b(state, args):
+    """One disk pass over the workflow run. Never raises; degrades via meta flags."""
+    projects = args.projects_dir or os.path.expanduser("~/.claude/projects")
+    meta = {"runDir": None, "tooLarge": False, "drift": False, "finished": False,
+            "started": 0, "done": 0, "unattributed": 0, "lastActivity": None}
+    per_tag = {}
+    run_dir = workflow_journal.find_run_dir(
+        state.get("sessionIds"), state.get("workflowRunId"), projects)
+    if run_dir is None:
+        return per_tag, meta
+    meta["runDir"] = run_dir
+    journal = os.path.join(run_dir, "journal.jsonl")
+    try:
+        agents, stats = workflow_journal.parse_journal(journal)
+    except workflow_journal.JournalTooLarge:
+        meta["tooLarge"] = True
+        return per_tag, meta
+    meta["drift"] = workflow_journal.drifted(stats)
+    meta["finished"] = workflow_journal.run_finished(run_dir)
+    mtimes = []
+    with contextlib.suppress(OSError):
+        mtimes.append(os.path.getmtime(journal))
+    cache = getattr(args, "_agent_cache", None)
+    if cache is None:
+        cache = args._agent_cache = {}
+    for aid, seen in agents.items():
+        meta["started"] += 1
+        done = seen["result"]
+        if done:
+            meta["done"] += 1
+        path = os.path.join(run_dir, "agent-%s.jsonl" % aid)
+        with contextlib.suppress(OSError):
+            mtimes.append(os.path.getmtime(path))
+        info = cache.get(aid)
+        if info is None or not info["final"]:
+            if info is None:
+                info = {"start": None, "tag": None, "end": None,
+                        "model": None, "final": False}
+                cache[aid] = info
+            if info["start"] is None or info["tag"] is None:
+                s, tag = workflow_journal.agent_first(path)
+                info["start"] = info["start"] or s
+                info["tag"] = info["tag"] or tag
+            if done:
+                info["end"] = workflow_journal.agent_last_ts(path)
+                info["model"] = workflow_journal.agent_model(run_dir, aid)
+                info["final"] = True          # frozen: completed agents never re-read
+        if info["tag"] is None:
+            meta["unattributed"] += 1
+            continue
+        slot = per_tag.setdefault(info["tag"], {
+            "started": 0, "done": 0, "inflight": 0,
+            "minStart": None, "maxEnd": None, "models": set()})
+        slot["started"] += 1
+        if info["start"] and (slot["minStart"] is None
+                              or info["start"] < slot["minStart"]):
+            slot["minStart"] = info["start"]
+        if done:
+            slot["done"] += 1
+            if info["end"] and (slot["maxEnd"] is None
+                                or info["end"] > slot["maxEnd"]):
+                slot["maxEnd"] = info["end"]
+            if info["model"]:
+                slot["models"].add(info["model"])
+        else:
+            slot["inflight"] += 1
+    if mtimes:
+        meta["lastActivity"] = datetime.fromtimestamp(max(mtimes), tz=timezone.utc)
+    return per_tag, meta
+
+
+def sync_cycle_b(state_path, state, now, args, out):
+    """Source-B pass: observe -> display transitions (revertible, B4) ->
+    [Task 5: finalize on completion record] -> shared debounce/render tail."""
+    per_tag, meta = observe_b(state, args)
+    args._last_ts = meta["lastActivity"]
+    if meta["tooLarge"] or meta["runDir"] is None:
+        _emit_once(args, out, {"event": "tail-unavailable",
+                               "reason": "journal exceeds size cap" if meta["tooLarge"]
+                               else "workflow run dir not found"})
+        # §6.1: declared estimates still render — fall through to the shared tail
+        # (a forced render in one-shot mode; debounced no-op otherwise).
+        return _maybe_finish(state_path, state, now, args, out, False, [], False)
+    changed = False
+    if (state.get("wfAgentsStarted"), state.get("wfAgentsDone")) != \
+            (meta["started"], meta["done"]):
+        state["wfAgentsStarted"], state["wfAgentsDone"] = meta["started"], meta["done"]
+        changed = True
+    if meta["drift"]:
+        if not state.get("wfDriftNotified"):
+            state["wfDriftNotified"] = True
+            write_state(state_path, state)
+            ev = {"event": "journal-format-drift"}
+            out.append(ev); emit(ev)
+        just_done = []
+        all_done_now = False
+        if meta["finished"]:
+            # Drift means no per-phase attribution: bring the run to a clean
+            # terminal state WITHOUT writing any calibration rows (agents
+            # counted, phases unknown — no finalize_b, no append). Every
+            # remaining task is marked done with actualMin left None; phases
+            # already done stay done.
+            for t in state.get("tasks", []):
+                if isinstance(t, dict) and t.get("status") != "done":
+                    t["status"] = "done"
+                    just_done.append(t.get("name"))
+                    changed = True
+            all_done_now = True
+        if changed:
+            write_state(state_path, state)
+        return _maybe_finish(state_path, state, now, args, out, changed,
+                             just_done, all_done_now)
+    just_done = []
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict) or not t.get("wdTag"):
+            continue
+        slot = per_tag.get(t["wdTag"])
+        if slot is None:
+            continue
+        if (t.get("agentsStarted"), t.get("agentsDone")) != \
+                (slot["started"], slot["done"]):
+            t["agentsStarted"], t["agentsDone"] = slot["started"], slot["done"]
+            changed = True
+        if t.get("status") == "pending" and slot["started"] > 0:
+            t["status"] = "running"
+            if slot["minStart"]:
+                t["startedAt"] = slot["minStart"]
+            changed = True
+        expected = t.get("agentsExpected")
+        display_done = (isinstance(expected, int) and expected > 0
+                        and slot["done"] >= expected and slot["inflight"] == 0)
+        if t.get("status") == "running" and display_done:
+            t["status"] = "done"
+            if slot["maxEnd"]:
+                t["finishedAt"] = slot["maxEnd"]
+            changed = True
+            just_done.append(t.get("name"))
+        elif (t.get("status") == "done" and t.get("actualMin") is None
+              and not display_done):
+            t["status"] = "running"          # late pipeline() agent (B4) — legal,
+            t["finishedAt"] = None           # no calibration row exists yet
+            changed = True
+    if changed:
+        write_state(state_path, state)
+    all_done_now = False
+    if meta["finished"]:
+        finalized = finalize_b(state_path, state, per_tag, args)
+        if finalized:
+            changed = True
+            just_done.extend(n for n in finalized if n not in just_done)
+        tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
+        all_done_now = bool(tasks) and all(t.get("status") == "done" for t in tasks)
+    return _maybe_finish(state_path, state, now, args, out, changed,
+                         just_done, all_done_now)
+
+
+def finalize_b(state_path, state, per_tag, args):
+    """Completion record observed: the run ENDED, so spans are final and rows can
+    no longer be contradicted by a late agent (B4). Same crash order as
+    handle_completion: (b) durable done-marker -> (c) append -> (d) actualMin.
+    Full-job token refresh once (B8). Every step past (b) is fail-soft.
+    Phases already done with a non-null actualMin are never re-finalized."""
+    finalized = []
+    tokens = None
+    try:
+        tokens = token_usage.summarize(state_path, projects_dir=args.projects_dir)
+    except Exception:
+        tokens = None
+    args._held_tokens = (None, tokens)
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict):
+            continue
+        if t.get("status") == "done" and t.get("actualMin") is not None:
+            continue                                  # done-is-done (B12)
+        slot = per_tag.get(t.get("wdTag")) or {}
+        started = slot.get("minStart") or t.get("startedAt")
+        finished = slot.get("maxEnd") or t.get("finishedAt")
+        # (b) durable done-marker FIRST
+        t["status"] = "done"
+        if started:
+            t["startedAt"] = started
+        if finished:
+            t["finishedAt"] = finished
+        write_state(state_path, state)
+        finalized.append(t.get("name"))
+        # (c) append — only with a full observed span, never invented
+        appended = None
+        if started and finished:
+            models = slot.get("models") or set()
+            row = dict(_base_row(state, state_path, started, finished),
+                       category=t.get("category"),
+                       rawEstimateMin=t.get("rawEstimateMin"),
+                       model=next(iter(models)) if len(models) == 1 else "unknown")
+            try:
+                ok, res = append_calibration.append_obj(row)
+                appended = res if ok else None
+            except Exception:
+                appended = None
+        # (d) actualMin mirrors the logged value
+        t["actualMin"] = appended["actualMin"] if appended else None
+        write_state(state_path, state)
+    return finalized
 
 
 def _is_alias(model):
@@ -375,11 +606,18 @@ def handle_completion(state_path, state, t, started, finished, args):
 
 
 def _render_out_path(state):
+    """Validate-not-trust (stage-4 hardening): artifactFile comes from the state
+    file, an untrusted source. The protocol layer already re-mints it in the
+    session scratchpad; this is defense-in-depth, and any rejection falls back
+    to the tempdir default rather than blocking the render (fail-soft)."""
     af = state.get("artifactFile")
-    if isinstance(af, str) and os.path.isabs(af):
-        return af
-    return os.path.join(tempfile.gettempdir(),
-                        "whendone-render-%s.html" % (state.get("jobId") or "job"))
+    if isinstance(af, str) and os.path.isabs(af) and af.endswith(".html") \
+            and not os.path.islink(af):
+        parent = os.path.dirname(af)
+        if os.path.isdir(parent) and not os.path.islink(parent):
+            return af
+    job = re.sub(r"[^A-Za-z0-9T-]", "", str(state.get("jobId") or "job"))[:32] or "job"
+    return os.path.join(tempfile.gettempdir(), "whendone-render-%s.html" % job)
 
 
 def render_now(state_path, tok_arg, out_path, now, state):
@@ -424,6 +662,9 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
     ev = {"event": "all-done" if all_done else "progress", "done": done,
           "total": len(tasks), "changed": changed, "justDone": just_done,
           "rendered": status is not None}
+    if state.get("source") == "b" and isinstance(state.get("wfAgentsStarted"), int):
+        ev["agentsStarted"] = state["wfAgentsStarted"]
+        ev["agentsDone"] = state.get("wfAgentsDone")
     if status is not None:
         ev["etaText"] = status.get("etaText")
         if status.get("slipAlert") and not state.get("etaAlertSent"):

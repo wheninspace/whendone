@@ -43,8 +43,9 @@ two.
 - **Lead/subagent-driven job** (plan file, TodoWrite list, or subagent dispatches drive the
   work) → **Source A**, the only source shipped today. Read `references/source-a.md` at
   job-start step 8.
-- **Workflow-engine run** → `references/source-b.md` (stub, stage 4 — not shipped; say so,
-  fall back to a chat table at phase boundaries the lead observes itself).
+- **Workflow-engine run** → **Source B**. Read `references/source-b.md` at job-start
+  step 8 — declaration happens when the lead authors the workflow script (per-phase
+  estimates + `[wd:<slug>]` prompt tags), and the same watcher ladder applies.
 - **Plain solo/TodoWrite job, no declared plan** → `references/source-c.md` (stub, stage 5 —
   not shipped; decline pace-only tailing, offer a declared Source-A plan instead for an ETA).
 
@@ -120,11 +121,12 @@ two.
 
 ## Watcher ladder
 
-Once declared (Source A), a background watcher — not the model — owns state, calibration, and
-rendering between wakes: L1 Monitor `--follow`, degrading to L2 background Bash
+Once declared (Source A or B), a background watcher — not the model — owns state, calibration,
+and rendering between wakes: L1 Monitor `--follow`, degrading to L2 background Bash
 (`--exit-on-event`, one relaunch), degrading to L3 one-shot boundary runs with no background
 tool. Each demotion is stated once in chat; the ladder never blocks the job. Setup, the
-wake-handling event table, and demotion rules live in `references/source-a.md`. Parallel-group
+wake-handling event table, and demotion rules live in `references/source-a.md` (Source B:
+references/source-b.md). Parallel-group
 tasks (shared `group` value) are MAX-aggregated, never hand-tracked — see file-formats.md's
 `group` field and ETA computation.
 
@@ -133,7 +135,7 @@ tasks (shared `group` value) are MAX-aggregated, never hand-tracked — see file
 1. Finish the current subtask — never stop mid-subtask.
 2. Update the plan file's checkboxes/status note; commit only if project convention or an
    active plan-execution skill requires it.
-3. Source A: stop the watcher first, then run one final one-shot sync so the paused state is
+3. Source A/B: stop the watcher first, then run one final one-shot sync so the paused state is
    captured (references/source-a.md) — the remaining steps then apply regardless of source.
 4. Timestamp via Bash `date -Iseconds`. Edit the state file: `status: "paused"`, `pausedAt` =
    that timestamp.
@@ -188,7 +190,7 @@ below once the file is confirmed to parse.
    restate the full URL in chat on successful resume.
 5. Capture this session's id and APPEND it to `sessionIds`. Timestamp `now`. Compute the pause
    length per `references/file-formats.md`'s Pause accounting, fold into `pausedTotalMin`, clear
-   `pausedAt`. State: `status: "running"`, `resumedAt` = `now`. Source A: restart the Watcher
+   `pausedAt`. State: `status: "running"`, `resumedAt` = `now`. Source A/B: restart the Watcher
    ladder from L1, re-run the unique-name check for any task added/renamed since the pause
    (references/source-a.md).
 6. State file missing but a plan file exists? Rebuild the state from the checkboxes; new

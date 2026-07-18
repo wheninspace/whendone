@@ -519,5 +519,36 @@ class TestFullPage(unittest.TestCase):
             self.assertIn("(widened to measured spread)", read_text(op))
 
 
+class AgentCounterDisplayTest(unittest.TestCase):
+    def test_task_counter_line(self):
+        s = state(tasks=[task(1, agentsDone=3, agentsExpected=7, status="running")])
+        _, page, _ = run_cli(s)
+        self.assertIn("3/7 agents", page)
+
+    def test_task_counter_without_expected_shows_question_mark(self):
+        s = state(tasks=[task(1, agentsDone=3, agentsStarted=5, status="running")])
+        _, page, _ = run_cli(s)
+        self.assertIn("3/? agents", page)
+
+    def test_job_level_workflow_line(self):
+        s = state(source="b", wfAgentsStarted=12, wfAgentsDone=8, tasks=[task(1)])
+        _, page, _ = run_cli(s)
+        self.assertIn("Workflow agents: 8/12 finished", page)
+
+    def test_absent_fields_render_nothing(self):
+        _, page, _ = run_cli(state(tasks=[task(1)]))
+        self.assertNotIn("agents", page.lower())
+
+    def test_job_level_line_guards_non_int_wfagentsdone(self):
+        """FIX 3: wfAgentsStarted gates the line as an int, but wfAgentsDone was
+        interpolated unchecked — a missing/non-int wfAgentsDone must still
+        render (falling back to 0), not raise or emit a raw non-int value."""
+        s = state(source="b", wfAgentsStarted=12, wfAgentsDone=None,
+                  tasks=[task(1)])
+        rc, page, _ = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertIn("Workflow agents: 0/12 finished", page)
+
+
 if __name__ == "__main__":
     unittest.main()
