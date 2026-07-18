@@ -389,11 +389,11 @@ def observe_b(state, args):
                         "model": None, "final": False}
                 cache[aid] = info
             if info["start"] is None or info["tag"] is None:
-                s, tag = workflow_journal.agent_first(path)
+                s, tag = workflow_journal.agent_first(path, root=run_dir)
                 info["start"] = info["start"] or s
                 info["tag"] = info["tag"] or tag
             if done:
-                info["end"] = workflow_journal.agent_last_ts(path)
+                info["end"] = workflow_journal.agent_last_ts(path, root=run_dir)
                 info["model"] = workflow_journal.agent_model(run_dir, aid)
                 info["final"] = True          # frozen: completed agents never re-read
         if info["tag"] is None:

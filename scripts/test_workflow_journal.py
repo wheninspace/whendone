@@ -272,5 +272,53 @@ class AgentReadersTest(unittest.TestCase):
             self.assertIsNone(wj.agent_model(d, "short"))
 
 
+class ContainmentTest(unittest.TestCase):
+    """Stage-5 defense-in-depth: leaf readers refuse resolved paths outside the
+    run dir even though upstream validation already prevents composing them."""
+
+    def _run_dir(self, base):
+        d = os.path.join(base, "wf_contain-01")
+        os.makedirs(d)
+        return d
+
+    def _entry(self):
+        return dict(AGENT_FIRST_LINE,
+                     message={"role": "user", "content": "[wd:phase-one] hello"})
+
+    def test_symlinked_transcript_outside_run_dir_rejected(self):
+        with tempfile.TemporaryDirectory() as base:
+            run_dir = self._run_dir(base)
+            outside = os.path.join(base, "outside.jsonl")
+            write_lines(outside, [self._entry()])
+            link = os.path.join(run_dir, "agent-" + "a" * 17 + ".jsonl")
+            os.symlink(outside, link)
+            self.assertEqual(wj.agent_first(link, root=run_dir), (None, None))
+            self.assertIsNone(wj.agent_last_ts(link, root=run_dir))
+
+    def test_without_root_behavior_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as base:
+            p = os.path.join(base, "t.jsonl")
+            write_lines(p, [self._entry()])
+            started, tag = wj.agent_first(p)
+            self.assertEqual(tag, "phase-one")
+            self.assertIsNotNone(started)
+
+    def test_agent_model_symlinked_meta_rejected(self):
+        with tempfile.TemporaryDirectory() as base:
+            run_dir = self._run_dir(base)
+            aid = "b" * 17
+            outside = os.path.join(base, "meta.json")
+            with open(outside, "w", encoding="utf-8") as f:
+                json.dump({"model": "claude-x"}, f)
+            os.symlink(outside, os.path.join(run_dir, "agent-%s.meta.json" % aid))
+            self.assertIsNone(wj.agent_model(run_dir, aid))
+
+    def test_run_finished_rejects_non_run_id_basename(self):
+        with tempfile.TemporaryDirectory() as base:
+            d = os.path.join(base, "not-a-run-id")
+            os.makedirs(d)
+            self.assertFalse(wj.run_finished(d))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -33,6 +33,14 @@ DRIFT_RATIO = 0.2
 TAG_SCAN_CHARS = 400
 
 
+def _under(path, root):
+    """Defense-in-depth (stage 5): the resolved path must stay inside the resolved
+    root. Upstream validation (AID_RE, find_run_dir) is the primary gate; this
+    catches a future caller that bypasses it, incl. symlinks planted in a run dir."""
+    rp, rr = os.path.realpath(path), os.path.realpath(root)
+    return rp == rr or rp.startswith(rr + os.sep)
+
+
 class JournalTooLarge(Exception):
     pass
 
@@ -102,6 +110,8 @@ def run_finished(run_dir):
     completion record <=> the run ended (verified: end-of-run only)."""
     run_dir = os.path.abspath(run_dir)
     run_id = os.path.basename(run_dir)
+    if not RUN_ID_RE.fullmatch(run_id):
+        return False
     session_dir = os.path.dirname(os.path.dirname(os.path.dirname(run_dir)))
     return os.path.isfile(os.path.join(session_dir, "workflows", run_id + ".json"))
 
@@ -116,10 +126,14 @@ def _first_text(content):
     return ""
 
 
-def agent_first(path):
+def agent_first(path, root=None):
     """(started_iso|None, tag|None) from the transcript's FIRST entry: its
     timestamp, plus a [wd:<slug>] match within the first TAG_SCAN_CHARS chars of
-    its message text. Only the slug leaves this function — prose never does."""
+    its message text. Only the slug leaves this function — prose never does.
+    If `root` is given, the resolved path must stay inside it (defense-in-depth;
+    see `_under`)."""
+    if root is not None and not _under(path, root):
+        return None, None
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             line = f.readline(2_000_000)
@@ -139,9 +153,12 @@ def agent_first(path):
     return (ts.isoformat() if ts else None), (m.group(1) if m else None)
 
 
-def agent_last_ts(path):
+def agent_last_ts(path, root=None):
     """Latest parseable entry timestamp (ISO) or None; malformed lines skipped
-    (same posture as token_usage toward transcripts)."""
+    (same posture as token_usage toward transcripts). If `root` is given, the
+    resolved path must stay inside it (defense-in-depth; see `_under`)."""
+    if root is not None and not _under(path, root):
+        return None
     last = None
     try:
         if os.path.getsize(path) > token_usage.MAX_TRANSCRIPT_BYTES:
@@ -166,9 +183,11 @@ def agent_model(run_dir, agent_id):
     """model from agent-<id>.meta.json when present and a non-empty string."""
     if not isinstance(agent_id, str) or not AID_RE.fullmatch(agent_id):
         return None
+    p = os.path.join(run_dir, "agent-%s.meta.json" % agent_id)
+    if not _under(p, run_dir):
+        return None
     try:
-        with open(os.path.join(run_dir, "agent-%s.meta.json" % agent_id),
-                  encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             m = json.load(f)
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
