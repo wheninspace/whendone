@@ -121,30 +121,166 @@ def fmt_dev(actual, est):
     return "(+%d %%)" % p if p >= 0 else "(%s%d %%)" % (MINUS, -p)
 
 
+def token_map(tokens):
+    """nr -> token entry, or None when token data is unavailable (omit all token
+    elements — no error text)."""
+    if not isinstance(tokens, dict) or not tokens.get("available"):
+        return None
+    return {e.get("nr"): e for e in tokens.get("tasks") or [] if isinstance(e, dict)}
+
+
+def _spent(entry):
+    return int(entry.get("output") or 0) + int(entry.get("freshInput") or 0)
+
+
+def task_rows(tasks, tmap, now):
+    out = []
+    shown_groups = set()
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        status = t.get("status")
+        icon = {"done": "✅", "running": "\U0001f504"}.get(status, "⬜")
+        name = esc(t.get("name") or "task %s" % t.get("nr"))
+        if t.get("model"):
+            line = display_name(t["model"])
+            if t.get("effort"):
+                line = "%s · %s effort" % (line, t["effort"])
+            name += '<br><span class="dim">%s</span>' % esc(line)
+        cat = esc(t.get("category")) if t.get("category") else "—"
+        est = task_est(t)
+        est_txt = esc(fmt_min(est)) if est else "—"
+        if status == "done":
+            a = derived_actual(t)
+            if a is not None and est:
+                actual = '<span class="dev">%s %s</span>' % (esc(fmt_min(a)),
+                                                             esc(fmt_dev(a, est)))
+            elif a is not None:
+                actual = '<span class="dev">%s</span>' % esc(fmt_min(a))
+            else:
+                actual = "—"
+        elif status == "running":
+            s = parse_ts(t.get("startedAt"))
+            el = minutes(s, now) if s else 0.0
+            actual = (esc("overrunning by %d min" % round(el - est))
+                      if est and el > est else "—")
+        else:
+            actual = "—"
+        entry = tmap.get(t.get("nr")) if tmap else None
+        if entry:
+            if entry.get("overlap"):
+                # M1: one combined ≈-figure per group (MAX over members — each
+                # overlapping window already contains the shared usage), on the group's
+                # first row only; never a precise-looking per-member number.
+                g = t.get("group")
+                if g is None:
+                    actual += ('<br><span class="dim">≈%s tok (group)</span>'
+                               % esc(fmt_tok(_spent(entry))))
+                elif g not in shown_groups:
+                    shown_groups.add(g)
+                    vals = [_spent(tmap[m.get("nr")]) for m in tasks
+                            if isinstance(m, dict) and m.get("group") == g
+                            and tmap.get(m.get("nr"))]
+                    actual += ('<br><span class="dim">≈%s tok (group)</span>'
+                               % esc(fmt_tok(max(vals) if vals else _spent(entry))))
+            elif _spent(entry):
+                actual += ('<br><span class="dim">%s tok</span>'
+                           % esc(fmt_tok(_spent(entry))))
+        out.append("<tr><td>%s</td><td>%s</td>"
+                   '<td class="dim">%s</td><td>%s</td><td>%s</td></tr>'
+                   % (icon, name, cat, est_txt, actual))
+    return "\n".join(out)
+
+
 def render(state, tokens, summary, now, push_status, superseded):
-    """Minimal page for now: title + banner. Later tasks extend this in place —
-    the signature and the (page, status_dict) return contract are final."""
+    """Assemble the full page + the JSON status dict. Raises on structurally invalid
+    state (caller turns that into exit 1 / no partial HTML)."""
     if not isinstance(state, dict) or not isinstance(state.get("tasks"), list):
         raise ValueError("state file invalid: expected an object with a tasks array")
-    job = state.get("job") or "job"
+    tasks = [t for t in state["tasks"] if isinstance(t, dict)]
+    us = units(tasks)
+    job = str(state.get("job") or "job")
     status = state.get("status") or "running"
+    done_count = sum(1 for t in tasks if t.get("status") == "done")
+    total = len(tasks)
+    tmap = token_map(tokens)
     now_hhmm = now.strftime("%H:%M")
+
     if superseded:
-        banner = ('<div class="banner dead">⚠️ SUPERSEDED — this job\'s state '
-                  "was discarded; this page will not update (last updated %s)</div>" % now_hhmm)
+        banner = ('<div class="banner dead">⚠️ SUPERSEDED — this job\'s '
+                  "state was discarded; this page will not update (last updated %s)</div>"
+                  % now_hhmm)
     else:
         cls, label, icon = {"paused": ("paused", "PAUSED", "⏸️"),
                             "done": ("done", "DONE", "✅")}.get(
                                 status, ("running", "RUNNING", "\U0001f504"))
         banner = '<div class="banner %s">%s %s — last updated %s</div>' % (
             cls, icon, label, now_hhmm)
-    page = "<title>%s</title>\n<style>%s</style>\n%s\n" % (
-        esc("WhenDone: " + str(job)), CSS, banner)
-    done_count = sum(1 for t in state["tasks"]
-                     if isinstance(t, dict) and t.get("status") == "done")
+
+    start = parse_ts(state.get("startedAt"))
+    el = elapsed_min(state, now)
+    if status == "done":
+        etxt = "Done — took %s" % (fmt_min(round(el)) if el is not None else "?")
+        orig = state.get("originalTotalMin")
+        if isinstance(orig, (int, float)) and not isinstance(orig, bool):
+            etxt += " (estimated %s)" % fmt_min(orig)
+    elif status == "paused":
+        etxt = "Paused — %d of %d subtasks done" % (done_count, total)
+    else:
+        etxt = eta_text(state, us, summary, now)
+    lines = ["<strong>%s</strong>" % esc(etxt)]
+    meta = []
+    if start:
+        meta.append("Started %s" % hhmm(start, now))
+    if el is not None:
+        meta.append("%d min elapsed" % round(el))
+    meta.append("%d of %d subtasks done" % (done_count, total))
+    lines.append('<span class="dim">%s</span>' % esc(" · ".join(meta)))
+    if isinstance(tokens, dict) and tokens.get("available"):
+        j = tokens.get("job") or {}
+        lines.append('<span class="dim">Tokens: %s spent · %s cache reads</span>'
+                     % (esc(fmt_tok(_spent(j))), esc(fmt_tok(int(j.get("cacheRead") or 0)))))
+    br = "<br>\n"
+    eta_block = '<div class="eta">%s</div>' % br.join(lines)
+
+    slip_alert = False
+    slip_total = None
+    if status == "running" and not superseded:
+        orig = state.get("originalTotalMin")
+        if isinstance(orig, (int, float)) and not isinstance(orig, bool) and orig > 0:
+            slip_total = sum(unit_slip_value(u, now) for u in us)
+            slip_alert = slip_total > 1.5 * orig and not state.get("etaAlertSent")
+
+    pause_box = ""
+    if status == "paused" and not superseded:
+        nxt = next((t.get("name") for t in tasks if t.get("status") != "done"), None)
+        plan = state.get("planFile")
+        pause_box = ('<div class="pause-box"><strong>How to resume:</strong> open this '
+                     'project in Claude Code and say "resume the whendone job". '
+                     "Job: %s · Plan: %s · Next subtask: %s. A new session finds "
+                     "the state via <code>.claude/whendone-state.json</code>.</div>\n"
+                     % (esc(job), esc(plan) if plan else "—",
+                        esc(nxt) if nxt else "—"))
+
+    if status == "done" and not superseded:
+        footer = '<p class="dim">Job finished — this page is final.</p>'
+    else:
+        footer = ('<p class="dim">Stop: type "stop after the current subtask" in the '
+                  "chat or create the file <code>.claude/STOP</code> in the project "
+                  "root. %s</p>" % esc(PUSH_STATUS[push_status]))
+
+    page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
+            '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
+            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s"
+            % (esc("WhenDone: " + job), CSS, banner, eta_block,
+               task_rows(tasks, tmap, now), pause_box, footer))
+
     stat = {"ok": True, "status": "superseded" if superseded else status,
-            "etaText": "", "slipAlert": False, "estimateTotalMin": 0,
-            "done": done_count, "total": len(state["tasks"])}
+            "etaText": etxt, "slipAlert": bool(slip_alert),
+            "estimateTotalMin": round(total_estimate(us), 1),
+            "done": done_count, "total": total}
+    if slip_total is not None:
+        stat["slipTotalMin"] = round(slip_total, 1)
     return page, stat
 
 
