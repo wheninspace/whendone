@@ -95,6 +95,12 @@ environment's real notification status.
 at declare time so the tailer can stamp calibration rows (the script can't observe it itself).
 Absent ⇒ `"unknown"`.
 
+Source-B additive fields (stage 4): job-level `workflowRunId`, `wfAgentsStarted`,
+`wfAgentsDone`, `wfDriftNotified`; per-task `wdTag`, `agentsExpected`,
+`agentsStarted`, `agentsDone`. Normative definitions, the Workflow journal format,
+and the tag convention live in `references/source-b.md` (kept off this file to
+protect the Source-A trigger-path token budget).
+
 `staleNotifiedAt` = optional per-task ISO timestamp, stage-3: set by the tailer when it emits
 that task's one staleness event; presence suppresses repeats. Never cleared — a
 resumed/restarted task gets a fresh row in a rebuilt plan.
@@ -187,7 +193,8 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | `all-done` | same as `progress` | Run the job-end procedure (source-a.md). |
 | `stale` | `task`, `name`, `stalledMin` | Push once: liveness alert (F13). |
 | `no-op` | `reason` | Nothing — status no longer `running` (stop/pause in progress). |
-| `unsupported-source` | `source` | Source B/C ships later; fall back to the chat table. |
+| `journal-format-drift` | — | Source B only: journal schema drifted; tailing degrades to agent counts (see source-b.md). |
+| `unsupported-source` | `source` | Source C ships later; fall back to the chat table. |
 | `ownership-lost` | `expected` | Another session replaced the job — stop touching state/log/artifact. |
 | `already-running` | `reason` | A live tailer already owns the lock — don't start a second. |
 | `tail-unavailable` / `error` | `reason` | Continue on declared estimates; never blocks the job. |
