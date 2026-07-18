@@ -69,13 +69,13 @@ agent-definition frontmatter, or the user stated it) — otherwise it stays `nul
 own effort level is not observable: never guess it. Both fields are optional — a state file
 without them (pre-upgrade or hand-built) stays valid and simply renders no executor line.
 
-`pausedAt` = ISO 8601 timestamp or `null`. Set by Stop procedure step 3 alongside
+`pausedAt` = ISO 8601 timestamp or `null`. Set by Stop procedure step 4 alongside
 `status: "paused"`; consumed and cleared back to `null` by Resume step 5 once its pause length
 has been folded into `pausedTotalMin` (see "Pause accounting" below). Optional — a state file
 without this field (pre-upgrade) stays valid; treat a missing field the same as `null`.
 
 `publish` = optional boolean. `false` means this job never writes or publishes an artifact —
-the job runs in chat-table-only mode (SKILL.md job-start step 8's no-publish gate, honored on
+the job runs in chat-table-only mode (SKILL.md job-start step 5's no-publish gate, honored on
 resume too). Absent or `true` ⇒ publishing allowed (current behavior; pre-upgrade state files
 stay valid). The set-once per-project form is the `<project-root>/.claude/whendone-no-publish`
 marker file, checked by existence only — the marker suppresses the artifact even for a fresh
@@ -268,7 +268,9 @@ logged and derived values disagree by more than rounding. Clock skew (`finishedA
 `startedAt` — e.g. the system clock moved back) → the script logs `actualMin: null`, an
 excluded data point, never a wrong-but-finite duration and never silently dropped.
 
-Append ONLY via `scripts/append_calibration.py` (see SKILL.md checkpoint step 1) — never splice
+Append ONLY via `scripts/append_calibration.py` (crash-ordering rationale: docs/design.md's
+"Stage 3: declare-once, tail-thereafter — design rationale" section; implemented in
+`scripts/tail_progress.py::handle_completion`) — never splice
 `project`, `job`, or any other free-text field into shell or Python source; never touch
 calibration.jsonl with the Write/Edit tool or read it back at a checkpoint. The script writes
 UTF-8 regardless of which shell invoked it (bash, PowerShell, …), so no `>>`/`Out-File`
