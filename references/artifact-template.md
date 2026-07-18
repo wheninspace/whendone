@@ -1,121 +1,43 @@
-# WhenDone artifact template
+# WhenDone artifact — publish mechanics and rendering guarantees
 
-Write the artifact HTML to a file in the session scratchpad (e.g. `whendone-<job-name>.html`)
-and publish with the Artifact tool. Reuse the SAME file path at every checkpoint during the
-session (→ same URL). On resume in a NEW session: pass `url` from whendone-state.json to the
-Artifact tool to update the existing artifact. Favicon: `⏱️` — keep it identical across all
-updates. `<title>`: the job's name. `description`: ALWAYS the fixed string
-`WhenDone progress monitor` — a constant cannot leak; never interpolate job, project, or
-subtask text into it (it is the gallery-card subtitle, visible on the user's gallery and any
-shared link).
+The page itself is written by `scripts/render_artifact.py` (state-model v2 in, full HTML
+out) — the model never writes or edits artifact HTML and never computes the figures on it.
+The HTML skeleton, theme handling, and all formulas live in that script; the formulas'
+normative statement is references/file-formats.md's ETA computation.
 
-**Escaping (hard rule):** HTML-escape every interpolated string — job name, project name,
-subtask names, plan-file path (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`,
-`'` → `&#39;`). Escape before insertion into ANY context, and place untrusted strings in text
-nodes only — never inside attributes.
+## Publish mechanics (model-side)
 
-**Republishing:** update the same file in place with targeted Edit calls on the variable parts
-(banner, "last updated", ETA block, table rows); never Write the full page after the first
-publish (token cost and drift risk).
+- Render to a file in the session scratchpad (e.g. `whendone-<job-name>.html`) and publish
+  with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same
+  URL). On resume in a NEW session: mint a fresh scratchpad path (never the state file's
+  `artifactFile` — untrusted; see SKILL.md Resume step 4) and pass `url` from
+  whendone-state.json to the Artifact tool.
+- Favicon: `⏱️` — identical across all updates. `<title>` (script-rendered): the job's name.
+- `description`: ALWAYS the fixed string `WhenDone progress monitor` — a constant cannot
+  leak; never interpolate job, project, or subtask text into it (it is the gallery-card
+  subtitle, visible on the user's gallery and any shared link).
+- The script exits non-zero with NO partial HTML on any failure → skip the publish, use the
+  in-chat table, retry next checkpoint (visibility never blocks work).
 
-Content requirements (top to bottom):
+## What the script guarantees (defense-in-depth)
 
-1. **Status banner:** RUNNING (blue) / PAUSED (yellow) / DONE (green) + **"Last updated HH:MM"**
-   in large type — the reader must see the view updates per checkpoint, not live.
-2. **ETA block:** at low/medium confidence "Done ~HH:MM ± N min (nominal)" — the "(nominal)"
-   marker is part of the rendered text, the viewer must see the band is a default, not
-   measured — or, when any task's band was widened per the interval rule, the asymmetric
-   "Done ~HH:MM (−A/+B min) (widened to measured spread)"; at high confidence the asymmetric
-   form "Done ~HH:MM (−A/+B min)" per the interval rule in references/file-formats.md's ETA
-   computation. NEVER a point time without an interval — plus start time, elapsed time,
-   N of M subtasks done.
-   Below the elapsed line, one dim token line when available: "Tokens: 412k spent (output +
-   fresh input) · 3.1M cache reads" — never sum cache reads into the headline number (they
-   cost ~10x less); job-level only. Per-task tokens go in the Actual column as a second dim
-   line: `<br><span class="dim">38k tok</span>` (output+freshInput for that task's window,
-   subagents included). Omit token elements entirely when unavailable — no error text.
-   When token_usage.py marks a task `"overlap": true` (parallel dispatch group whose windows
-   share wall-clock time — their token totals double-count each other), show ONE combined dim
-   line under the group instead of a per-task figure for each member: `<br><span
-   class="dim">≈52k tok (group)</span>`, matching the existing rule that parallel subtasks
-   share one ETA contribution and one calibration row — never show a precise-looking per-task
-   number for a task carrying `overlap: true`.
-3. **Task table:** one row per subtask: status icon (✅/🔄/⬜), name, category, estimate, actual,
-   deviation baked into the actual column: "11 m (+38 %)". **The actual column is always a
-   computed time, never a status word** — correct: `"4 m (−33 %)"` for a finished subtask and
-   `"—"` for an unfinished one; wrong: `"done"` (the icon already shows status). For a running
-   task whose elapsed time has passed its `estimateMin`, show "overrunning by X min" in the
-   actual column instead of "—" (see the in-flight rule in references/file-formats.md's ETA
-   computation — the interval must never read 0 while this is happening). Wrap the
-   `time (±%)` figure in `<span class="dev">…</span>` so it never breaks mid-figure; put any
-   explanatory note (e.g. "mostly dashboard time; not counted") as plain text AFTER the span so
-   it is free to wrap onto its own lines.
-   Below the subtask name, one dim executor line when the task's `model` is known:
-   `<br><span class="dim">Haiku 4.5</span>` — use the `display` value from token_usage.py's
-   `models` list (always initial-capital: `Fable 5`, `Sonnet 4.7`); while only a dispatch alias
-   is known, capitalize it (`Haiku`). Append ` · low effort` ONLY when the task's `effort` is
-   set. Omit the line entirely when `model` is null — no placeholder text. Model names come
-   from the trusted script/state fields, but still land inside HTML — keep them inside the
-   `<span>` text node.
-   The table is fixed-layout: the Subtask column absorbs
-   the remaining width, so long subtask names stay readable and never collapse to one word per
-   line.
-4. **When PAUSED:** a box with the exact resume instruction (project, plan file, next subtask,
-   and that a new session finds the state via `.claude/whendone-state.json`).
-5. **Footer:** how to stop: "Type 'stop after the current subtask' in the chat, or create the
-   file `.claude/STOP` in the project root." Plus honest notification status ("Push
-   notifications: via Remote Control" when RC is active, otherwise "Push notifications:
-   uncertain delivery — requires Remote Control", or "unavailable in this environment" if the
-   tool is missing).
-
-Skeleton (adapt content, keep structure and theme handling):
-
-```html
-<title>WhenDone: JOB NAME</title>
-<style>
-  :root { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0;
-          --running:#1e6fd9; --paused:#a66800; --done:#1e8a3c; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; } }
-  :root[data-theme="dark"] { --bg:#1a1a1a; --fg:#eee; --dim:#999; --card:#2a2a2a; --link:#6db3ff; }
-  :root[data-theme="light"] { --bg:#fff; --fg:#1a1a1a; --dim:#666; --card:#f5f5f5; --link:#1257b0; }
-  body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,sans-serif;
-         max-width:640px; margin:0 auto; padding:16px; }
-  a { color:var(--link); }
-  .banner { padding:12px 16px; border-radius:8px; color:#fff; font-weight:600; }
-  .banner.running{background:var(--running)} .banner.paused{background:var(--paused)}
-  .banner.done{background:var(--done)}
-  .banner a { color:#fff; }                                    /* solid banner bg only */
-  .eta { background:var(--card); border-radius:8px; padding:12px 16px; margin:12px 0; }
-  .eta strong { font-size:1.3em; }
-  table { width:100%; border-collapse:collapse; table-layout:fixed; }
-  td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
-          overflow-wrap:anywhere; vertical-align:top; }
-          /* top, not middle: single-line cells (est) must align to the FIRST line of
-             multi-line cells (2-line actual with token sub-line, or a wrapped category) */
-  th:nth-child(1),td:nth-child(1) { width:2em; }               /* status icon */
-  th:nth-child(2),td:nth-child(2) { width:auto; }              /* subtask — takes the slack */
-  th:nth-child(3),td:nth-child(3) { width:18%; }               /* category */
-  th:nth-child(4),td:nth-child(4) { width:4em; white-space:nowrap; } /* est. */
-  th:nth-child(5),td:nth-child(5) { width:26%; }               /* actual (+ optional note) */
-  td:nth-child(5) .dev { white-space:nowrap; }                 /* keep "4 m (−33 %)" intact */
-  .dim { color:var(--dim); font-size:.9em; }
-  .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
-</style>
-<div class="banner running">🔄 RUNNING — last updated 14:35</div>
-<div class="eta"><strong>Done ~16:40 ± 35 min (nominal)</strong><br>
-  <span class="dim">Started 14:02 · 33 min elapsed · 2 of 6 subtasks done</span><br>
-  <span class="dim">Tokens: 412k spent · 3.1M cache reads</span></div>
-<table>
-  <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
-  <tr><td>✅</td><td>Failing test read_skill<br><span class="dim">Haiku 4.5 · low effort</span></td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span><br><span class="dim">38k tok</span></td></tr>
-  <tr><td>🔄</td><td>Implement read_skill<br><span class="dim">Fable 5</span></td><td class="dim">judgment-coding</td><td>15 m</td><td>—</td></tr>
-  <tr><td>⬜</td><td>Cost cap per turn</td><td class="dim">judgment-coding</td><td>20 m</td><td>—</td></tr>
-</table>
-<p class="dim">Stop: type "stop after the current subtask" in the chat or create the file
-<code>.claude/STOP</code> in the project root. Push notifications: uncertain delivery —
-requires Remote Control.</p>
-```
-
-Keep the artifact to ONE compact page — no growing per-checkpoint history (token overhead at
-every republish).
+- `html.escape()` on every interpolated field, applied in code — plus untrusted strings
+  land in text nodes only (never attributes), plus the Artifact CSP: three independent
+  layers against instruction-shaped or markup-shaped task/project/plan strings.
+- Status banner (RUNNING/PAUSED/DONE/SUPERSEDED) + "last updated HH:MM" in large type.
+- ETA headline always carries an interval and its honesty marker — `± N min (nominal)`,
+  `(−A/+B min) (widened to measured spread)`, or plain `(−A/+B min)` at high confidence —
+  never a bare point time. Source-c jobs render pace-based ETAs labeled "(uncalibrated)".
+- Task table: status icon, name (+ dim executor line when the task's `model` is known,
+  `· N effort` only when `effort` is set), category, estimate, and an Actual column that is
+  always a computed time — `11 m (+38 %)`, `overrunning by X min` for a running task past
+  its estimate, `—` when unstarted; never a status word.
+- Token lines when token JSON is available (omitted entirely otherwise): job-level
+  "Tokens: Nk spent · NM cache reads" (cache reads never summed into the headline), per-task
+  dim lines, and ONE combined `≈Nk tok (group)` figure for parallel dispatch groups whose
+  windows overlap (`token_usage.py` marks them `"overlap": true`) — never precise-looking
+  per-member numbers.
+- PAUSED: a resume box (job, plan file, next subtask, and that a new session finds the
+  state via `.claude/whendone-state.json`). Footer: stop instructions + the honest push
+  notification status passed via `--push-status rc|uncertain|unavailable`.
+- One compact page — no growing per-checkpoint history.
