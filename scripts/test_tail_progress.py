@@ -746,6 +746,40 @@ class SourceBObserveTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_drift_and_completed_run_terminates_all_done(self):
+        """FIX 1: drift (>20% bad journal lines) discovered on the SAME cycle
+        the completion record already exists must not leave the watcher
+        looping forever — degrade to all-done with every task marked done,
+        NO calibration rows (drift means no per-phase attribution)."""
+        env = WfEnv(mkstate_b(),
+                    journal=[dict(wf_started(B_A1), key="v9:" + "0" * 64)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")])])
+        env.finish_run()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap:
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            drift = [l for l in lines if l.get("event") == "journal-format-drift"]
+            self.assertEqual(len(drift), 1)
+            self.assertEqual(lines[-1]["event"], "all-done")
+            st = env.state()
+            self.assertTrue(all(t["status"] == "done" for t in st["tasks"]))
+            self.assertTrue(all(t["actualMin"] is None for t in st["tasks"]))
+            ap.assert_not_called()               # no rows: agents counted, phases unknown
+
+            # second cycle: idempotent — no re-emitted drift, stays all-done
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap2:
+                rc2, lines2 = env.run_one_shot()
+            self.assertEqual(rc2, 0)
+            self.assertFalse([l for l in lines2
+                              if l.get("event") == "journal-format-drift"])
+            self.assertEqual(lines2[-1]["event"], "all-done")
+            ap2.assert_not_called()
+        finally:
+            env.cleanup()
+
     def test_source_c_still_unsupported(self):
         env = SyncEnv([], mkstate(source="c"))
         try:
@@ -902,6 +936,25 @@ class SourceBFinalizeTest(unittest.TestCase):
             self.assertEqual(lines[-1]["event"], "all-done")
             self.assertTrue(all(t["actualMin"] is None
                                 for t in env.state()["tasks"]))
+        finally:
+            env.cleanup()
+
+    def test_display_done_and_finalize_same_cycle_no_duplicate_justdone(self):
+        """FIX 2: a phase that display-transitions to done AND gets finalized
+        in the SAME cycle must appear once in justDone, not twice."""
+        env = self._env()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))):
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            all_done = [l for l in lines if l["event"] == "all-done"]
+            self.assertEqual(len(all_done), 1)
+            jd = all_done[0]["justDone"]
+            self.assertEqual(jd, ["Scan", "Fix"])
+            self.assertEqual(len(jd), len(set(jd)))
         finally:
             env.cleanup()
 

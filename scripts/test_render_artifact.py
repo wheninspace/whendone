@@ -539,6 +539,16 @@ class AgentCounterDisplayTest(unittest.TestCase):
         _, page, _ = run_cli(state(tasks=[task(1)]))
         self.assertNotIn("agents", page.lower())
 
+    def test_job_level_line_guards_non_int_wfagentsdone(self):
+        """FIX 3: wfAgentsStarted gates the line as an int, but wfAgentsDone was
+        interpolated unchecked — a missing/non-int wfAgentsDone must still
+        render (falling back to 0), not raise or emit a raw non-int value."""
+        s = state(source="b", wfAgentsStarted=12, wfAgentsDone=None,
+                  tasks=[task(1)])
+        rc, page, _ = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertIn("Workflow agents: 0/12 finished", page)
+
 
 if __name__ == "__main__":
     unittest.main()

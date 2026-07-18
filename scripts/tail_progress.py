@@ -396,9 +396,24 @@ def sync_cycle_b(state_path, state, now, args, out):
             write_state(state_path, state)
             ev = {"event": "journal-format-drift"}
             out.append(ev); emit(ev)
+        just_done = []
+        all_done_now = False
+        if meta["finished"]:
+            # Drift means no per-phase attribution: bring the run to a clean
+            # terminal state WITHOUT writing any calibration rows (agents
+            # counted, phases unknown — no finalize_b, no append). Every
+            # remaining task is marked done with actualMin left None; phases
+            # already done stay done.
+            for t in state.get("tasks", []):
+                if isinstance(t, dict) and t.get("status") != "done":
+                    t["status"] = "done"
+                    just_done.append(t.get("name"))
+                    changed = True
+            all_done_now = True
         if changed:
             write_state(state_path, state)
-        return _maybe_finish(state_path, state, now, args, out, changed, [], False)
+        return _maybe_finish(state_path, state, now, args, out, changed,
+                             just_done, all_done_now)
     just_done = []
     for t in state.get("tasks", []):
         if not isinstance(t, dict) or not t.get("wdTag"):
@@ -436,7 +451,7 @@ def sync_cycle_b(state_path, state, now, args, out):
         finalized = finalize_b(state_path, state, per_tag, args)
         if finalized:
             changed = True
-            just_done.extend(finalized)
+            just_done.extend(n for n in finalized if n not in just_done)
         tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
         all_done_now = bool(tasks) and all(t.get("status") == "done" for t in tasks)
     return _maybe_finish(state_path, state, now, args, out, changed,

@@ -278,9 +278,10 @@ def render(state, tokens, summary, now, push_status, superseded):
 
     wf_line = ""
     if isinstance(state.get("wfAgentsStarted"), int):
+        d = state.get("wfAgentsDone")
+        d = d if isinstance(d, int) else 0
         wf_line = '<p class="dim">%s</p>\n' % esc(
-            "Workflow agents: %s/%s finished"
-            % (state.get("wfAgentsDone", 0), state["wfAgentsStarted"]))
+            "Workflow agents: %s/%s finished" % (d, state["wfAgentsStarted"]))
 
     page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
