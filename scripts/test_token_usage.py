@@ -313,5 +313,24 @@ class TestTokenUsage(unittest.TestCase):
         self.assertEqual(res, {"available": False, "reason": "transcript exceeds size cap"})
 
 
+class TranscriptPathsTest(unittest.TestCase):
+    def test_finds_main_and_subagents_and_filters_bad_sids(self):
+        with tempfile.TemporaryDirectory() as d:
+            proj = os.path.join(d, "proj-x")
+            os.makedirs(os.path.join(proj, "sid1", "subagents"))
+            open(os.path.join(proj, "sid1.jsonl"), "w").close()
+            open(os.path.join(proj, "sid1", "subagents", "agent-a.jsonl"), "w").close()
+            got = tu.transcript_paths(["sid1", "../evil", ""], d)
+            self.assertEqual(len(got), 1)
+            main, subs = got[0]
+            self.assertTrue(main.endswith("sid1.jsonl"))
+            self.assertEqual(len(subs), 1)
+            self.assertTrue(subs[0].endswith("agent-a.jsonl"))
+
+    def test_no_match_returns_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(tu.transcript_paths(["sidz"], d), [])
+
+
 if __name__ == "__main__":
     unittest.main()

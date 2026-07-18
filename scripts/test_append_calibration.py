@@ -314,5 +314,25 @@ class TestOptionalFields(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(data_dir, "calibration.jsonl")))
 
 
+class AppendObjTest(unittest.TestCase):
+    def test_appends_valid_dict(self):
+        with tempfile.TemporaryDirectory() as d:
+            ok, row = ac.append_obj({
+                "date": "2026-07-18", "project": "p", "job": "j",
+                "category": "testing", "rawEstimateMin": 8,
+                "startedAt": "2026-07-18T10:00:00+00:00",
+                "finishedAt": "2026-07-18T10:09:00+00:00"}, data_dir=d)
+            self.assertTrue(ok)
+            self.assertEqual(row["actualMin"], 9.0)
+            with open(os.path.join(d, "calibration.jsonl"), encoding="utf-8") as f:
+                self.assertEqual(json.loads(f.read())["category"], "testing")
+
+    def test_rejects_invalid_without_writing(self):
+        with tempfile.TemporaryDirectory() as d:
+            ok, err = ac.append_obj({"category": "nope"}, data_dir=d)
+            self.assertFalse(ok)
+            self.assertFalse(os.path.exists(os.path.join(d, "calibration.jsonl")))
+
+
 if __name__ == "__main__":
     unittest.main()

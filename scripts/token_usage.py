@@ -156,11 +156,27 @@ def compute_overlaps(valid_tasks, now):
     return overlapping
 
 
+SID_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def transcript_paths(session_ids, projects_dir):
+    """[(main_transcript, [subagent_transcripts])] for each valid session id.
+    Invalid ids (anything not matching SID_RE fully) are dropped — they came
+    from a state file, an untrusted source, and feed a glob."""
+    out = []
+    for sid in session_ids or []:
+        if not isinstance(sid, str) or not SID_RE.fullmatch(sid):
+            continue
+        for t in glob.glob(os.path.join(projects_dir, "*", sid + ".jsonl")):
+            subs = glob.glob(os.path.join(os.path.dirname(t), sid, "subagents", "agent-*.jsonl"))
+            out.append((t, sorted(subs)))
+    return out
+
+
 def summarize(state_path, projects_dir=None, task_nr=None):
     try:
         with open(state_path, encoding="utf-8") as _sf:
             state = json.load(_sf)
-        sids = [s for s in state.get("sessionIds", []) if isinstance(s, str) and re.fullmatch(r"[A-Za-z0-9_-]+", s)]
         tasks = state.get("tasks", [])
         if not isinstance(tasks, list):
             tasks = []
@@ -171,13 +187,12 @@ def summarize(state_path, projects_dir=None, task_nr=None):
     # file — keep-last (a later file's value for the same id wins).
     main_seen, sub_seen = {}, {}
     try:
-        for sid in sids:
-            for t in glob.glob(os.path.join(projects_dir, "*", sid + ".jsonl")):
-                for key, val in parse_transcript(t):
-                    main_seen[key] = val
-                for sa in glob.glob(os.path.join(os.path.dirname(t), sid, "subagents", "agent-*.jsonl")):
-                    for key, val in parse_transcript(sa):
-                        sub_seen[key] = val
+        for t, subs in transcript_paths(state.get("sessionIds", []), projects_dir):
+            for key, val in parse_transcript(t):
+                main_seen[key] = val
+            for sa in subs:
+                for key, val in parse_transcript(sa):
+                    sub_seen[key] = val
     except TranscriptTooLarge:
         return {"available": False, "reason": "transcript exceeds size cap"}
     main_entries = [v for v in main_seen.values() if v[0] is not None]

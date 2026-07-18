@@ -101,24 +101,13 @@ def build_row(obj):
     return row, None
 
 
-def append(tmp_path, data_dir=None):
-    """Read+validate the object at tmp_path and append it.
-
-    Returns (ok, row_or_error): on success, row_or_error is the appended row (dict,
-    so the caller can read back the exact actualMin that was logged); on failure,
-    it is an error message string.
-    """
+def append_obj(obj, data_dir=None):
+    """Validate an already-parsed object and append it. Same return contract
+    as append(): (ok, row_dict_or_error_message)."""
     resolved_dir = data_dir or os.environ.get("WHENDONE_DATA_DIR") or DEFAULT_DATA_DIR
-    try:
-        with open(tmp_path, encoding="utf-8") as f:
-            obj = json.load(f, parse_constant=lambda _: None)  # NaN/Inf -> None -> rejected
-    except (OSError, json.JSONDecodeError) as e:
-        return False, f"cannot read {tmp_path}: {e}"
-
     row, err = build_row(obj)
     if err:
         return False, err
-
     try:
         os.makedirs(resolved_dir, exist_ok=True)
         log_path = os.path.join(resolved_dir, "calibration.jsonl")
@@ -127,6 +116,16 @@ def append(tmp_path, data_dir=None):
     except OSError as e:
         return False, f"cannot append to calibration.jsonl: {e}"
     return True, row
+
+
+def append(tmp_path, data_dir=None):
+    """Read one JSON object from tmp_path and append it via append_obj()."""
+    try:
+        with open(tmp_path, encoding="utf-8") as f:
+            obj = json.load(f, parse_constant=lambda _: None)  # NaN/Inf -> None -> rejected
+    except (OSError, json.JSONDecodeError) as e:
+        return False, f"cannot read {tmp_path}: {e}"
+    return append_obj(obj, data_dir=data_dir)
 
 
 def main(argv):
