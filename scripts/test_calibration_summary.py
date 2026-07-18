@@ -82,6 +82,16 @@ class TestStats(unittest.TestCase):
         self.assertEqual(cs.confidence(5), "medium")
         self.assertEqual(cs.confidence(20), "high")
 
+    def test_footer_pins_lowmed_clamp_rule(self):
+        # F2: the low/medium band is clamped to the shown IQR; the rule's distinctive
+        # phrases must appear in the footer so SKILL.md / file-formats.md / footer
+        # cannot drift apart silently.
+        out = run_main([row()])
+        self.assertIn("widen that task's band to the envelope", out)
+        self.assertIn("never tighter than the measured spread", out)
+        self.assertIn("± N min (nominal)", out)
+        self.assertIn("(widened to measured spread)", out)
+
 
 class TestMain(unittest.TestCase):
     def test_happy_path(self):
@@ -591,9 +601,16 @@ class TestFooterIntervalRule(unittest.TestCase):
             "At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor), "
             "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered "
             "asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high "
-            "sum − point ETA). At LOW or MEDIUM confidence — regardless of whether q1/q3 "
-            "happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %, "
-            "medium ±30 %.",
+            "sum − point ETA). At LOW or MEDIUM confidence: start from flat nominal bounds "
+            "on each task's adjusted `estimateMin` — low ±50 %, medium ±30 %. Where the "
+            "task's category shows q1/q3 (n ≥ 5), widen that task's band to the envelope of "
+            "the flat band and `[raw_i × min(q1, factor), raw_i × max(q3, factor)]` (take "
+            "the lower low and the higher high) — the reported band is never tighter than "
+            "the measured spread. Where no q1/q3 exist (n < 5) the flat band stands; never "
+            "fabricate q1/q3. Sum per-task lows/highs over pending AND running tasks. Render "
+            "`± N min (nominal)` when no task's band was widened; if ANY task's band was "
+            "widened, render the asymmetric `(−A/+B min)` form with the visible marker "
+            "`(widened to measured spread)`.",
             normalized)
         # branch keyed on confidence tier, not on q1/q3 presence (a medium-confidence
         # category can already show q1/q3 in the Spread column without the interval

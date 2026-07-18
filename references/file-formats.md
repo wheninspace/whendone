@@ -134,12 +134,18 @@ it instead of implying imminence.
 **Interval (one fixed rule — never improvise):** At HIGH confidence (n ≥ 20): per-task
 interval = `[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed over pending AND
 running tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A = point ETA − low
-sum, B = high sum − point ETA). At LOW or MEDIUM confidence — regardless of whether q1/q3
-happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %, medium ±30 %.
-`q1`/`q3` are the IQR bounds of the category's raw-ratio distribution in
-calibration-summary.md's Spread column (also printed as machine-usable numbers in that
-file's footer, shown from n ≥ 5 — informational below high confidence); `factor` is that
-category's blended factor.
+sum, B = high sum − point ETA). At LOW or MEDIUM confidence: start from flat nominal bounds
+on each task's adjusted `estimateMin` — low ±50 %, medium ±30 %. Where the task's category
+shows q1/q3 (n ≥ 5), widen that task's band to the envelope of the flat band and
+`[raw_i × min(q1, factor), raw_i × max(q3, factor)]` (take the lower low and the higher
+high) — the reported band is never tighter than the measured spread. Where no q1/q3 exist
+(n < 5) the flat band stands; never fabricate q1/q3. Sum per-task lows/highs over pending
+AND running tasks. Render `± N min (nominal)` when no task's band was widened; if ANY
+task's band was widened, render the asymmetric `(−A/+B min)` form with the visible marker
+`(widened to measured spread)`. `q1`/`q3` are the IQR bounds of the category's raw-ratio
+distribution in calibration-summary.md's Spread column (also printed as machine-usable
+numbers in that file's footer, shown from n ≥ 5); `factor` is that category's blended
+factor.
 
 **150 %-slip alert:** BOTH sides use the same aggregation — sequential sum
 + MAX per parallel group, never a sum of every group member. Left side: per task take

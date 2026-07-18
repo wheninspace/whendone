@@ -473,9 +473,16 @@ def main(jsonl_path, out_path):
         "SKILL.md): At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor),",
         "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered asymmetrically",
         "as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). At LOW",
-        "or MEDIUM confidence — regardless of whether q1/q3 happens to be shown — use flat, nominal",
-        "(not empirical) bounds: low ±50 %, medium ±30 %. Never state a point time without an",
-        "interval, and never mention factor values in chat or artifact.",
+        "or MEDIUM confidence: start from flat nominal bounds on each task's adjusted",
+        "`estimateMin` — low ±50 %, medium ±30 %. Where the task's category shows q1/q3 (n ≥ 5),",
+        "widen that task's band to the envelope of the flat band and `[raw_i × min(q1, factor),",
+        "raw_i × max(q3, factor)]` (take the lower low and the higher high) — the reported band",
+        "is never tighter than the measured spread. Where no q1/q3 exist (n < 5) the flat band",
+        "stands; never fabricate q1/q3. Sum per-task lows/highs over pending AND running tasks.",
+        "Render `± N min (nominal)` when no task's band was widened; if ANY task's band was",
+        "widened, render the asymmetric `(−A/+B min)` form with the visible marker",
+        "`(widened to measured spread)`. Never state a point time without an interval, and never",
+        "mention factor values in chat or artifact.",
         "",
     ]
     if iqr_by_cat:
@@ -484,9 +491,9 @@ def main(jsonl_path, out_path):
             "",
             "The raw-ratio IQR bounds behind the Spread column above (shown from n >= 5). The",
             "high-confidence interval formula (n >= 20) applies these directly; below high",
-            "confidence — including a medium-confidence category that already shows q1/q3 here —",
-            "use the flat nominal bounds instead (categories with n < 5 have no q1/q3 at all;",
-            "never fabricate one):",
+            "confidence they are the WIDENING floor: the flat nominal band is widened to the",
+            "envelope of itself and the q1/q3 band, never reported tighter than this measured",
+            "spread (categories with n < 5 have no q1/q3 at all; never fabricate one):",
             "",
         ]
         for cat in sorted(iqr_by_cat):

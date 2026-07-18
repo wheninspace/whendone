@@ -85,10 +85,15 @@ The persistent, set-once form of the same thing is the no-publish gate in job-st
    references/file-formats.md's ETA computation (never improvise): At HIGH confidence
    (n ≥ 20): per-task interval = `[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed
    over pending AND running tasks, rendered asymmetrically as `Done ~HH:MM (−A/+B min)` (A =
-   point ETA − low sum, B = high sum − point ETA). At LOW or MEDIUM confidence — regardless of
-   whether q1/q3 happens to be shown — use flat, nominal (not empirical) bounds: low ±50 %,
-   medium ±30 %. Never mention factor values in chat or artifact (anchoring pollutes future raw
-   estimates).
+   point ETA − low sum, B = high sum − point ETA). At LOW or MEDIUM confidence: start from
+   flat nominal bounds on each task's adjusted `estimateMin` — low ±50 %, medium ±30 %. Where
+   the task's category shows q1/q3 (n ≥ 5), widen that task's band to the envelope of the
+   flat band and `[raw_i × min(q1, factor), raw_i × max(q3, factor)]` (take the lower low and
+   the higher high) — the reported band is never tighter than the measured spread; where no
+   q1/q3 exist (n < 5) the flat band stands, never fabricate q1/q3. Render `± N min (nominal)`
+   when no task's band was widened; if ANY was, use the asymmetric `(−A/+B min)` form with the
+   visible marker `(widened to measured spread)`. Never mention factor values in chat or
+   artifact (anchoring pollutes future raw estimates).
 8. Publish gate, then sensitivity check — both before the first publish. HARD GATE first:
    if `<project-root>/.claude/whendone-no-publish` exists (existence check only — presence
    suffices regardless of symlink target; a stray marker only ever suppresses an artifact,
