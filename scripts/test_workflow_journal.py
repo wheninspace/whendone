@@ -240,6 +240,37 @@ class AgentReadersTest(unittest.TestCase):
             self.assertEqual(wj.agent_model(d, AID1), META_WITH_MODEL["model"])
             self.assertIsNone(wj.agent_model(d, AID2))
 
+    def test_agent_first_non_dict_message_degrades(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.jsonl")
+            entry = {"type": "user", "timestamp": T0,
+                     "message": "just a string not a dict"}
+            write_lines(p, [entry])
+            self.assertEqual(wj.agent_first(p),
+                             (token_usage.parse_ts(T0).isoformat(), None))
+
+            p2 = os.path.join(d, "b.jsonl")
+            entry2 = {"type": "user", "timestamp": T0, "message": ["a", "list"]}
+            write_lines(p2, [entry2])
+            self.assertEqual(wj.agent_first(p2),
+                             (token_usage.parse_ts(T0).isoformat(), None))
+
+    def test_agent_last_ts_oversized_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.jsonl")
+            write_lines(p, [AGENT_FIRST_LINE, AGENT_LAST_LINE])
+            orig = token_usage.MAX_TRANSCRIPT_BYTES
+            token_usage.MAX_TRANSCRIPT_BYTES = 1
+            try:
+                self.assertIsNone(wj.agent_last_ts(p))
+            finally:
+                token_usage.MAX_TRANSCRIPT_BYTES = orig
+
+    def test_agent_model_bad_id_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(wj.agent_model(d, "UPPER"))
+            self.assertIsNone(wj.agent_model(d, "short"))
+
 
 if __name__ == "__main__":
     unittest.main()

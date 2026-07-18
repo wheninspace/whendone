@@ -132,7 +132,9 @@ def agent_first(path):
     if not isinstance(e, dict):
         return None, None
     ts = token_usage.parse_ts(e.get("timestamp"))
-    text = _first_text((e.get("message") or {}).get("content"))[:TAG_SCAN_CHARS]
+    msg = e.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    text = _first_text(content)[:TAG_SCAN_CHARS]
     m = TAG_RE.search(text)
     return (ts.isoformat() if ts else None), (m.group(1) if m else None)
 
