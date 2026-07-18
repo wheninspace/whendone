@@ -622,6 +622,34 @@ class DebounceGateTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_all_done_and_slip_bypass_debounce(self):
+        """D11: all-done (and the slipAlert it can reveal) must render+emit in
+        the SAME cycle even while the debounce window is open (_render_ok=False,
+        no _force_render) — only a plain progress completion stays debounced.
+        Fixture mirrors FinishCycleTest.test_slip_alert_once's slip math, but
+        the completing task is the job's LAST one, so this cycle is all-done."""
+        done = mktask(1, status="done", actualMin=30.0,
+                      startedAt="2026-07-18T09:00:00+00:00",
+                      finishedAt="2026-07-18T09:30:00+00:00")
+        env = SyncEnv([todo_entry(T0, [item("task 2", "in_progress")]),
+                       todo_entry(T1, [item("task 2", "completed")])],
+                      mkstate(originalTotalMin=10, tasks=[done, mktask(2)]))
+        try:
+            import argparse as ap
+            args = ap.Namespace(job_id=None, projects_dir=env.projects, now=None,
+                                stale_min=None, _render_ok=False)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                _, events = tp.sync_cycle(env.state_path,
+                                          tp.token_usage.parse_ts(T2), args)
+            all_done_evs = [e for e in events if e.get("event") == "all-done"]
+            self.assertEqual(len(all_done_evs), 1)              # not suppressed
+            self.assertTrue(all_done_evs[0].get("slipAlert"))
+            self.assertFalse(getattr(args, "_pending", False))  # not deferred
+            self.assertTrue(env.state()["etaAlertSent"])
+        finally:
+            env.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()

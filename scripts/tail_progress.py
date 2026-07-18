@@ -260,7 +260,14 @@ def sync_cycle(state_path, now, args):
     changed = bool(starts or completions)
     args._last_ts = last_ts                      # Task 6's staleness input
     just_done = (getattr(args, "_pending_names", None) or []) + just_done
-    if (changed and getattr(args, "_render_ok", True)) or getattr(args, "_force_render", False):
+    # D11: all-done bypasses the debounce gate outright (and finish_cycle's own
+    # render call catches a same-cycle slipAlert too, since etaAlertSent gates
+    # on job-level state.status, not on task-level done==total) — only a plain
+    # progress completion stays subject to _render_ok.
+    all_done_now = bool(completions) and bool(state.get("tasks")) and all(
+        isinstance(t, dict) and t.get("status") == "done" for t in state["tasks"])
+    if (changed and getattr(args, "_render_ok", True)) or getattr(args, "_force_render", False) \
+            or all_done_now:
         args._pending_names, args._pending = [], False
         out.extend(finish_cycle(state_path, state, now, last_ts, changed, just_done, args))
     elif changed:
