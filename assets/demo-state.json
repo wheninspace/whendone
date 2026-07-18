@@ -1,0 +1,31 @@
+{
+  "job": "demo: add read_skill tool",
+  "jobId": "20260718T1402",
+  "planFile": "docs/plans/add-read-skill.md",
+  "artifactUrl": null,
+  "artifactFile": null,
+  "startedAt": "2026-07-18T14:02:00+02:00",
+  "sessionIds": [],
+  "originalTotalMin": 43,
+  "pausedAt": null,
+  "pausedTotalMin": 0,
+  "resumedAt": null,
+  "status": "running",
+  "publish": true,
+  "source": "a",
+  "etaAlertSent": false,
+  "tasks": [
+    {"nr": 1, "name": "Failing test read_skill", "category": "testing",
+     "rawEstimateMin": 8, "estimateMin": 8, "model": "claude-haiku-4-5-20251001",
+     "effort": "low", "actualMin": 11.0, "status": "done", "group": null,
+     "startedAt": "2026-07-18T14:02:00+02:00", "finishedAt": "2026-07-18T14:13:00+02:00"},
+    {"nr": 2, "name": "Implement read_skill", "category": "judgment-coding",
+     "rawEstimateMin": 15, "estimateMin": 15, "model": "claude-fable-5",
+     "effort": null, "actualMin": null, "status": "running", "group": null,
+     "startedAt": "2026-07-18T14:13:00+02:00", "finishedAt": null},
+    {"nr": 3, "name": "Cost cap per turn", "category": "judgment-coding",
+     "rawEstimateMin": 20, "estimateMin": 20, "model": null,
+     "effort": null, "actualMin": null, "status": "pending", "group": null,
+     "startedAt": null, "finishedAt": null}
+  ]
+}

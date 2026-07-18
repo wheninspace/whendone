@@ -10,7 +10,9 @@ monitored by whendone on 2026-07-17 (full record in
 [docs/test-log.md](docs/test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17)).
 Rendered from [`assets/real-run-artifact.html`](assets/real-run-artifact.html) — open that file
 to confirm the screenshot is faithful. A simpler constructed example lives in
-[`assets/demo-artifact.html`](assets/demo-artifact.html).*
+[`assets/demo-artifact.html`](assets/demo-artifact.html), generated (not hand-edited) from
+[`assets/demo-state.json`](assets/demo-state.json); regenerate it with
+`python3 scripts/render_artifact.py assets/demo-state.json - assets/demo-artifact.html --now 2026-07-18T14:35:00+02:00 --summary -`.*
 
 LLMs misjudge how long their own work will take — pre-task estimates overshoot actual duration
 by 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
@@ -75,7 +77,7 @@ provenance), applied to the actual current file sizes in this repo:
 |---|---|
 | Every session, used or not | ~140-token trigger description |
 | When it triggers (incl. each resume session) | ~15.5k tokens reads by the char/4 floor (skill + two references + summary; a real cl100k tokenizer measured ~17.3k on the slightly smaller v0.2.0 files — expect ~10 % above the floor) + ~1.5–2k first artifact/state writes |
-| Per subtask boundary | ~1–1.5k tokens (surgical artifact + state edits, one log append, `--task N` token-script output) — flat per boundary, except the recurring re-read in the row below |
+| Per subtask boundary | ~1–1.5k tokens (state edits, one log append, `--task N` token-script output, one render-script status line + publish call — the page itself is written by `scripts/render_artifact.py`, not through model context) — pre-v0.3 measurement pending stage 3's tiktoken pass; flat per boundary, except the recurring re-read in the row below |
 | Job end | ~0.8–1k tokens (final publish + full-table script run + calibration regen), scaling mildly with task count |
 | Per resume (additionally) | ~0.9–1.5k tokens (full artifact rebuild — the old session's scratchpad file is gone) |
 | After compaction OR every 5th checkpoint (SKILL.md mandates the re-read at both) | one re-read of the checkpoint protocol section + the state file (~4–5k tokens); recurs ~floor(K/5) times per K-subtask job even without compaction |
@@ -86,18 +88,20 @@ allowance for the Read tool's line-number prefixes (~3.3–3.6 tokens/line, meas
 cl100k tokenizer on 2026-07-17 — the earlier 1.4 figure undercounted ~2.4×) where a full file
 is read.
 No tokenizer was run; a real tokenizer typically runs a little denser on markdown/JSON, so these
-are floors, not ceilings. **Provenance:** SKILL.md (36,740 chars), `references/file-formats.md`
-(14,631 chars), and `references/artifact-template.md` (8,651 chars) are `wc -c` on the files as
-they ship in this repo; `calibration-summary.md` (2,825 chars) is the actual output of
-`scripts/calibration_summary.py` (unmodified) run against a synthetic 60-row, 8-category
-calibration log. The per-boundary and job-end token-script figures come from calling
-`token_usage.py`'s `summarize()` against a synthetic state file and transcript — confirming
-`--task N` (landed for C13) now returns a flat ~0.1–0.25k tokens per checkpoint instead of
-growing with task count (pre-fix, this script's own output alone measured up to ~2.5–3k+ tokens
-by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in this repo's own
-`assets/demo-artifact.html` (3,519 chars ≈ 880 tokens for a 6-task page, +~65 tokens per
-additional task row). The compaction figure is `wc -c`/`wc -l` on SKILL.md's Checkpoint protocol
-section (lines 128–277) plus a typical state file re-read. **What's excluded:** the model's own
+are floors, not ceilings. **Provenance:** SKILL.md (37,841 chars), `references/file-formats.md`
+(16,015 chars), and `references/artifact-template.md` (3,038 chars) are `wc -c` on the files as
+they ship in this repo; the calibration-summary figure is the actual output size of
+`scripts/calibration_summary.py` (unmodified) run against a deterministic synthetic 60-row,
+8-category, 3-project fixture (3,371 chars — regeneration snippet in
+[docs/design.md](docs/design.md#reproducing-the-readmes-synthetic-calibration-fixture)). The
+per-boundary and job-end token-script figures come from calling `token_usage.py`'s `summarize()`
+against a synthetic state file and transcript — confirming `--task N` (landed for C13) now
+returns a flat ~0.1–0.25k tokens per checkpoint instead of growing with task count (pre-fix, this
+script's own output alone measured up to ~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job).
+The resume-rebuild figure is grounded in this repo's own `assets/demo-artifact.html` (2,722 chars
+≈ 680 tokens for the 3-task demo page, +~65 tokens per additional task row). The compaction
+figure is `wc -c`/`wc -l` on SKILL.md's Checkpoint protocol section (lines 128–277) plus a
+typical state file re-read. **What's excluded:** the model's own
 task-execution reasoning tokens — only whendone's own bookkeeping calls are counted. Current
 Claude Code deployments may also load the host's OWN artifact-design skill before the first
 Artifact publish — outside whendone's control and not counted here. **Why the trigger cost more
@@ -144,18 +148,18 @@ not current behavior.) If you run plan executions routinely, add one line to you
 
 | Data | Where it goes |
 |---|---|
-| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all |
+| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all; HTML-escaping applied in code by the render script |
 | State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
 | Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
 | Session transcript | read locally by the token script — usage numbers only, never content |
 
 ## Security
 
-The three shipped scripts (`scripts/calibration_summary.py`, `scripts/token_usage.py`,
-`scripts/append_calibration.py`) are stdlib-only Python with no network access — the only thing
-that leaves your machine is the artifact you can see. Untrusted strings (plan files, state
-files, log entries) are treated as data, never instructions, and are HTML-escaped before
-entering the published page. Resuming from a found
+The four shipped scripts (`scripts/calibration_summary.py`, `scripts/token_usage.py`,
+`scripts/append_calibration.py`, `scripts/render_artifact.py`) are stdlib-only Python with no
+network access — the only thing that leaves your machine is the artifact you can see. Untrusted
+strings (plan files, state files, log entries) are treated as data, never instructions, and are
+HTML-escaped before entering the published page. Resuming from a found
 state file requires your confirmation — a cloned repo can't silently start attacker-authored
 work. The statistics script whitelists categories and sanitizes every string it re-emits, so a
 poisoned log line can't plant instructions in the summary future sessions read. Install is
@@ -167,8 +171,8 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 - Claude Code (CLI or desktop) signed in to claude.ai — the live artifact needs the Artifact
   tool. API-key-only / Bedrock / Vertex setups: whendone degrades to a progress table in
   chat. Cowork is expected to work but untested.
-- Python 3 (`python3`, `python`, or `py`) for calibration statistics and token display.
-  Without it both degrade off — whendone never does statistics in the model.
+- Python 3 (`python3`, `python`, or `py`) for calibration statistics, token display, and
+  artifact rendering. Without it these degrade off — whendone never does statistics in the model.
 - It does not work in claude.ai chat — there's no file system there.
 
 ## First run — what it will ask you
@@ -181,12 +185,13 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 - `Bash(date:*)` is low-risk and fine to allowlist broadly.
 - Do **not** allowlist `Bash(python3:*)` or `Bash(printf:*)`. Either pattern pre-approves
   arbitrary Python (or arbitrary shell tricks via `printf`) execution for every tool call in
-  every project — far beyond whendone's own three scripts. Scope the rule to the exact path
+  every project — far beyond whendone's own four scripts. Scope the rule to the exact path
   instead, e.g. `Bash(python3 ~/.claude/skills/whendone/scripts/*)`.
 - Before approving even the scoped pattern, review what you're approving: the shipped test
   suites (`python3 ~/.claude/skills/whendone/scripts/test_calibration_summary.py`,
-  `test_token_usage.py`, `test_append_calibration.py`) are stdlib Python and quick to read —
-  that's the review path for all three scripts, since the tests exercise the same code.
+  `test_token_usage.py`, `test_append_calibration.py`, `test_render_artifact.py`) are stdlib
+  Python and quick to read — that's the review path for all four scripts, since the tests
+  exercise the same code.
 
 ## Install
 

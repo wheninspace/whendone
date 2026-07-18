@@ -189,6 +189,33 @@ proves misleading in practice.
   duration is unknown, so it's recorded as `null` and never logged to calibration, instead of
   guessing a number that would corrupt the statistics.
 
+## Reproducing the README's synthetic calibration fixture
+
+The Overhead section's `calibration-summary.md` provenance figure is generated fresh, not
+copied from an old run — the log below produces a deterministic 60-row, 8-category, 3-project
+synthetic calibration log, feeds it through the real `scripts/calibration_summary.py` unmodified,
+and prints the resulting summary file's `wc -c`-equivalent size in chars. Re-running it reproduces
+the same byte count every time (verified: 3,371 chars on both of two runs, 2026-07-18):
+
+```bash
+python3 - <<'EOF'
+import json, subprocess, tempfile, os
+cats = ["mechanical-implementation","judgment-coding","testing","debugging",
+        "research","documentation","review","deploy-infra"]
+rows = []
+for i in range(60):
+    cat = cats[i % 8]
+    rows.append(json.dumps({"date": "2026-07-01", "project": "proj%d" % (i % 3),
+        "job": "job", "category": cat, "rawEstimateMin": 10,
+        "actualMin": 8.0 + (i % 7), "model": "claude-sonnet-5", "client": "cli"}))
+td = tempfile.mkdtemp()
+jp, op = os.path.join(td, "c.jsonl"), os.path.join(td, "s.md")
+open(jp, "w").write("\n".join(rows) + "\n")
+subprocess.run(["python3", "scripts/calibration_summary.py", jp, op], check=True)
+print(os.path.getsize(op), "chars:", op)
+EOF
+```
+
 ## Provenance
 
 A search for prior art turned up no existing tool that combines all four pieces: a live
