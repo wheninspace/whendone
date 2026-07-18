@@ -133,10 +133,14 @@ calibration-summary.md's Spread column (also printed as machine-usable numbers i
 file's footer, shown from n ≥ 5 — informational below high confidence); `factor` is that
 category's blended factor.
 
-**150 %-slip alert:** `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin,
-elapsed)) > 1.5 × originalTotalMin`. `originalTotalMin` uses the SAME aggregation as the
-displayed ETA — sequential sum + MAX per parallel group, never a sum of every group member
-— computed once over ALL subtasks' initial `estimateMin` at job start and never revised.
+**150 %-slip alert:** BOTH sides use the same aggregation — sequential sum
++ MAX per parallel group, never a sum of every group member. Left side: per task take
+`actualMin` if done, else `estimateMin` (in-flight → `max(estimateMin, elapsed)`); sum the
+sequential tasks and add, per parallel group, the MAX over its members of that per-task
+value (a fully DONE group contributes the MAX of its members' `actualMin`). Alert when that
+total `> 1.5 × originalTotalMin`. `originalTotalMin` uses this same aggregation (the same
+one as the displayed ETA) over ALL subtasks' initial `estimateMin` — computed once at job
+start and never revised.
 
 ## calibration.jsonl — global, append-only
 

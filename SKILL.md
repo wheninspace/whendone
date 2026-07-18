@@ -241,9 +241,12 @@ point during this session's run.
    this checkpoint, keep the alias, and continue — do not retry the script a second time this
    checkpoint. Run the script WITHOUT `--task` (full job + subagents + every task) only at job
    end (see below).
-3. `Σ(actualMin if done, else estimateMin; in-flight → max(estimateMin, elapsed)) > 1.5 ×
-   originalTotalMin`, and `etaAlertSent` is false? → push notification, set the flag (max
-   one per job).
+3. Slip check — the left side uses the SAME aggregation as `originalTotalMin`: sequential
+   sum + MAX per parallel group, never a sum of every group member. Per task the value is
+   `actualMin` if done, else `estimateMin` (in-flight → `max(estimateMin, elapsed)`); a
+   parallel group contributes the MAX over its members of that per-task value (a fully DONE
+   group: the MAX of its members' `actualMin`). That total `> 1.5 × originalTotalMin`, and
+   `etaAlertSent` is false? → push notification, set the flag (max one per job).
 4. All subtasks done? → At job end — even if a stop signal exists (then delete `.claude/STOP`;
    a finished job is not paused).
 5. Stop signal? (`.claude/STOP` exists, or the user asked to stop in chat) → Stop procedure.
