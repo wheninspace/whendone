@@ -44,6 +44,36 @@
 - New/changed script interfaces: `tail_progress.py` (new), `token_usage.transcript_paths`,
   `append_calibration.append_obj` (extractions, behavior unchanged).
 
+### Stage 4 — Source-B (Workflow-engine) ingestion
+
+- **Source-B ingester:** `scripts/workflow_journal.py` (new) plus a tail seam in
+  `tail_progress.py` reads a Workflow run's `journal.jsonl` (started/result pairs),
+  per-agent transcripts, and `meta.json` — timestamps and model ids always come from the
+  agent transcript, never the journal — and maps them onto the same state model Source A
+  uses. Defensive v2 journal-format version-detect (the `v2:` key prefix) plus fixtures and
+  tests guard against undocumented, unstable upstream schema drift; a drift condition
+  degrades to job-wide agent counting with phase attribution stopped, notified once per job
+  (persisted `wfDriftNotified` flag, survives watcher restarts).
+- **`[wd:<slug>]` prompt-tag attribution:** the lead tags every `agent()` prompt at
+  authoring time; the tag is the only phase signal that reaches disk. An untagged agent is
+  still counted job-wide but attributed to no phase.
+- **Per-phase calibration at the completion record:** one calibration row per phase,
+  appended only when the run's completion record lands on disk — span =
+  min(start)/max(end) over that phase's attributed agents, `model` from the agent's
+  `meta.json` when uniform across the phase (else `"unknown"`). A phase whose span was
+  never observed gets no row, never an invented one; phases already `done` are never
+  re-finalized or re-appended, including across a resume.
+- **Agent-counter rendering (additive):** per-phase `agentsStarted`/`agentsDone` and
+  job-level `wfAgentsStarted`/`wfAgentsDone` render alongside the existing task table;
+  ignored entirely by sources A and C, pre-existing state files stay valid without them.
+- **Workflow-transcript token counting:** `token_usage.py` now counts workflow agent
+  transcripts into the job's token totals.
+- **`_render_out_path` hardening:** `artifactFile` is now validated, not trusted, before
+  the render script writes to it — defense-in-depth, fails soft on a bad path.
+- **Measured per-wake figure:** the README's per-watcher-wake overhead row is now a
+  MEASURED figure (live L1 Monitor `--follow` observation during the stage-4 dogfood,
+  2026-07-18) rather than the earlier component estimate — see the Overhead table.
+
 ## v0.2.1 — 2026-07-18
 
 Doc/protocol correctness fixes plus one additive script feature, closed after a third

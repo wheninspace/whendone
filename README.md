@@ -76,8 +76,9 @@ provenance), applied to the actual current file sizes in this repo:
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ~13.9k tokens — a real cl100k tiktoken measurement (stage-3, task 11) of the trigger-to-first-publish read path: SKILL.md body (no Read-tool prefix, it loads as the skill) + `references/source-a.md` + `references/file-formats.md` + `references/artifact-template.md` + `calibration-summary.md` (the latter four each carry a ~3.5 tokens/line Read-tool prefix allowance) — see the provenance note below + ~1.5–2k first artifact/state writes |
-| Per watcher wake (Source A) | ~1–3k tokens marginal — component estimate, cl100k; live-wake measurement deferred (no live Monitor wake occurred in the stage-3 dogfood session, see docs/test-log.md): one `progress` event line read (~54 tokens, measured) + a short assistant turn (quote `etaText`) + one Artifact publish call — well under the 5k/wake threshold that would trigger D11's debounce-raising/liveness-only demotion. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
+| When it triggers (incl. each resume session) | ≈12,182 cl100k tokens — a real `tiktoken` `cl100k_base` measurement (stage-4, task 9, 2026-07-18) of the trigger-to-first-publish read path: SKILL.md body (no Read-tool prefix, it loads as the skill) + `references/source-a.md` + `references/file-formats.md` + `references/artifact-template.md` + `calibration-summary.md` allowance — see the provenance note below — + ~1.5–2k first artifact/state writes. Under the 14,000-token budget with ≈1.8k tokens to spare |
+| Source-B addition to the trigger path | ~0 tokens marginal — `references/source-b.md` (1,810 cl100k tokens, measured 2026-07-18, method: `tiktoken` `cl100k_base`, stage-4 task 9) is OFF the Source-A trigger path entirely; it's read only once Source B is detected, never as part of the four-file trigger read above. Only a ~149-token pointer/event-row was added to SKILL.md + `file-formats.md` combined to describe it — already folded into the trigger-row figure above |
+| Per watcher wake (Source A and B) | ≈1k tokens of injected context + one Artifact publish per wake — MEASURED (not estimated), live L1 Monitor `--follow` watcher observation, stage-4 dogfood, 2026-07-18 (see [docs/test-log.md](docs/test-log.md#live-monitor-monitoring-run-this-session--first-real-monitor-driven-wakes)): one compact `progress` event line (54 cl100k tokens, measured stage 3) plus, in this environment, a harness "file modified" re-injection of the ~2.7 KB rendered artifact HTML on each watcher cycle (environment-specific — Claude Code echoes a changed tracked file back to the model; a headless watcher rendering to a non-watched path avoids it) plus one Artifact publish call — well under the 5k/wake threshold that would trigger D11's debounce-raising/liveness-only demotion. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
 | Job end | ~0.8–1k tokens (final publish + full-table script run + calibration regen), scaling mildly with task count |
 | Per resume (additionally) | ~0.9–1.5k tokens (full artifact rebuild — the old session's scratchpad file is gone) |
 | After compaction OR every 5th checkpoint (SKILL.md mandates the re-read at both) | one re-read of the checkpoint protocol section + the state file (~4–5k tokens); recurs ~floor(K/5) times per K-subtask job even without compaction |
@@ -87,38 +88,46 @@ thumb used throughout this repo (see [docs/test-log.md](docs/test-log.md)), plus
 allowance for the Read tool's line-number prefixes (~3.3–3.6 tokens/line, measured with a real
 cl100k tokenizer on 2026-07-17 — the earlier 1.4 figure undercounted ~2.4×) where a full file
 is read.
-No tokenizer was run for the rows below the trigger row; a real tokenizer typically runs a
-little denser on markdown/JSON, so those are floors, not ceilings. **Provenance (trigger row):**
-a real `tiktoken` `cl100k_base` pass (stage-3, task 11) over SKILL.md (17,145 chars),
-`references/source-a.md` (7,982 chars), `references/file-formats.md` (16,000 chars), and
-`references/artifact-template.md` (2,920 chars) as they ship in this repo, plus the
-calibration-summary figure — the actual output size of `scripts/calibration_summary.py`
-(unmodified) run against a deterministic synthetic 60-row, 8-category, 3-project fixture
-(3,371 chars — regeneration snippet in
+No tokenizer was run for the job-end/resume/compaction rows below; a real tokenizer typically
+runs a little denser on markdown/JSON, so those are floors, not ceilings. The per-watcher-wake
+row above IS a real measurement (see its own provenance in the table), not a proxy. **Provenance
+(trigger row):** a real `tiktoken` `cl100k_base` pass (stage-4, task 9, 2026-07-18) over SKILL.md,
+`references/source-a.md`, `references/file-formats.md`, and `references/artifact-template.md` as
+they ship in this repo post-Source-B-edit, plus the calibration-summary figure — the actual
+output size of `scripts/calibration_summary.py` (unmodified) run against a deterministic
+synthetic 60-row, 8-category, 3-project fixture (3,371 chars — regeneration snippet in
 [docs/design.md](docs/design.md#reproducing-the-readmes-synthetic-calibration-fixture)), not a
-real user's calibration history. **Provenance (other rows):** the per-wake event-line figure is
-a real `cl100k` measurement of a representative `tail_progress.py` `progress` line; the job-end
-token-script figures come from calling `token_usage.py`'s `summarize()` against a synthetic
-state file and transcript — confirming `--task N` (landed for C13) now returns a flat
-~0.1–0.25k tokens per checkpoint instead of growing with task count (pre-fix, this script's own
-output alone measured up to ~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job). The
-resume-rebuild figure is grounded in this repo's own `assets/demo-artifact.html` (2,722 chars
-≈ 680 tokens for the 3-task demo page, +~65 tokens per additional task row). The compaction
-figure is `wc -c`/`wc -l` on SKILL.md's pre-stage-3 checkpoint-protocol section plus a typical
-state file re-read — pending a stage-5 refresh now that stage 3 replaced per-checkpoint
-hand-editing with the declare-once/tail-thereafter watcher. **What's excluded:** the model's own
-task-execution reasoning tokens — only whendone's own bookkeeping calls are counted. Current
-Claude Code deployments may also load the host's OWN artifact-design skill before the first
-Artifact publish — outside whendone's control and not counted here. **Why the trigger cost
-dropped since the last measurement:** stage 3 split the monolithic SKILL.md into a thin core
-(SKILL.md) plus per-source reference files (`source-a.md`, `file-formats.md`,
-`artifact-template.md`) — the split, plus this task's prose trims to close the 14k gate, more
-than offset the added `source-a.md` file itself.
+real user's calibration history. **Provenance (Source-B row):** `references/source-b.md`
+measured standalone with the same `tiktoken` `cl100k_base` method, same date, same task —
+1,810 tokens, under its own 2,500-token budget with 690 tokens to spare; the ~149-token
+combined addition to SKILL.md + `file-formats.md` is the exact before/after delta measured for
+those two files across the same edit. **Provenance (per-wake row):** the live figure comes from
+a real L1 Monitor `--follow` watcher running for the whole stage-4 dogfood session — the first
+stage with genuine live-Monitor-wake evidence (stage 3 only had a component estimate, no live
+wake occurred that session); the 54-token event-line figure inside it is the stage-3 `cl100k`
+measurement of a representative `tail_progress.py` `progress` line, still accurate since the
+event schema didn't change. **Provenance (other rows):** the job-end token-script figures come
+from calling `token_usage.py`'s `summarize()` against a synthetic state file and transcript —
+confirming `--task N` (landed for C13) now returns a flat ~0.1–0.25k tokens per checkpoint
+instead of growing with task count (pre-fix, this script's own output alone measured up to
+~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in
+this repo's own `assets/demo-artifact.html` (2,722 chars ≈ 680 tokens for the 3-task demo page,
++~65 tokens per additional task row). The compaction figure is `wc -c`/`wc -l` on SKILL.md's
+pre-stage-3 checkpoint-protocol section plus a typical state file re-read — pending a stage-5
+refresh now that stage 3 replaced per-checkpoint hand-editing with the declare-once/tail-thereafter
+watcher. **What's excluded:** the model's own task-execution reasoning tokens — only whendone's
+own bookkeeping calls are counted. Current Claude Code deployments may also load the host's OWN
+artifact-design skill before the first Artifact publish — outside whendone's control and not
+counted here. **Why the trigger-path figure moved since the last measurement:** stage 4 added
+Source-B support (`references/source-b.md`, kept off this path) plus a small pointer/event-row
+in SKILL.md and `file-formats.md` (both on-path, ~149 tokens combined) — the net effect leaves
+the trigger path comfortably under the 14,000 budget; see the provenance above for the exact
+before/after breakdown.
 
 Statistics never run in the model — calibration summaries and accuracy reports come from the
 script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk away from.
 Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 subtasks /
-~45 minutes — the trigger cost alone (~14k tokens by a real cl100k tokenizer, stage-3 measurement — see the Overhead table's trigger row) is hard to amortize below that.
+~45 minutes — the trigger cost alone (≈12.2k tokens by a real cl100k tokenizer, stage-4 task 9 measurement — see the Overhead table's trigger row) is hard to amortize below that.
 
 ## Usage — say "run with whendone"
 
