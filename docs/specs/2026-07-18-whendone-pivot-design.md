@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18
 **Status:** Approved (brainstorming pass, all sections user-approved)
-**Supersedes:** the direction portions of [2026-07-17 pivot handoff](../plans/2026-07-17-whendone-pivot-and-round3-handoff.md); partially supersedes [round-3 fixes plan](../plans/2026-07-17-round3-fixes.md) (see §8)
+**Supersedes:** the direction portions of [2026-07-17 pivot handoff](../plans/archive/2026-07-17-whendone-pivot-and-round3-handoff.md); partially supersedes [round-3 fixes plan](../plans/archive/2026-07-17-round3-fixes.md) (see §8)
 **Next step:** stage plans via `superpowers:writing-plans`, one per stage in §7, executed in fresh sessions
 
 ---
@@ -158,7 +158,7 @@ Stage 1 is deliberately pivot-independent: if the pivot's pace slips, the repo i
 ## 8. Superseded / archived
 
 - **`checkpoint.py` (F7): not built.** Stage 3 removes the per-boundary mechanics it would have automated.
-- **[2026-07-17-round3-fixes.md](../plans/2026-07-17-round3-fixes.md):** its Tasks 1–3, 8, 9, 11 map to stage 1 (and parts of 3); Tasks 4, 6, 7, 12 are absorbed into stages 2–5 in redesigned form; Task 5 is dropped. Once the stage-1 plan is written, propose moving the old plan to `docs/plans/archive/` (never delete unasked).
+- **[2026-07-17-round3-fixes.md](../plans/archive/2026-07-17-round3-fixes.md):** its Tasks 1–3, 8, 9, 11 map to stage 1 (and parts of 3); Tasks 4, 6, 7, 12 are absorbed into stages 2–5 in redesigned form; Task 5 is dropped. Once the stage-1 plan is written, propose moving the old plan to `docs/plans/archive/` (never delete unasked).
 - The **2026-07-17 pivot handoff** is fulfilled by this spec; it remains as the decision record.
 
 ## 9. Risks (named honestly)
