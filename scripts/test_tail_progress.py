@@ -280,5 +280,118 @@ class OneShotTest(unittest.TestCase):
             env.cleanup()
 
 
+def usage_entry(ts, model, out_tokens, mid):
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"id": mid, "model": model,
+                        "usage": {"output_tokens": out_tokens, "input_tokens": 5}}}
+
+
+class CompletionPipelineTest(unittest.TestCase):
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name   # restore module default
+        self.calib.cleanup()
+
+    def rows(self):
+        p = os.path.join(self.calib.name, "calibration.jsonl")
+        if not os.path.exists(p):
+            return []
+        with open(p, encoding="utf-8") as f:
+            return [json.loads(l) for l in f if l.strip()]
+
+    def test_row_appended_with_transcript_times_and_resolved_alias(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       usage_entry(T1, "claude-haiku-4-5-20251001", 50, "m-u1"),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1, model="haiku")]))
+        try:
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["model"], "claude-haiku-4-5-20251001")   # substring upgrade
+            rows = self.rows()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["model"], "claude-haiku-4-5-20251001")
+            self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+            self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+            self.assertEqual(t["actualMin"], rows[0]["actualMin"])       # (d) mirrors the log
+        finally:
+            env.cleanup()
+
+    def test_cross_family_top_model_never_upgrades_alias(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       usage_entry(T1, "claude-opus-4-8", 500, "m-u2"),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1, model="haiku")]))
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["model"], "haiku")  # guard held
+            self.assertEqual(self.rows()[0]["model"], "haiku")
+        finally:
+            env.cleanup()
+
+    def test_completion_without_start_gets_no_row_and_null_actual(self):
+        env = SyncEnv([todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertIsNone(t["actualMin"])
+            self.assertEqual(self.rows(), [])                            # D6
+        finally:
+            env.cleanup()
+
+    def test_group_members_log_one_synthetic_row(self):
+        tasks = [mktask(1, name="member a", group="g1", estimateMin=10, rawEstimateMin=8),
+                 mktask(2, name="member b", group="g1", estimateMin=20, rawEstimateMin=25)]
+        env = SyncEnv([dispatch_entry(T0, "tu-a", "member a"),
+                       dispatch_entry(T0, "tu-b", "member b"),
+                       result_entry(T1, "tu-a"),
+                       result_entry(T2, "tu-b")],
+                      mkstate(tasks=tasks))
+        try:
+            env.run_one_shot()
+            rows = self.rows()
+            self.assertEqual(len(rows), 1)
+            r = rows[0]
+            self.assertEqual(r["category"], "parallel-group")
+            self.assertEqual(r["rawEstimateMin"], 25)
+            self.assertEqual(r["maxAdjusted"], 20)
+            self.assertEqual(r["sumAdjusted"], 30)
+            self.assertEqual(r["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+            self.assertEqual(r["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+        finally:
+            env.cleanup()
+
+    def test_append_failure_still_leaves_task_done(self):
+        os.environ["WHENDONE_DATA_DIR"] = "/dev/null/impossible"
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            rc, _ = env.run_one_shot()
+            self.assertEqual(rc, 0)                                      # fail-soft
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertIsNone(t["actualMin"])
+        finally:
+            env.cleanup()
+
+    def test_effort_and_client_passthrough(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(client="cli", tasks=[mktask(1, effort="low")]))
+        try:
+            env.run_one_shot()
+            r = self.rows()[0]
+            self.assertEqual(r["effort"], "low")
+            self.assertEqual(r["client"], "cli")
+        finally:
+            env.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()

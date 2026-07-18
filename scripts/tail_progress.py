@@ -268,13 +268,103 @@ def sync_cycle(state_path, now, args):
     return state, out
 
 
+def _is_alias(model):
+    """Bare dispatch alias ('haiku') vs full versioned id ('claude-haiku-...')."""
+    return isinstance(model, str) and bool(model) and "claude" not in model
+
+
+def _project_name(state_path):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(state_path)))
+    return os.path.basename(os.path.realpath(root))
+
+
+def _base_row(state, state_path, started, finished):
+    return {
+        "date": (token_usage.parse_ts(finished) or datetime.now(timezone.utc))
+                .astimezone().date().isoformat(),
+        "project": _project_name(state_path),
+        "job": state.get("job", ""),
+        "startedAt": started,
+        "finishedAt": finished,
+        "client": state.get("client", "unknown"),
+    }
+
+
+def group_row(state, group_id):
+    members = [t for t in state.get("tasks", [])
+               if isinstance(t, dict) and t.get("group") == group_id]
+    if not members or any(t.get("status") != "done" for t in members):
+        return None
+    starts = [t.get("startedAt") for t in members if t.get("startedAt")]
+    ends = [t.get("finishedAt") for t in members if t.get("finishedAt")]
+    raws = [t.get("rawEstimateMin") for t in members
+            if isinstance(t.get("rawEstimateMin"), (int, float))]
+    ests = [t.get("estimateMin") for t in members
+            if isinstance(t.get("estimateMin"), (int, float))]
+    if not (starts and ends and raws and ests):
+        return None                     # missing evidence -> no row, never invented
+    return {"category": "parallel-group", "rawEstimateMin": max(raws),
+            "maxAdjusted": max(ests), "sumAdjusted": sum(ests),
+            "startedAt": min(starts), "finishedAt": max(ends)}
+
+
 def handle_completion(state_path, state, t, started, finished, args):
-    # Task 4 replaces this with the full crash-ordered pipeline.
+    """Today's checkpoint order, in code: (b) done-marker -> (b2) tokens+alias ->
+    (c) append -> (d) actualMin. Every step past (b) is fail-soft."""
+    # (b) durable done-marker FIRST
     t["status"] = "done"
     if started and not t.get("startedAt"):
         t["startedAt"] = started
     t["finishedAt"] = finished
     write_state(state_path, state)
+
+    # (b2) token refresh; alias upgrade only same-family (substring), never blind
+    tokens = None
+    try:
+        tokens = token_usage.summarize(state_path, projects_dir=args.projects_dir,
+                                       task_nr=t.get("nr"))
+    except Exception:
+        tokens = None
+    args._held_tokens = (t.get("nr"), tokens)          # Task 5's render reuses this
+    if tokens and tokens.get("available") and _is_alias(t.get("model")):
+        entries = tokens.get("tasks") or []
+        models = (entries[0].get("models") or []) if entries else []
+        top = models[0].get("id") if models else None
+        if isinstance(top, str) and t["model"] in top:
+            t["model"] = top
+            write_state(state_path, state)
+
+    # (c) append — individual row for sequential tasks; group members wait for
+    # the synthetic row when the LAST member lands. Source-c jobs never log
+    # (guarded before this function is ever called).
+    row = None
+    if t.get("group") is None:
+        started_final = t.get("startedAt")
+        if started_final and finished:
+            row = dict(_base_row(state, state_path, started_final, finished),
+                       category=t.get("category"),
+                       rawEstimateMin=t.get("rawEstimateMin"),
+                       model=t.get("model") or "unknown")
+            if t.get("effort") is not None:
+                row["effort"] = t["effort"]
+    else:
+        g = group_row(state, t.get("group"))
+        if g is not None:
+            row = dict(_base_row(state, state_path, g.pop("startedAt"), g.pop("finishedAt")),
+                       **g, model="unknown")
+    appended = None
+    if row is not None:
+        try:
+            ok, res = append_calibration.append_obj(row)
+            appended = res if ok else None
+        except Exception:
+            appended = None
+
+    # (d) actualMin mirrors the logged value; group members stay null (renderer
+    # derives their display time from timestamps)
+    if t.get("group") is None:
+        t["actualMin"] = appended["actualMin"] if appended else None
+        write_state(state_path, state)
 
 
 def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
