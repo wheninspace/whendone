@@ -393,5 +393,101 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
 
+class FinishCycleTest(unittest.TestCase):
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name   # restore module default
+        self.calib.cleanup()
+
+    def _env(self, entries, state_dict):
+        env = SyncEnv(entries, state_dict)
+        art = os.path.join(env.dir.name, "artifact.html")
+        st = env.state(); st["artifactFile"] = art
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        return env, art
+
+    def test_progress_event_carries_etatext_and_writes_html_and_tokens(self):
+        env, art = self._env(
+            [todo_entry(T0, [item("task 1", "in_progress")]),
+             usage_entry(T1, "claude-haiku-4-5-20251001", 50, "m-u1"),
+             todo_entry(T2, [item("task 1", "completed")])],
+            mkstate(tasks=[mktask(1), mktask(2)]))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertTrue(ev["rendered"])
+            self.assertIn("etaText", ev)
+            self.assertEqual(ev["justDone"], ["task 1"])
+            self.assertTrue(os.path.exists(art))
+            self.assertTrue(os.path.exists(art + ".tokens.json"))
+            with open(art, encoding="utf-8") as f:
+                self.assertIn("task 1", f.read())
+        finally:
+            env.cleanup()
+
+    def test_all_done_event_when_last_task_completes(self):
+        env, _ = self._env([todo_entry(T0, [item("task 1", "in_progress")]),
+                            todo_entry(T1, [item("task 1", "completed")])],
+                           mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(lines[-1]["event"], "all-done")
+        finally:
+            env.cleanup()
+
+    def test_render_failure_is_fail_soft(self):
+        env, _ = self._env([todo_entry(T0, [item("task 1", "in_progress")]),
+                            todo_entry(T1, [item("task 1", "completed")])],
+                           mkstate(tasks=[mktask(1), mktask(2)]))
+        st = env.state(); st["artifactFile"] = os.path.join(env.dir.name, "no", "such", "dir", "a.html")
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)                      # job never wedged
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertFalse(ev["rendered"])
+            self.assertNotIn("etaText", ev)
+            self.assertEqual(env.state()["tasks"][0]["status"], "done")  # state still advanced
+        finally:
+            env.cleanup()
+
+    def test_slip_alert_once(self):
+        # originalTotalMin 10; task 1 done at actual 30 -> left side 30+10 > 15 -> slip
+        done = mktask(1, status="done", actualMin=30.0,
+                      startedAt="2026-07-18T09:00:00+00:00",
+                      finishedAt="2026-07-18T09:30:00+00:00")
+        env, _ = self._env([todo_entry(T0, [item("task 2", "in_progress")]),
+                            todo_entry(T1, [item("task 2", "completed")])],
+                           mkstate(originalTotalMin=10, tasks=[done, mktask(2), mktask(3)]))
+        try:
+            rc, lines = env.run_one_shot()
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertTrue(ev.get("slipAlert"))
+            self.assertTrue(env.state()["etaAlertSent"])
+            rc2, lines2 = env.run_one_shot()             # re-render: no second alert
+            ev2 = [l for l in lines2 if l["event"] in ("progress", "all-done")][-1]
+            self.assertFalse(ev2.get("slipAlert", False))
+        finally:
+            env.cleanup()
+
+    def test_unchanged_one_shot_still_renders_eta(self):
+        env, art = self._env([], mkstate(tasks=[mktask(1, status="running",
+                                                startedAt="2026-07-18T10:00:00+00:00")]))
+        try:
+            rc, lines = env.run_one_shot()
+            ev = lines[-1]
+            self.assertEqual(ev["event"], "progress")
+            self.assertFalse(ev["changed"])
+            self.assertTrue(ev["rendered"])              # L3 boundary refresh
+        finally:
+            env.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()

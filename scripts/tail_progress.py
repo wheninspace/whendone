@@ -367,13 +367,62 @@ def handle_completion(state_path, state, t, started, finished, args):
         write_state(state_path, state)
 
 
+def _render_out_path(state):
+    af = state.get("artifactFile")
+    if isinstance(af, str) and os.path.isabs(af):
+        return af
+    return os.path.join(tempfile.gettempdir(),
+                        "whendone-render-%s.html" % (state.get("jobId") or "job"))
+
+
+def render_now(state_path, tok_arg, out_path, now, state):
+    """Invoke the renderer through its pinned CLI entry point; capture the one-line
+    JSON status. Any failure -> None (fail-soft; the caller reports rendered:false)."""
+    push = state.get("pushStatus")
+    if push not in render_artifact.PUSH_STATUS:
+        push = "uncertain"
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = render_artifact.main([state_path, tok_arg, out_path,
+                                       "--now", now.isoformat(), "--push-status", push])
+        if rc != 0:
+            return None
+        return json.loads(buf.getvalue().strip().splitlines()[-1])
+    except Exception:
+        return None
+
+
 def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
-    # Task 5 replaces this with render + slip + real event payloads.
-    tasks = state.get("tasks", [])
-    done = sum(1 for t in tasks if isinstance(t, dict) and t.get("status") == "done")
-    name = "all-done" if tasks and done == len(tasks) else "progress"
-    ev = {"event": name, "done": done, "total": len(tasks),
-          "changed": changed, "justDone": just_done}
+    """Render the artifact, surface etaText/slipAlert, emit ONE progress/all-done
+    event. The model's whole wake job is publishing the file this wrote."""
+    tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
+    done = sum(1 for t in tasks if t.get("status") == "done")
+    all_done = bool(tasks) and done == len(tasks)
+    out_path = _render_out_path(state)
+
+    held_nr, held = getattr(args, "_held_tokens", (None, None))
+    tok_arg = "-"
+    if held and held.get("available"):
+        try:
+            with open(out_path + ".tokens.json", "w", encoding="utf-8") as f:
+                json.dump(held, f)
+            tok_arg = out_path + ".tokens.json"
+        except OSError:
+            tok_arg = "-"
+    elif os.path.exists(out_path + ".tokens.json"):
+        tok_arg = out_path + ".tokens.json"              # reuse last refresh on drift renders
+
+    status = render_now(state_path, tok_arg, out_path, now, state)
+    ev = {"event": "all-done" if all_done else "progress", "done": done,
+          "total": len(tasks), "changed": changed, "justDone": just_done,
+          "rendered": status is not None}
+    if status is not None:
+        ev["etaText"] = status.get("etaText")
+        if status.get("slipAlert") and not state.get("etaAlertSent"):
+            state["etaAlertSent"] = True
+            write_state(state_path, state)
+            ev["slipAlert"] = True
     emit(ev)
     return [ev]
 
