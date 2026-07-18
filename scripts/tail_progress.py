@@ -129,15 +129,174 @@ def main(argv=None):
     p.add_argument("--projects-dir", default=None)
     p.add_argument("--stale-min", type=float, default=None,
                    help="override state staleAfterMin (tests)")
+    p.add_argument("--job-id", default=None,
+                   help="expected jobId; mismatch -> ownership-lost, no writes (L3 callers pass this)")
     a = p.parse_args(argv)
     if a.follow:
         return follow(a)          # Task 6
     return one_shot(a)            # Task 3
 
 
-def one_shot(a):    # replaced in Task 3
-    print(json.dumps({"event": "error", "reason": "one_shot not implemented"}))
-    return 1
+def emit(obj):
+    sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
+
+
+def load_state(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def write_state(path, state):
+    """Atomic same-directory replace — the mid-Edit truncation class the manual
+    protocol could only fail closed on cannot occur here."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", prefix=".whendone-state-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=1)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
+def observe(events, idx):
+    """First-seen start/finish evidence per declared task nr, transcript
+    timestamps only. dispatch/result pairs correlate via tool_use id."""
+    obs, dispatch_nr = {}, {}
+
+    def note(nr, key, ts):
+        slot = obs.setdefault(nr, {})
+        if key not in slot:
+            slot[key] = ts.isoformat()
+
+    for ts, kind, payload in events:
+        if kind == "todos":
+            for it in payload:
+                nr = idx.get(normalize(it.get("content")))
+                if nr is None:
+                    continue
+                if it.get("status") == "in_progress":
+                    note(nr, "startedAt", ts)
+                elif it.get("status") == "completed":
+                    note(nr, "finishedAt", ts)
+        elif kind == "dispatch":
+            nr = idx.get(normalize(payload.get("description")))
+            if nr is not None and payload.get("id"):
+                dispatch_nr[payload["id"]] = nr
+                note(nr, "startedAt", ts)
+        elif kind == "result":
+            nr = dispatch_nr.get(payload.get("tool_use_id"))
+            if nr is not None:
+                note(nr, "finishedAt", ts)
+    return obs
+
+
+def plan_transitions(state, obs):
+    starts, completions = [], []
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict) or t.get("status") == "done":
+            continue
+        o = obs.get(t.get("nr"))
+        if not o:
+            continue
+        if o.get("finishedAt"):
+            completions.append((t, o.get("startedAt"), o["finishedAt"]))
+        elif o.get("startedAt") and t.get("status") == "pending":
+            starts.append((t, o["startedAt"]))
+    completions.sort(key=lambda c: c[2])
+    return starts, completions
+
+
+def transcript_files(state, projects_dir):
+    flat = []
+    for main_t, subs in token_usage.transcript_paths(
+            state.get("sessionIds", []),
+            projects_dir or os.path.expanduser("~/.claude/projects")):
+        flat.append(main_t)
+        flat.extend(subs)
+    return flat
+
+
+def sync_cycle(state_path, now, args):
+    """One observation pass. Returns (state_or_None, [events emitted])."""
+    out = []
+    state = load_state(state_path)
+    if state is None:
+        out.append({"event": "error", "reason": "state file unreadable/unparseable"})
+        emit(out[-1]); return None, out
+    if args.job_id and state.get("jobId") != args.job_id:
+        out.append({"event": "ownership-lost", "expected": args.job_id})
+        emit(out[-1]); return state, out
+    if state.get("source", "a") != "a":
+        out.append({"event": "unsupported-source", "source": state.get("source")})
+        emit(out[-1]); return state, out
+    if state.get("status") != "running":
+        out.append({"event": "no-op", "reason": "status %s" % state.get("status")})
+        emit(out[-1]); return state, out
+
+    try:
+        events, last_ts = extract_events(transcript_files(state, args.projects_dir))
+    except token_usage.TranscriptTooLarge:
+        events, last_ts = [], None
+        out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})
+        emit(out[-1])
+
+    idx = name_index(state.get("tasks"))
+    starts, completions = plan_transitions(state, observe(events, idx))
+    for t, started in starts:
+        t["status"] = "running"
+        t["startedAt"] = started
+        write_state(state_path, state)
+    just_done = []
+    for t, started, finished in completions:
+        handle_completion(state_path, state, t, started, finished, args)
+        just_done.append(t.get("name"))
+
+    changed = bool(starts or completions)
+    args._last_ts = last_ts                      # Task 6's staleness input
+    just_done = (getattr(args, "_pending_names", None) or []) + just_done
+    if (changed and getattr(args, "_render_ok", True)) or getattr(args, "_force_render", False):
+        args._pending_names, args._pending = [], False
+        out.extend(finish_cycle(state_path, state, now, last_ts, changed, just_done, args))
+    elif changed:
+        args._pending, args._pending_names = True, just_done   # debounced; coalesced later
+    return state, out
+
+
+def handle_completion(state_path, state, t, started, finished, args):
+    # Task 4 replaces this with the full crash-ordered pipeline.
+    t["status"] = "done"
+    if started and not t.get("startedAt"):
+        t["startedAt"] = started
+    t["finishedAt"] = finished
+    write_state(state_path, state)
+
+
+def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
+    # Task 5 replaces this with render + slip + real event payloads.
+    tasks = state.get("tasks", [])
+    done = sum(1 for t in tasks if isinstance(t, dict) and t.get("status") == "done")
+    name = "all-done" if tasks and done == len(tasks) else "progress"
+    ev = {"event": name, "done": done, "total": len(tasks),
+          "changed": changed, "justDone": just_done}
+    emit(ev)
+    return [ev]
+
+
+def one_shot(a):
+    a._force_render = True        # L3 boundary refresh always renders (ETA drifts with time)
+    now = token_usage.parse_ts(a.now) or datetime.now(timezone.utc)
+    state, events = sync_cycle(a.state, now, a)
+    if state is None:
+        return 2
+    if any(e.get("event") == "ownership-lost" for e in events):
+        return 3
+    return 0
 
 
 def follow(a):      # replaced in Task 6
