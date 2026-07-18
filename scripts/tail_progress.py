@@ -438,9 +438,113 @@ def one_shot(a):
     return 0
 
 
-def follow(a):      # replaced in Task 6
-    print(json.dumps({"event": "error", "reason": "follow not implemented"}))
-    return 1
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError as e:
+        return e.errno == errno.EPERM      # exists, not ours
+    return True
+
+
+def acquire_lock(state_path):
+    """O_EXCL pid lockfile beside the state file. None -> a LIVE tailer owns it.
+    A dead pid's lock is removed and re-acquired (crashed watcher)."""
+    lock = os.path.join(os.path.dirname(os.path.abspath(state_path)), "whendone-tail.lock")
+    for _ in range(3):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w") as f:
+                f.write(str(os.getpid()))
+            return lock
+        except FileExistsError:
+            try:
+                with open(lock, encoding="utf-8") as f:
+                    pid = int(f.read().strip() or "0")
+            except (OSError, ValueError):
+                pid = 0
+            if pid and _pid_alive(pid):
+                return None
+            with contextlib.suppress(OSError):
+                os.remove(lock)            # stale; retry O_EXCL
+        except OSError:
+            return None
+    return None
+
+
+def check_staleness(state_path, state, now, stale_min, args):
+    """F13: no new transcript entry for stale_min minutes while a task is in
+    flight -> ONE stale event per task, persisted as staleNotifiedAt."""
+    out = []
+    last_ts = getattr(args, "_last_ts", None)
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict) or t.get("status") != "running" or t.get("staleNotifiedAt"):
+            continue
+        anchor = last_ts
+        started = token_usage.parse_ts(t.get("startedAt"))
+        if anchor is None or (started and started > anchor):
+            anchor = started
+        if anchor is None:
+            continue
+        stalled = (now - anchor).total_seconds() / 60.0
+        if stalled >= stale_min:
+            t["staleNotifiedAt"] = now.isoformat()
+            write_state(state_path, state)
+            ev = {"event": "stale", "task": t.get("nr"), "name": t.get("name"),
+                  "stalledMin": round(stalled, 1)}
+            emit(ev)
+            out.append(ev)
+    return out
+
+
+TERMINAL_RC = {"all-done": 0, "unsupported-source": 0, "no-op": 0,
+               "ownership-lost": 3, "error": 2}
+
+
+def follow(a):
+    first = load_state(a.state)
+    if first is None:
+        emit({"event": "error", "reason": "state file unreadable/unparseable"})
+        return 2
+    if not a.job_id:
+        a.job_id = first.get("jobId")     # remembered; checked every cycle (D8)
+    lock = acquire_lock(a.state)
+    if lock is None:
+        emit({"event": "already-running",
+              "reason": "another tailer holds whendone-tail.lock"})
+        return 4
+    stale_min = a.stale_min
+    if stale_min is None:
+        v = first.get("staleAfterMin")
+        stale_min = v if isinstance(v, (int, float)) and v > 0 else DEFAULT_STALE_MIN
+    last_emit = float("-inf")
+    cycles = 0
+    try:
+        while True:
+            now = datetime.now(timezone.utc)
+            mono = time.monotonic()
+            a._render_ok = (mono - last_emit) >= a.debounce
+            a._force_render = bool(getattr(a, "_pending", False) and a._render_ok)
+            state, events = sync_cycle(a.state, now, a)
+            woke = [e for e in events if e.get("event") in ("progress", "all-done")]
+            if woke:
+                last_emit = mono
+            for e in events:
+                if e.get("event") in TERMINAL_RC:
+                    if e["event"] in ("progress",):
+                        continue
+                    return TERMINAL_RC[e["event"]]
+            stale_evs = []
+            if state is not None and state.get("status") == "running":
+                stale_evs = check_staleness(a.state, state, now, stale_min, a)
+            if (woke or stale_evs) and a.exit_on_event:
+                return 0
+            cycles += 1
+            if a.max_cycles and cycles >= a.max_cycles:
+                return 0
+            time.sleep(a.interval)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(lock)
 
 
 if __name__ == "__main__":

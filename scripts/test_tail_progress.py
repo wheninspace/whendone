@@ -489,5 +489,139 @@ class FinishCycleTest(unittest.TestCase):
             env.cleanup()
 
 
+class FollowTest(unittest.TestCase):
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name   # restore module default
+        self.calib.cleanup()
+
+    def run_follow(self, env, extra=()):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tp.main([env.state_path, "--follow", "--interval", "0",
+                          "--projects-dir", env.projects, *extra])
+        return rc, [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+
+    def test_all_done_terminates_without_max_cycles(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = self.run_follow(env)
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+        finally:
+            env.cleanup()
+
+    def test_exit_on_event_stops_after_first_progress(self):
+        env = SyncEnv([todo_entry(T1, [item("task 1", "completed"),
+                                       item("task 2", "pending")]),
+                       todo_entry(T0, [item("task 1", "in_progress")])],
+                      mkstate(tasks=[mktask(1), mktask(2)]))
+        try:
+            rc, lines = self.run_follow(env, extra=("--exit-on-event",))
+            self.assertEqual(rc, 0)
+            self.assertEqual(sum(1 for l in lines if l["event"] == "progress"), 1)
+        finally:
+            env.cleanup()
+
+    def test_quiet_cycles_emit_nothing(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = self.run_follow(env, extra=("--max-cycles", "3"))
+            self.assertEqual(rc, 0)
+            self.assertEqual([l for l in lines
+                              if l["event"] in ("progress", "all-done")], [])
+        finally:
+            env.cleanup()
+
+    def test_stale_event_once_and_persisted(self):
+        # Deterministic anchor: pre-running task with an old startedAt and an
+        # EMPTY transcript (no events, no last_ts) — staleness must not depend
+        # on when the suite happens to run relative to the fixture timestamps.
+        env = SyncEnv([], mkstate(tasks=[mktask(
+            1, status="running", startedAt="2026-01-01T00:00:00+00:00")]))
+        try:
+            rc, lines = self.run_follow(env, extra=("--max-cycles", "3",
+                                                    "--stale-min", "5"))
+            stales = [l for l in lines if l["event"] == "stale"]
+            self.assertEqual(len(stales), 1)             # once, not per cycle
+            self.assertEqual(stales[0]["task"], 1)
+            self.assertGreater(stales[0]["stalledMin"], 5)
+            self.assertIsNotNone(env.state()["tasks"][0]["staleNotifiedAt"])
+            rc2, lines2 = self.run_follow(env, extra=("--max-cycles", "2",
+                                                      "--stale-min", "5"))
+            self.assertEqual([l for l in lines2 if l["event"] == "stale"], [])
+        finally:
+            env.cleanup()
+
+    def test_live_lock_refuses_dead_lock_taken_over(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1)]))
+        lock = os.path.join(os.path.dirname(env.state_path), "whendone-tail.lock")
+        try:
+            with open(lock, "w") as f:
+                f.write(str(os.getpid()))                # alive -> refuse
+            rc, lines = self.run_follow(env, extra=("--max-cycles", "1"))
+            self.assertEqual(rc, 4)
+            self.assertEqual(lines[-1]["event"], "already-running")
+            with open(lock, "w") as f:
+                f.write("999999999")                     # dead -> take over
+            rc2, _ = self.run_follow(env, extra=("--max-cycles", "1"))
+            self.assertEqual(rc2, 0)
+            self.assertFalse(os.path.exists(lock))       # released on exit
+        finally:
+            env.cleanup()
+
+    def test_job_id_mismatch_exits_3(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = self.run_follow(env, extra=("--job-id", "OTHER"))
+            self.assertEqual(rc, 3)
+            self.assertEqual(lines[-1]["event"], "ownership-lost")
+        finally:
+            env.cleanup()
+
+    def test_paused_state_exits_clean(self):
+        env = SyncEnv([], mkstate(status="paused", tasks=[mktask(1)]))
+        try:
+            rc, lines = self.run_follow(env)
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "no-op")
+        finally:
+            env.cleanup()
+
+
+class DebounceGateTest(unittest.TestCase):
+    """The sync_cycle gate: suppressed change-cycles coalesce into the next
+    rendered event (the follow loop drives _render_ok/_force_render)."""
+    def test_suppressed_then_coalesced(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2)]))
+        try:
+            import argparse as ap
+            args = ap.Namespace(job_id=None, projects_dir=env.projects, now=None,
+                                stale_min=None, _render_ok=False)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                _, ev1 = tp.sync_cycle(env.state_path,
+                                       tp.token_usage.parse_ts(T2), args)
+            self.assertEqual([e for e in ev1
+                              if e.get("event") in ("progress", "all-done")], [])
+            self.assertTrue(args._pending)
+            self.assertEqual(args._pending_names, ["task 1"])
+            args._render_ok, args._force_render = True, True
+            with contextlib.redirect_stdout(buf):
+                _, ev2 = tp.sync_cycle(env.state_path,
+                                       tp.token_usage.parse_ts(T2), args)
+            prog = [e for e in ev2 if e.get("event") == "progress"][-1]
+            self.assertEqual(prog["justDone"], ["task 1"])   # carried over
+        finally:
+            env.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()
