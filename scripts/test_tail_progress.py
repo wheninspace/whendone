@@ -795,6 +795,52 @@ class FollowTest(unittest.TestCase):
             env.cleanup()
 
 
+class SourceCFollowTest(unittest.TestCase):
+    def _follow(self, env, extra=()):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tp.main([env.state_path, "--follow", "--interval", "0.01",
+                          "--debounce", "0", "--projects-dir", env.projects, *extra])
+        return rc, [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+
+    def test_watcher_exits_zero_on_all_done_with_uncalibrated_label(self):
+        env = SyncEnv([
+            todo_entry(T0, [item("only step", "in_progress")], mid="m1"),
+            todo_entry(T1, [item("only step", "completed")], mid="m2"),
+        ], mkstate(source="c", tasks=[], originalTotalMin=None))
+        try:
+            rc, lines = self._follow(env, extra=("--max-cycles", "3"))
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+            self.assertIn("uncalibrated", lines[-1].get("etaText") or "")
+        finally:
+            env.cleanup()
+
+    def test_stale_fires_once_for_a_hung_mirrored_item(self):
+        env = SyncEnv([todo_entry(T0, [item("long step", "in_progress")], mid="m1")],
+                      mkstate(source="c", tasks=[], originalTotalMin=None))
+        try:
+            rc, lines = self._follow(env, extra=("--max-cycles", "3",
+                                                 "--stale-min", "0.001"))
+            stale = [l for l in lines if l["event"] == "stale"]
+            self.assertEqual(len(stale), 1)
+            self.assertEqual(stale[0]["name"], "long step")
+            self.assertIsNotNone(env.state()["tasks"][0].get("staleNotifiedAt"))
+        finally:
+            env.cleanup()
+
+    def test_lock_released_after_all_done(self):
+        env = SyncEnv([
+            todo_entry(T0, [item("only step", "completed")], mid="m1"),
+        ], mkstate(source="c", tasks=[], originalTotalMin=None))
+        try:
+            self._follow(env, extra=("--max-cycles", "3"))
+            lock = os.path.join(os.path.dirname(env.state_path), "whendone-tail.lock")
+            self.assertFalse(os.path.exists(lock))
+        finally:
+            env.cleanup()
+
+
 def wf_started(aid):
     return {"type": "started", "key": "v2:" + "0" * 63 + "1", "agentId": aid}
 
