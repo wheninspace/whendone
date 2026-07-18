@@ -86,7 +86,7 @@ allowance for the Read tool's line-number prefixes (~3.3–3.6 tokens/line, meas
 cl100k tokenizer on 2026-07-17 — the earlier 1.4 figure undercounted ~2.4×) where a full file
 is read.
 No tokenizer was run; a real tokenizer typically runs a little denser on markdown/JSON, so these
-are floors, not ceilings. **Provenance:** SKILL.md (36,689 chars), `references/file-formats.md`
+are floors, not ceilings. **Provenance:** SKILL.md (36,740 chars), `references/file-formats.md`
 (14,631 chars), and `references/artifact-template.md` (8,651 chars) are `wc -c` on the files as
 they ship in this repo; `calibration-summary.md` (2,825 chars) is the actual output of
 `scripts/calibration_summary.py` (unmodified) run against a synthetic 60-row, 8-category
