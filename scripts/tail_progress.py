@@ -432,9 +432,63 @@ def sync_cycle_b(state_path, state, now, args, out):
     if changed:
         write_state(state_path, state)
     all_done_now = False
-    # Task 5 inserts: if meta["finished"]: changed, all_done_now, just_done = finalize_b(...)
+    if meta["finished"]:
+        finalized = finalize_b(state_path, state, per_tag, args)
+        if finalized:
+            changed = True
+            just_done.extend(finalized)
+        tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
+        all_done_now = bool(tasks) and all(t.get("status") == "done" for t in tasks)
     return _maybe_finish(state_path, state, now, args, out, changed,
                          just_done, all_done_now)
+
+
+def finalize_b(state_path, state, per_tag, args):
+    """Completion record observed: the run ENDED, so spans are final and rows can
+    no longer be contradicted by a late agent (B4). Same crash order as
+    handle_completion: (b) durable done-marker -> (c) append -> (d) actualMin.
+    Full-job token refresh once (B8). Every step past (b) is fail-soft.
+    Phases already done with a non-null actualMin are never re-finalized."""
+    finalized = []
+    tokens = None
+    try:
+        tokens = token_usage.summarize(state_path, projects_dir=args.projects_dir)
+    except Exception:
+        tokens = None
+    args._held_tokens = (None, tokens)
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict):
+            continue
+        if t.get("status") == "done" and t.get("actualMin") is not None:
+            continue                                  # done-is-done (B12)
+        slot = per_tag.get(t.get("wdTag")) or {}
+        started = slot.get("minStart") or t.get("startedAt")
+        finished = slot.get("maxEnd") or t.get("finishedAt")
+        # (b) durable done-marker FIRST
+        t["status"] = "done"
+        if started:
+            t["startedAt"] = started
+        if finished:
+            t["finishedAt"] = finished
+        write_state(state_path, state)
+        finalized.append(t.get("name"))
+        # (c) append — only with a full observed span, never invented
+        appended = None
+        if started and finished:
+            models = slot.get("models") or set()
+            row = dict(_base_row(state, state_path, started, finished),
+                       category=t.get("category"),
+                       rawEstimateMin=t.get("rawEstimateMin"),
+                       model=next(iter(models)) if len(models) == 1 else "unknown")
+            try:
+                ok, res = append_calibration.append_obj(row)
+                appended = res if ok else None
+            except Exception:
+                appended = None
+        # (d) actualMin mirrors the logged value
+        t["actualMin"] = appended["actualMin"] if appended else None
+        write_state(state_path, state)
+    return finalized
 
 
 def _is_alias(model):

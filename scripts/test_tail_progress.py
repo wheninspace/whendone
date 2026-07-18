@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for tail_progress.py. Run: python3 scripts/test_tail_progress.py -v"""
 import contextlib, io, json, os, sys, tempfile, unittest
+import unittest.mock
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -806,6 +807,118 @@ class DebounceGateTest(unittest.TestCase):
             self.assertTrue(all_done_evs[0].get("slipAlert"))
             self.assertFalse(getattr(args, "_pending", False))  # not deferred
             self.assertTrue(env.state()["etaAlertSent"])
+        finally:
+            env.cleanup()
+
+
+class SourceBFinalizeTest(unittest.TestCase):
+    def _env(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1), wf_result(B_A1),
+                             wf_started(B_A2), wf_result(B_A2),
+                             wf_started(B_A3), wf_result(B_A3)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A2, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A3, [agent_entry(BT1, "[wd:fix] go"),
+                                    agent_entry(BT2, "x")])])
+        env.finish_run()
+        return env
+
+    def test_finalize_appends_one_row_per_phase(self):
+        env = self._env()
+        data_dir = os.path.join(env.dir.name, "wd-data")
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))) as ap:
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            rows = [c.args[0] for c in ap.call_args_list]
+            self.assertEqual([r["category"] for r in rows],
+                             ["review", "judgment-coding"])
+            self.assertEqual(rows[0]["startedAt"],
+                             tp.token_usage.parse_ts(BT0).isoformat())
+            self.assertEqual(rows[0]["finishedAt"],
+                             tp.token_usage.parse_ts(BT1).isoformat())
+            self.assertEqual(rows[0]["rawEstimateMin"], 10)
+            self.assertEqual(rows[0]["model"], "unknown")  # no meta.json written
+            st = env.state()
+            self.assertTrue(all(t["status"] == "done" for t in st["tasks"]))
+            self.assertEqual(st["tasks"][0]["actualMin"], 15.0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+        finally:
+            env.cleanup()
+
+    def test_finalize_never_reappends_done_phase(self):
+        env = self._env()
+        st = env.state()
+        st["tasks"][0].update(status="done", actualMin=9.9,
+                              startedAt="2026-07-18T09:05:00+00:00",
+                              finishedAt="2026-07-18T09:20:00+00:00")
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))) as ap:
+                env.run_one_shot()
+            rows = [c.args[0] for c in ap.call_args_list]
+            self.assertEqual(len(rows), 1)             # only "fix"
+            self.assertEqual(rows[0]["category"], "judgment-coding")
+            self.assertEqual(env.state()["tasks"][0]["actualMin"], 9.9)
+        finally:
+            env.cleanup()
+
+    def test_phase_without_span_gets_no_row(self):
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1), wf_result(B_A1)],
+                    agents=[])                        # transcript never readable
+        env.finish_run()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap:
+                rc, lines = env.run_one_shot()
+            ap.assert_not_called()                    # missing evidence -> no row
+            st = env.state()
+            self.assertTrue(all(t["status"] == "done" for t in st["tasks"]))
+            self.assertTrue(all(t["actualMin"] is None for t in st["tasks"]))
+            self.assertEqual(lines[-1]["event"], "all-done")
+        finally:
+            env.cleanup()
+
+    def test_append_failure_fails_soft(self):
+        env = self._env()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=RuntimeError("disk gone")):
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+            self.assertTrue(all(t["actualMin"] is None
+                                for t in env.state()["tasks"]))
+        finally:
+            env.cleanup()
+
+    def test_uniform_meta_model_reaches_row(self):
+        env = self._env()
+        for aid in (B_A1, B_A2):
+            with open(os.path.join(env.run_dir,
+                                   "agent-%s.meta.json" % aid), "w") as f:
+                json.dump({"agentType": "workflow-subagent",
+                           "model": "claude-haiku-4-5-20251001"}, f)
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))) as ap:
+                env.run_one_shot()
+            rows = [c.args[0] for c in ap.call_args_list]
+            self.assertEqual(rows[0]["model"], "claude-haiku-4-5-20251001")
         finally:
             env.cleanup()
 
