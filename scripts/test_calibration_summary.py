@@ -621,5 +621,33 @@ class TestFooterIntervalRule(unittest.TestCase):
         self.assertIn("debugging: q1=0.83 q3=1.37", out)
 
 
+class TestProjectMixCaveat(unittest.TestCase):
+    def test_cross_project_category_emits_caveat_naming_both(self):
+        out = run_main([row(project="fast-app") for _ in range(3)]
+                       + [row(project="slow-legacy", actual=30) for _ in range(2)])
+        self.assertIn("## Project mix caveat", out)
+        self.assertIn("fast-app", out)
+        self.assertIn("slow-legacy", out)
+
+    def test_project_names_sanitized_in_caveat(self):
+        # sanitize(): | -> /, backtick -> ', newline -> space, leading # stripped.
+        out = run_main([row(project="evil|proj`x`"), row(project="# heading\nproj")])
+        self.assertIn("## Project mix caveat", out)
+        self.assertIn("evil/proj'x'", out)
+        self.assertNotIn("evil|proj", out)
+        self.assertNotIn("`x`", out)
+        for line in out.splitlines():
+            self.assertFalse(line.startswith("# heading"), "raw project injected a heading")
+
+    def test_blank_and_nonstring_projects_do_not_count(self):
+        # One real project + blank + non-string: not a mix, no caveat, no crash.
+        out = run_main([row(project=""), row(project="only-proj"), row(project=123)])
+        self.assertNotIn("## Project mix caveat", out)
+
+    def test_single_project_category_no_caveat(self):
+        out = run_main([row() for _ in range(5)])   # helper default project="proj"
+        self.assertNotIn("## Project mix caveat", out)
+
+
 if __name__ == "__main__":
     unittest.main()

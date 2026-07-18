@@ -391,10 +391,17 @@ def main(jsonl_path, out_path):
             # M21: clamp every ratio before it reaches any pooling step. M2: track each
             # row's rawEstimateMin as its weight so the per-category factor tracks a
             # SUM's error, not a per-task-count-equal vote.
-            d = cats.setdefault(r["category"], {"ratios": [], "weights": [], "models": {}})
+            d = cats.setdefault(r["category"], {"ratios": [], "weights": [],
+                                                "models": {}, "projects": {}})
             d["ratios"].append(clamp_ratio(r["act"] / r["est"]))
             d["weights"].append(r["est"])
             d["models"][r["model"]] = d["models"].get(r["model"], 0) + 1
+            # F10: track per-category project counts for the mix caveat. Only non-empty
+            # strings count — blank rows (the "" default) and non-string junk must never
+            # make a single-project category look mixed. Stored raw; sanitize()d at emit.
+            proj = r["project"]
+            if isinstance(proj, str) and proj:
+                d["projects"][proj] = d["projects"].get(proj, 0) + 1
     except (OSError, UnicodeDecodeError) as e:
         print(f"cannot read {jsonl_path}: {e}", file=sys.stderr)
         return 1
@@ -438,6 +445,16 @@ def main(jsonl_path, out_path):
                 "These categories mix models with different speeds — factors conflate model and task variance:", ""]
         for cat, mix in sorted(mixes.items()):
             out.append(f"- {cat}: " + ", ".join(f"`{m}` ×{k}" for m, k in sorted(mix.items())))
+
+    # F10: advisory only — never downgrades the confidence label (that contract is shared
+    # with SKILL.md/file-formats.md). Project names are stored raw in parse_row, so they
+    # are sanitize()d here at emit, like every other re-emitted string in this module.
+    pmixes = {c: d["projects"] for c, d in cats.items() if len(d.get("projects", {})) > 1}
+    if pmixes:
+        out += ["", "## Project mix caveat", "",
+                "These categories pool data from more than one project — factors conflate project and task variance:", ""]
+        for cat, mix in sorted(pmixes.items()):
+            out.append(f"- {cat}: " + ", ".join(f'"{sanitize(p)}" ×{k}' for p, k in sorted(mix.items())))
 
     if parallel:
         # M22: log/report the ETA rule's actual operands (max-of-adjusted vs

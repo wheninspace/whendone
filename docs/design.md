@@ -137,6 +137,13 @@ complete fix would tag such rows (e.g. an `anchored: true` field on the logged e
 statistic instead of merely being disclosed after the fact. That field is explicitly NOT added
 this round — deferred, along with the read-side logic that would need to consume it.
 
+**Project-mix caveat (round-3 F10, 2026-07-18):** the summary warns when a category pools
+data from more than one project (mirroring the model-mix caveat) because a pooled factor can
+be simultaneously "high confidence" and badly wrong for one of the projects. Advisory only:
+the confidence label and factor are unchanged — a downgrade would alter the interval contract
+shared with SKILL.md and file-formats.md. Revisit if pooled cross-project "high confidence"
+proves misleading in practice.
+
 ## Safety decisions
 
 - **HTML-escaping of interpolated fields.** Job names, project names, and subtask names come from
