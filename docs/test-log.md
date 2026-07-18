@@ -536,3 +536,41 @@ follow-up run (still the least-tested path, as in stages 2–3):
 
 The done-is-done guard this drill checks is unit-tested (`test_finalize_never_reappends_done_phase`
 in `scripts/test_tail_progress.py`); the drill is the live cross-session confirmation of it.
+
+## Stage 5 — flip-gate check — 2026-07-19
+
+The release gate (design spec §2): Sources A and B both working, plus Source C and the positioning
+rewrite, all precede the public flip. This section RECORDS the gate; it does not push (the push is
+the owner-run flip checklist, `docs/plans/2026-07-18-flip-checklist.md`).
+
+**Suites (warning-clean).** `python3 -W error::ResourceWarning -m unittest discover -p 'test_*.py'`
+across the six suites: **267 tests, OK** (243 baseline + 24 stage-5 additions — Source-C observer,
+sync_cycle_c, calibration guard, follow-mode pins, renderer pins, and workflow_journal containment).
+
+**Formula parity.** `widen that task's band to the envelope` → **1/1/0/0/0/0**
+(`references/file-formats.md`:1, `scripts/calibration_summary.py`:1; SKILL.md + all three
+`source-*.md` at 0). Unchanged from the stage-4 baseline — no formula prose was touched in stage 5.
+
+**Forbidden-string + secrets sweep (tracked files).** `git grep` for `FBR`, `fbrswe`, `robocopy`,
+`framdrift`, `G:\`, and the spelled-out agency name (case-insensitive fragment): **all absent.**
+Secrets scan (`api[_-]?key|secret|BEGIN … PRIVATE KEY|Bearer …`): the only hits are two benign
+security-context prose mentions in `README.md` (the sensitivity-flagging paragraph and the
+"API-key-only setups" note) — no credentials, tokens, or keys. Manual skim: no Swedish prose in
+tracked docs.
+
+**Token budget (stage-5 re-measurement, `tiktoken cl100k_base`, 2026-07-19).** Source-A
+trigger-to-first-publish path (same composition as stage-4's 12,182): **12,313 tokens** (+131 drift
+from the five SKILL.md flips + the file-formats note), under the 14,000 gate with 1,687 to spare.
+`references/source-c.md` standalone: **920 tokens** (gate <2,500) — off the Source-A trigger path,
+read only when Source C is detected.
+
+**Gate evidence (cited, not re-run).**
+- Source A working → the Stage-3 Source-A dogfood entry above (this file, 2026-07-18).
+- Source B working → the Stage-4 Source-B dogfood entry above (runId `wf_0580e207-b1b`, 2026-07-18).
+- Source C working → the live Source-C dogfood entry below (this session, artifact
+  `048ecc36-4bfb-407b-9d43-403c4a5429fb`, 2026-07-19).
+- Docs consistency → `git grep "not shipped"` over SKILL.md/references/README.md: zero survivors;
+  README install tag `v0.3.0`; CHANGELOG header order v0.3.0 → v0.2.1 → v0.2.0 → v0.1.0.
+
+All gate conditions met. The two never-run-live paths (Source-A and Source-B cross-session resume
+drills) remain owner tasks on the flip checklist — they gate the flip, not this branch's merge.
