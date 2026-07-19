@@ -52,7 +52,7 @@ below once the file is confirmed to parse.
    ladder from L1; Sources A/B also re-run the unique-name check for any task added/renamed since
    the pause (references/source-a.md). Source B FIRST: the old session's Workflow run died with
    it — before restarting the watcher, follow source-b.md's Resume paragraph (relaunch via
-   `Workflow({scriptPath, resumeFromRunId})`, compare the returned runId to the state's
+   `Workflow({scriptPath: state's workflowScriptPath, resumeFromRunId})`, compare the returned runId to the state's
    `workflowRunId`). Source C: the tailer re-mirrors the session's TodoWrite list on its first
    pass (references/source-c.md).
 6. State file missing but a plan file exists? Rebuild the state from the checkboxes; new

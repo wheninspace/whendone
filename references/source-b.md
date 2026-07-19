@@ -31,9 +31,11 @@ agent is counted job-wide (job-level `wfAgentsStarted`/`wfAgentsDone`) but attri
 phase.
 
 State-file write: same hard write-target + gitignore preconditions as SKILL.md's core, plus
-`source: "b"` and `workflowRunId` = the `runId` from the Workflow tool's result — write the
-state AFTER the Workflow call returns, BEFORE starting the watcher. **No TodoWrite list**
-(Source B has no per-subtask dispatch text to match against).
+`source: "b"`, `workflowRunId` = the `runId` from the Workflow tool's result, and
+`workflowScriptPath` = the script path the same tool result reports (every invocation
+persists its script and returns the path) — write the state AFTER the Workflow call returns,
+BEFORE starting the watcher. **No TodoWrite list** (Source B has no per-subtask dispatch text
+to match against).
 
 First render + publish, identical mechanics to source-a.md (cross-ref artifact-template.md):
 `originalTotalMin` from that render's `estimateTotalMin` (never hand-computed), full artifact
@@ -41,7 +43,8 @@ URL as a plain markdown link in chat.
 
 ## State fields (normative, stage 4)
 
-Job-level: `workflowRunId` (string), `wfAgentsStarted`, `wfAgentsDone` (ints,
+Job-level: `workflowRunId` (string), `workflowScriptPath` (string, written at declare — the resume
+relaunch input), `wfAgentsStarted`, `wfAgentsDone` (ints,
 tailer-maintained), `wfDriftNotified` (bool, tailer-maintained). Per-task: `wdTag` (string),
 `agentsExpected` (int, lead-declared, optional), `agentsStarted`, `agentsDone` (ints,
 tailer-maintained). All additive/optional — ignored entirely by sources A and C; pre-existing
@@ -101,7 +104,11 @@ re-emission is needed (the finalize pass already refreshed full-job tokens once)
 before the paused-state render.
 
 **Resume:** a Workflow run dies with its launching session — there is no process to reattach
-to. On resume, relaunch via `Workflow({scriptPath, resumeFromRunId})`. The engine REUSES the
+to. On resume, relaunch via `Workflow({scriptPath: <state's workflowScriptPath>,
+resumeFromRunId: <state's workflowRunId>})`. A pre-v0.3.1 state has no
+`workflowScriptPath` — then the state file alone is NOT enough: ask the user for the script
+path (or locate the persisted script under the dead session's directory) before relaunching.
+The engine REUSES the
 runId (verified 2026-07-19; an earlier draft assumed a new one): compare the tool result's
 `runId` to the state's `workflowRunId` and update only if it differs. Same runId means the
 resumed run's dir sits under the NEW session while the dead session's dir persists —

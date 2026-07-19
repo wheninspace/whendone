@@ -95,8 +95,8 @@ environment's real notification status.
 at declare time so the tailer can stamp calibration rows (the script can't observe it itself).
 Absent ⇒ `"unknown"`.
 
-Source-B additive fields (stage 4): job-level `workflowRunId`, `wfAgentsStarted`,
-`wfAgentsDone`, `wfDriftNotified`; per-task `wdTag`, `agentsExpected`,
+Source-B additive fields (stage 4): job-level `workflowRunId`, `workflowScriptPath`,
+`wfAgentsStarted`, `wfAgentsDone`, `wfDriftNotified`; per-task `wdTag`, `agentsExpected`,
 `agentsStarted`, `agentsDone`, `bFinalized`. Normative definitions, the Workflow journal format,
 and the tag convention live in `references/source-b.md` (kept off this file to
 protect the Source-A trigger-path token budget).
