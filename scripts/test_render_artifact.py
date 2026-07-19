@@ -182,10 +182,30 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(ra.fmt_tok(38_400), "38k")
         self.assertEqual(ra.fmt_tok(3_100_000), "3.1M")
 
-    def test_fmt_min(self):
+    def test_fmt_min_hybrid_display(self):
+        # Hybrid display policy (2026-07-19): >= 1 min -> whole minutes
+        # (half-up, not banker's), < 1 min -> whole seconds; never "0 m",
+        # never fake sub-minute precision on multi-minute values.
+        # Display-only — ETA/interval/sum math stays on the raw values.
         self.assertEqual(ra.fmt_min(11), "11 m")
-        self.assertEqual(ra.fmt_min(4.5), "4.5 m")
         self.assertEqual(ra.fmt_min(8.0), "8 m")
+        self.assertEqual(ra.fmt_min(2.3), "2 m")
+        self.assertEqual(ra.fmt_min(14.5), "15 m")
+        self.assertEqual(ra.fmt_min(1.0), "1 m")
+        self.assertEqual(ra.fmt_min(0.9), "54 s")
+        self.assertEqual(ra.fmt_min(0.5), "30 s")
+        self.assertEqual(ra.fmt_min(0.996), "1 m")  # 59.76 s rounds to 60 -> promote
+
+    def test_fmt_min_s_exact_display(self):
+        # m+s precision for STATEMENTS OF FACT (job-end "took", Total-row
+        # actual sum) — never for estimates, which stay hybrid whole-minute.
+        # Two precise numbers that differ read as different quantities;
+        # two rounded ones read as a contradiction (2026-07-19).
+        self.assertEqual(ra.fmt_min_s(8.5), "8 m 30 s")
+        self.assertEqual(ra.fmt_min_s(7.917), "7 m 55 s")
+        self.assertEqual(ra.fmt_min_s(55.0), "55 m")     # zero seconds omitted
+        self.assertEqual(ra.fmt_min_s(0.8), "48 s")
+        self.assertEqual(ra.fmt_min_s(0.996), "1 m")     # 59.76 s -> 60 -> promote
 
     def test_fmt_dev_signs(self):
         self.assertEqual(ra.fmt_dev(11.4, 8), "(+42 %)")
@@ -314,20 +334,20 @@ class TestInterval(unittest.TestCase):
         # band [10,30] -> N = 10
         s = state(tasks=[task(1), task(2)])
         txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
-        self.assertEqual(txt, "Done ~10:20 ± 10 min (nominal)")
+        self.assertEqual(txt, "When done: ~10:20 ± 10 min (nominal)")
 
     def test_eta_text_widened_marker(self):
         # per task widened band [5,20]; two tasks: low 10 high 40; remaining 20
         s = state(tasks=[task(1), task(2)])
         txt = ra.eta_text(s, ra.units(s["tasks"]), MEDIUM_SUMMARY, self.now)
-        self.assertEqual(txt, "Done ~10:20 (−10/+20 min) (widened to measured spread)")
+        self.assertEqual(txt, "When done: ~10:20 (−10/+20 min) (widened to measured spread)")
 
     def test_eta_text_high_asymmetric_no_marker(self):
         # est 12 raw 10, band [9,15] per task; two tasks: remaining 24, low 18, high 30
         s = state(tasks=[task(1, rawEstimateMin=10, estimateMin=12),
                          task(2, rawEstimateMin=10, estimateMin=12)])
         txt = ra.eta_text(s, ra.units(s["tasks"]), HIGH_SUMMARY, self.now)
-        self.assertEqual(txt, "Done ~10:24 (−6/+6 min)")
+        self.assertEqual(txt, "When done: ~10:24 (−6/+6 min)")
 
     def test_ab_clamped_at_zero(self):
         # High-confidence running task, est 12 raw 10, started 09:51 (elapsed 9):
@@ -352,7 +372,7 @@ class TestInterval(unittest.TestCase):
         s = state(source="c", tasks=[task(1, status="done"), task(2, status="done"),
                                      task(3), task(4)])
         txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
-        self.assertEqual(txt, "Done ~11:00 (uncalibrated — pace-based)")
+        self.assertEqual(txt, "When done: ~11:00 (uncalibrated — pace-based)")
 
     def test_source_c_no_completions_yet(self):
         s = state(source="c", tasks=[task(1), task(2)])
@@ -418,14 +438,14 @@ class TestFullPage(unittest.TestCase):
                          task(3)])
         rc, page, out = run_cli(s)
         self.assertEqual(rc, 0)
-        self.assertIn("Done ~", page)
+        self.assertIn("When done: ~", page)
         self.assertIn("(nominal)", page)          # no summary -> flat bands
         self.assertIn("Started 09:00", page)
         self.assertIn("60 min elapsed", page)
         self.assertIn("1 of 3 subtasks done", page)
         st = json.loads(out)
         self.assertEqual((st["done"], st["total"]), (1, 3))
-        self.assertTrue(st["etaText"].startswith("Done ~"))
+        self.assertTrue(st["etaText"].startswith("When done: ~"))
         self.assertEqual(st["estimateTotalMin"], 30)
 
     def test_task_table_rows_icons_deviation_and_dev_span(self):
@@ -437,7 +457,93 @@ class TestFullPage(unittest.TestCase):
         self.assertIn("✅", page)
         self.assertIn("\U0001f504", page)
         self.assertIn("⬜", page)
-        self.assertIn('<span class="dev">11.4 m (+42 %)</span>', page)
+        # value and deviation are SEPARATE nowrap islands: the line may wrap
+        # between them, so a narrow Actual column never overflows the page
+        # (mobile horizontal-wobble fix, 2026-07-19); actuals are facts ->
+        # m+s precision (no timestamps here, so the logged value displays)
+        self.assertIn('<span class="dev">11 m 24 s</span> '
+                      '<span class="dev">(+42 %)</span>', page)
+
+    def test_row_actual_is_unfloored_wall_span(self):
+        # The 0.5-min floor is a CALIBRATION-LOG rule, not a fact about the
+        # clock: a 12 s task displays "12 s" even though its logged actualMin
+        # is the floored 0.5 (2026-07-19). Timestamps win over the logged
+        # value; deviation follows the displayed span.
+        s = state(tasks=[task(1, status="done", actualMin=0.5,
+                              startedAt="2026-07-18T09:50:00+02:00",
+                              finishedAt="2026-07-18T09:50:12+02:00")])
+        _, page, _ = run_cli(s)
+        self.assertIn('<span class="dev">12 s</span> '
+                      '<span class="dev">(−98 %)</span>', page)
+        self.assertNotIn(">30 s<", page)
+
+    def test_totals_row_mid_run_sums_no_deviation(self):
+        # Bottom totals row (2026-07-19): plain column arithmetic — Est over
+        # every estimated task, Actual over done tasks so far (work minutes,
+        # NOT group-aware walltime; the top box stays the walltime authority).
+        # No deviation mid-run: partial actual vs full estimate would mislead.
+        s = state(tasks=[task(1, status="done", actualMin=11.4),
+                         task(2, status="running",
+                              startedAt="2026-07-18T09:59:00+02:00"),
+                         task(3)])
+        _, page, _ = run_cli(s)
+        self.assertIn('<tr class="total"><td></td><td>Total'
+                      '<br><span class="dim">sum of subtasks</span></td>'
+                      '<td class="dim"></td><td>30 m</td>'
+                      '<td><span class="dev">11 m 24 s</span></td></tr>', page)
+        self.assertIn("tr.total td", page)     # styled: top border, bold
+
+    def test_totals_row_all_done_shows_deviation(self):
+        s = state(tasks=[task(1, status="done", actualMin=11.4),
+                         task(2, status="done", actualMin=4.0)])
+        _, page, _ = run_cli(s)
+        self.assertIn('<tr class="total"><td></td><td>Total'
+                      '<br><span class="dim">sum of subtasks</span></td>'
+                      '<td class="dim"></td><td>20 m</td>'
+                      '<td><span class="dev">15 m 24 s</span> '
+                      '<span class="dev">(−23 %)</span></td></tr>', page)
+
+    def test_totals_row_sums_unfloored_spans(self):
+        # The Total row sums the SAME values the rows display, so the eye's
+        # column arithmetic closes: two 12 s tasks total 24 s, not 2 × 30 s.
+        s = state(tasks=[task(1, status="done", actualMin=0.5,
+                              startedAt="2026-07-18T09:50:00+02:00",
+                              finishedAt="2026-07-18T09:50:12+02:00"),
+                         task(2, status="done", actualMin=0.5,
+                              startedAt="2026-07-18T09:51:00+02:00",
+                              finishedAt="2026-07-18T09:51:12+02:00")])
+        _, page, _ = run_cli(s)
+        self.assertIn('<td><span class="dev">24 s</span> '
+                      '<span class="dev">(−98 %)</span></td></tr>', page)
+
+    def test_totals_row_without_estimates_or_actuals_dashes(self):
+        s = state(tasks=[task(1, estimateMin=None, rawEstimateMin=None),
+                         task(2, estimateMin=None, rawEstimateMin=None)])
+        _, page, _ = run_cli(s)
+        self.assertIn('<tr class="total"><td></td><td>Total'
+                      '<br><span class="dim">sum of subtasks</span></td>'
+                      '<td class="dim"></td><td>—</td><td>—</td></tr>', page)
+
+    def test_paused_job_shows_pause_icon_on_running_task(self):
+        # A paused job can hold a mid-flight task (killed session / stop
+        # pending): its row must show ⏸️, not the spinner (2026-07-19).
+        s = state(status="paused", pausedAt="2026-07-18T09:40:00+02:00",
+                  tasks=[task(1, status="done", actualMin=10.0),
+                         task(2, status="running",
+                              startedAt="2026-07-18T09:30:00+02:00"),
+                         task(3)])
+        _, page, _ = run_cli(s)
+        self.assertNotIn("\U0001f504", page)      # no spinner anywhere
+        self.assertEqual(page.count("⏸️"), 2)     # banner + the paused row
+        self.assertIn("⬜", page)                  # pending rows unchanged
+
+    def test_css_mobile_and_heading_rules(self):
+        # Pins the responsive policy: a small-screen media block exists and
+        # table headings never break mid-word (overflow-wrap:anywhere is for
+        # cell CONTENT, not headings).
+        _, page, _ = run_cli(state(tasks=[task(1)]))
+        self.assertIn("@media (max-width:480px)", page)
+        self.assertIn("th { overflow-wrap:normal", page)
 
     def test_running_overrun_shown_in_actual_column(self):
         s = state(tasks=[task(1, status="running", estimateMin=10,
@@ -502,9 +608,22 @@ class TestFullPage(unittest.TestCase):
                               finishedAt="2026-07-18T09:55:00+02:00")])
         rc, page, out = run_cli(s)
         self.assertIn("DONE", page)
-        self.assertIn("took 55 m (estimated 60 m)", page)
+        self.assertIn("took 55 m (estimated 60 m)", page)   # zero seconds omitted
         self.assertIn("this page is final", page)
         self.assertNotIn(".claude/STOP", page)
+
+    def test_done_took_shows_seconds_precision(self):
+        s = state(status="done",
+                  tasks=[task(1, status="done", actualMin=25.0,
+                              finishedAt="2026-07-18T09:56:30+02:00")])
+        _, page, _ = run_cli(s)
+        self.assertIn("took 56 m 30 s (estimated 60 m)", page)
+
+    def test_done_subminute_elapsed_shows_seconds(self):
+        s = state(status="done", startedAt="2026-07-18T09:59:12+02:00",
+                  tasks=[task(1, status="done", actualMin=0.5)])
+        _, page, _ = run_cli(s)
+        self.assertIn("took 48 s (estimated 60 m)", page)
 
     def test_footer_stop_line_and_push_status_variants(self):
         _, page, _ = run_cli(state(tasks=[task(1)]))

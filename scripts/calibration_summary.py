@@ -489,7 +489,7 @@ def main(jsonl_path, out_path):
         "(one fixed rule — never improvise, stated identically in references/file-formats.md and",
         "SKILL.md): At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor),",
         "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered asymmetrically",
-        "as `Done ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). At LOW",
+        "as `When done: ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). At LOW",
         "or MEDIUM confidence: start from flat nominal bounds on each task's adjusted",
         "`estimateMin` — low ±50 %, medium ±30 %. Where the task's category shows q1/q3 (n ≥ 5),",
         "widen that task's band to the envelope of the flat band and `[raw_i × min(q1, factor),",

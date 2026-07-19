@@ -28,8 +28,15 @@ normative statement is references/file-formats.md's ETA computation.
   never a bare point time. Source-c jobs render pace-based ETAs labeled "(uncalibrated)".
 - Task table: status icon, name (+ dim executor line when the task's `model` is known,
   `· N effort` only when `effort` is set), category, estimate, and an Actual column that is
-  always a computed time — `11 m (+38 %)`, `overrunning by X min` for a running task past
-  its estimate, `—` when unstarted; never a status word.
+  always a computed time — the task's raw wall span in m+s (`11 m 24 s (+42 %)`; the
+  calibration log's 0.5-min floor never shows here — it's a logging rule, not a clock fact),
+  `overrunning by X min` for a running task past its estimate, `—` when unstarted; never a
+  status word. A bold Total row (dim-labeled
+  "sum of subtasks") closes the table: plain column sums — all estimates (whole minutes);
+  done tasks' actuals in m+s precision (`8 m 30 s`), deviation only once every task is done.
+  Sums are work minutes, not group-aware walltime: the job-end "took" line shows walltime,
+  also in m+s (`took 7 m 55 s`) — facts get seconds, estimates stay whole-minute, and the
+  two totals are visibly different labeled quantities rather than one number rounded two ways.
 - Token lines when token JSON is available (omitted entirely otherwise): job-level
   "Tokens: Nk spent · NM cache reads" (cache reads never summed into the headline), per-task
   dim lines, and ONE combined `≈Nk tok (group)` figure for parallel dispatch groups whose

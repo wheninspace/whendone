@@ -65,14 +65,22 @@ a { color:var(--link); }
 table { width:100%; border-collapse:collapse; table-layout:fixed; }
 td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
         overflow-wrap:anywhere; vertical-align:top; }
+th { overflow-wrap:normal; }
 th:nth-child(1),td:nth-child(1) { width:2em; }
 th:nth-child(2),td:nth-child(2) { width:auto; }
 th:nth-child(3),td:nth-child(3) { width:18%; }
-th:nth-child(4),td:nth-child(4) { width:4em; white-space:nowrap; }
+th:nth-child(4),td:nth-child(4) { width:3.6em; white-space:nowrap; }
 th:nth-child(5),td:nth-child(5) { width:26%; }
 td:nth-child(5) .dev { white-space:nowrap; }
+tr.total td { border-top:2px solid var(--dim); border-bottom:none; font-weight:600; }
 .dim { color:var(--dim); font-size:.9em; }
 .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
+@media (max-width:480px) {
+  body { font-size:15px; padding:12px; }
+  td,th { padding:5px 5px; }
+  th:nth-child(1),td:nth-child(1) { width:1.7em; }
+  th:nth-child(3),td:nth-child(3) { width:17%; }
+}
 """
 
 
@@ -109,8 +117,28 @@ def fmt_tok(n):
 
 
 def fmt_min(m):
+    """Hybrid human display: >= 1 min -> whole minutes (half-up), < 1 min ->
+    whole seconds. Display-only rounding — ETA/interval/sum math stays on the
+    raw values."""
     m = float(m)
-    return "%d m" % int(m) if m == int(m) else "%.1f m" % m
+    seconds = int(m * 60 + 0.5)
+    if seconds < 60:
+        return "%d s" % seconds
+    return "%d m" % int(m + 0.5)
+
+
+def fmt_min_s(m):
+    """m+s precision for STATEMENTS OF FACT — the job-end "took" and the
+    Total row's actual sum. Estimates stay on fmt_min's hybrid whole-minute
+    display: two precise numbers that differ read as different quantities,
+    two rounded ones read as a contradiction."""
+    seconds = int(float(m) * 60 + 0.5)
+    mm, ss = divmod(seconds, 60)
+    if mm == 0:
+        return "%d s" % ss
+    if ss == 0:
+        return "%d m" % mm
+    return "%d m %d s" % (mm, ss)
 
 
 def fmt_dev(actual, est):
@@ -133,7 +161,7 @@ def _spent(entry):
     return int(entry.get("output") or 0) + int(entry.get("freshInput") or 0)
 
 
-def task_rows(tasks, tmap, now):
+def task_rows(tasks, tmap, now, job_status=None):
     out = []
     shown_groups = set()
     for t in tasks:
@@ -141,6 +169,8 @@ def task_rows(tasks, tmap, now):
             continue
         status = t.get("status")
         icon = {"done": "✅", "running": "\U0001f504"}.get(status, "⬜")
+        if job_status == "paused" and status == "running":
+            icon = "⏸️"          # a paused job's mid-flight task never spins
         name = esc(t.get("name") or "task %s" % t.get("nr"))
         if t.get("model"):
             line = display_name(t["model"])
@@ -158,12 +188,14 @@ def task_rows(tasks, tmap, now):
         est = task_est(t)
         est_txt = esc(fmt_min(est)) if est else "—"
         if status == "done":
-            a = derived_actual(t)
+            a = display_actual(t)
             if a is not None and est:
-                actual = '<span class="dev">%s %s</span>' % (esc(fmt_min(a)),
-                                                             esc(fmt_dev(a, est)))
+                # separate nowrap islands: the line may wrap BETWEEN value and
+                # deviation, so a narrow Actual column never widens the page
+                actual = ('<span class="dev">%s</span> <span class="dev">%s</span>'
+                          % (esc(fmt_min_s(a)), esc(fmt_dev(a, est))))
             elif a is not None:
-                actual = '<span class="dev">%s</span>' % esc(fmt_min(a))
+                actual = '<span class="dev">%s</span>' % esc(fmt_min_s(a))
             else:
                 actual = "—"
         elif status == "running":
@@ -196,6 +228,30 @@ def task_rows(tasks, tmap, now):
         out.append("<tr><td>%s</td><td>%s</td>"
                    '<td class="dim">%s</td><td>%s</td><td>%s</td></tr>'
                    % (icon, name, cat, est_txt, actual))
+    real = [t for t in tasks if isinstance(t, dict)]
+    if real:
+        # Totals row: plain column arithmetic — Est over every estimated task,
+        # Actual (work minutes) over done tasks so far. NOT group-aware
+        # walltime: the eta block above stays the walltime authority.
+        # Deviation only once every task is done — a partial sum against the
+        # full estimate would read as a huge false underrun mid-run.
+        est_sum = sum(task_est(t) for t in real)
+        acts = [a for a in (display_actual(t) for t in real
+                            if t.get("status") == "done") if a is not None]
+        est_cell = esc(fmt_min(est_sum)) if est_sum else "—"
+        if acts:
+            a_sum = sum(acts)
+            if est_sum and all(t.get("status") == "done" for t in real):
+                act_cell = ('<span class="dev">%s</span> <span class="dev">%s</span>'
+                            % (esc(fmt_min_s(a_sum)), esc(fmt_dev(a_sum, est_sum))))
+            else:
+                act_cell = '<span class="dev">%s</span>' % esc(fmt_min_s(a_sum))
+        else:
+            act_cell = "—"
+        out.append('<tr class="total"><td></td><td>Total'
+                   '<br><span class="dim">sum of subtasks</span></td>'
+                   '<td class="dim"></td><td>%s</td><td>%s</td></tr>'
+                   % (est_cell, act_cell))
     return "\n".join(out)
 
 
@@ -233,7 +289,7 @@ def render(state, tokens, summary, now, push_status, superseded):
             # no elapsed/estimate arithmetic to present since none was ever calibrated.
             etxt = "Done (uncalibrated)"
         else:
-            etxt = "Done — took %s" % (fmt_min(round(el)) if el is not None else "?")
+            etxt = "Done — took %s" % (fmt_min_s(el) if el is not None else "?")
             orig = state.get("originalTotalMin")
             if isinstance(orig, (int, float)) and not isinstance(orig, bool):
                 etxt += " (estimated %s)" % fmt_min(orig)
@@ -293,7 +349,7 @@ def render(state, tokens, summary, now, push_status, superseded):
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
             "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s"
             % (esc("WhenDone: " + job), CSS, banner, eta_block,
-               task_rows(tasks, tmap, now), wf_line, pause_box, footer))
+               task_rows(tasks, tmap, now, status), wf_line, pause_box, footer))
 
     stat = {"ok": True, "status": "superseded" if superseded else status,
             "etaText": etxt, "slipAlert": bool(slip_alert),
@@ -351,6 +407,17 @@ def task_raw(t):
     if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
         return float(v)
     return task_est(t)
+
+
+def display_actual(t):
+    """Display-only wall span of a done task: the raw startedAt->finishedAt
+    span — the 0.5-min floor is a calibration-LOG rule, not a fact about the
+    clock — falling back to the logged actualMin when timestamps are missing.
+    ETA/slip math stays on derived_actual (file-formats.md's normative rule)."""
+    s, e = parse_ts(t.get("startedAt")), parse_ts(t.get("finishedAt"))
+    if s and e and e >= s:
+        return minutes(s, e)
+    return derived_actual(t)
 
 
 def derived_actual(t):
@@ -510,7 +577,7 @@ def eta_text(state, us, summary, now):
         el = elapsed_min(state, now)
         if done and total > done and el:
             eta = now + timedelta(minutes=el / done * (total - done))
-            return "Done ~%s (uncalibrated — pace-based)" % hhmm(eta, now)
+            return "When done: ~%s (uncalibrated — pace-based)" % hhmm(eta, now)
         if total and done == total:
             return "Done (uncalibrated)"
         return "ETA not yet known (uncalibrated)"
@@ -522,12 +589,12 @@ def eta_text(state, us, summary, now):
     if a == 0 and b == 0:
         b = 1  # the interval never reads 0 while anything is pending/running
     if widened:
-        return "Done ~%s (%s%d/+%d min) (widened to measured spread)" % (
+        return "When done: ~%s (%s%d/+%d min) (widened to measured spread)" % (
             hhmm(eta, now), MINUS, a, b)
     if high:
-        return "Done ~%s (%s%d/+%d min)" % (hhmm(eta, now), MINUS, a, b)
+        return "When done: ~%s (%s%d/+%d min)" % (hhmm(eta, now), MINUS, a, b)
     n = max(1, round((highsum - lowsum) / 2))
-    return "Done ~%s ± %d min (nominal)" % (hhmm(eta, now), n)
+    return "When done: ~%s ± %d min (nominal)" % (hhmm(eta, now), n)
 
 
 def main(argv=None):
