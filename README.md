@@ -117,13 +117,17 @@ which is which, with provenance):
 | Per resume (additionally) | + `references/resume.md` (1,362 cl100k tokens, re-measured 2026-07-19 after the resume publish-order fix (M6: render+publish moved from step 4 to step 5, after the status flip, incl. a review-fix pass deferring the step-4 new-artifact branch's publish wording too), up from 1,211 after the Source-B/C resume-routing fix — read ONLY when resuming) + ~0.9–1.5k for the full artifact rebuild (the old session's scratchpad file is gone). Accepted trade-off: a resume loads SKILL.md core *plus* resume.md — a small net rise on the rare resume path so that every non-resume trigger (fresh job, ETA question, accuracy report, stop) drops ~0.9k |
 | After a compaction notice | one re-read of SKILL.md's Invariants section (≈930 chars ≈ 0.23k tokens) + the state file (size scales with task count — ~3–6 KB ≈ 0.75–1.55k tokens across this repo's recent runs) ≈ ~1–1.8k tokens — char/4 proxy. Recurs only when the harness issues a compaction notice, not on any fixed checkpoint schedule |
 
+All figures are `cl100k_base` counts; Claude's own tokenizer typically runs ~10–25% higher
+on markdown/JSON like this.
+
 **Proxy vs. measurement:** the rows NOT marked as measured are `char_count / 4`, the same rule of
 thumb used throughout this repo (see [docs/test-log.md](docs/test-log.md)), plus a rough
 allowance for the Read tool's line-number prefixes (~3.3–3.6 tokens/line, measured with a real
 cl100k tokenizer on 2026-07-17 — the earlier 1.4 figure undercounted ~2.4×) where a full file
 is read.
 No tokenizer was run for the job-end/resume/compaction rows below; a real tokenizer typically
-runs a little denser on markdown/JSON, so those are floors, not ceilings. The per-watcher-wake
+runs denser on HTML/JSON (this repo's demo page measures ~+40% over char/4)
+but can run slightly lighter on prose markdown — treat those rows as approximate, not floors. The per-watcher-wake
 row above IS a real measurement (see its own provenance in the table), not a proxy. **Provenance
 (trigger row):** a real `tiktoken` `cl100k_base` pass (consolidated-review fix pass, 2026-07-19) over
 SKILL.md, `references/source-a.md`, `references/file-formats.md`, and
@@ -157,7 +161,10 @@ section (≈930 chars) plus a recent-run state file (~3–6 KB, scaling with tas
 re-read the declare-once/tail-thereafter watcher model still mandates on a compaction notice
 (the pre-stage-3 per-checkpoint hand-editing that used to drive this row is gone). **What's
 excluded:** the model's own task-execution reasoning tokens — only whendone's
-own bookkeeping calls are counted. Current Claude Code deployments may also load the host's OWN
+own bookkeeping calls are counted. Also excluded: the wake turns' own inference cost — each wake is one extra model turn whose
+full session context is re-read at cache-read rates; for API-key users that volume (roughly
+wakes × context size) typically dominates whendone-attributable dollar cost. Subscription
+users pay it in latency, not money. Current Claude Code deployments may also load the host's OWN
 artifact-design skill before the first Artifact publish — outside whendone's control and not
 counted here. **Why the trigger-path figure moved since the last measurement:** two movements.
 (1) Between the stage-5 release (12,313) and this pass, on-path commits (local-time policy,
