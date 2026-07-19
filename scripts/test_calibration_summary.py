@@ -455,6 +455,24 @@ class TestReportAndRotation(unittest.TestCase):
             archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
             self.assertEqual(len(archives), 1)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX perms")
+    def test_rotation_and_summary_outputs_are_private(self):
+        # M8 follow-up: rotation re-creates calibration.jsonl (via a .tmp + os.replace)
+        # and appends to the archive; main() also writes calibration-summary.md. All
+        # three carry the same job/project/timing data as the log itself and must land
+        # at 0600, even though the pre-existing jsonl started at default (0644) perms.
+        with tempfile.TemporaryDirectory() as td:
+            jp, op = os.path.join(td, "c.jsonl"), os.path.join(td, "s.md")
+            with open(jp, "w", encoding="utf-8") as f:
+                for _ in range(2500):
+                    f.write(row() + "\n")
+            cs.main(jp, op)
+            self.assertEqual(os.stat(jp).st_mode & 0o777, 0o600)
+            self.assertEqual(os.stat(op).st_mode & 0o777, 0o600)
+            archives = [p for p in os.listdir(td) if p.startswith("calibration-archive-")]
+            archive_path = os.path.join(td, archives[0])
+            self.assertEqual(os.stat(archive_path).st_mode & 0o777, 0o600)
+
 
 class TestRotationConcurrencyAndIdempotency(unittest.TestCase):
     """C15: rotate() is guarded by a cross-platform create-exclusive lockfile and an

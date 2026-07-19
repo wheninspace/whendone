@@ -254,6 +254,19 @@ class TestActualMinComputation(unittest.TestCase):
             self.assertEqual(row["actualMin"], 0.5)
 
 
+class TestDataPermissions(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX perms")
+    def test_log_and_dir_are_private(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            tmp = write_tmp(td, obj())
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertTrue(ok, err)
+            log = os.path.join(data_dir, "calibration.jsonl")
+            self.assertEqual(os.stat(log).st_mode & 0o777, 0o600)
+            self.assertEqual(os.stat(data_dir).st_mode & 0o777, 0o700)
+
+
 class TestParallelGroupCategory(unittest.TestCase):
     def test_parallel_group_category_accepted(self):
         with tempfile.TemporaryDirectory() as td:

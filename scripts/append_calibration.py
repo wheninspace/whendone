@@ -109,10 +109,15 @@ def append_obj(obj, data_dir=None):
     if err:
         return False, err
     try:
-        os.makedirs(resolved_dir, exist_ok=True)
+        os.makedirs(resolved_dir, mode=0o700, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(resolved_dir, 0o700)  # makedirs' mode arg skips already-existing dirs
         log_path = os.path.join(resolved_dir, "calibration.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
+        fd = os.open(log_path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
+        if os.name == "posix":
+            os.chmod(log_path, 0o600)  # tighten a pre-existing 0644 log
     except OSError as e:
         return False, f"cannot append to calibration.jsonl: {e}"
     return True, row

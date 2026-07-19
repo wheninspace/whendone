@@ -299,11 +299,17 @@ def rotate(jsonl_path, lines):
                                f"calibration-archive-{date.today().year}.jsonl")
         boundary = fresh_lines[-KEEP - 1]
         if _last_line(archive) != boundary:
-            with open(archive, "a", encoding="utf-8") as f:
+            fd = os.open(archive, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as f:
                 f.write("\n".join(fresh_lines[:-KEEP]) + "\n")
+            if os.name == "posix":
+                os.chmod(archive, 0o600)  # tighten a pre-existing 0644 archive
         tmp = jsonl_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        fd = os.open(tmp, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write("\n".join(fresh_lines[-KEEP:]) + "\n")
+        if os.name == "posix":
+            os.chmod(tmp, 0o600)  # tighten a pre-existing 0644 tmp file
         os.replace(tmp, jsonl_path)
         return fresh_lines[-KEEP:]
     finally:
@@ -520,8 +526,11 @@ def main(jsonl_path, out_path):
             out.append(f"- {cat}: q1={q1:.2f} q3={q3:.2f}")
         out.append("")
     try:
-        with open(out_path, "w", encoding="utf-8") as f:
+        fd = os.open(out_path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write("\n".join(out))
+        if os.name == "posix":
+            os.chmod(out_path, 0o600)  # tighten a pre-existing 0644 summary file
     except OSError as e:
         print(f"cannot write {out_path}: {e}", file=sys.stderr)
         return 1
