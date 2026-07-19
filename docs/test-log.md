@@ -514,6 +514,11 @@ injected context + one publish turn**, consistent with stage 3's component estim
 line measured at 54 cl100k tokens + a short turn + a publish). The HTML re-injection is
 environment-specific (Claude Code echoing a changed tracked file back to the model); a headless
 watcher that renders to a non-watched path would not incur it.
+*[Correction 2026-07-19: the cost figures above stand (re-measured: median 1,738 tok/echo this
+session), but the "non-watched path" explanation was wrong — see "Per-wake re-injection
+mechanism — forensics + controlled experiment" below. Render location is irrelevant; the file is
+registered by the Artifact publish itself, and the echo is tied to the interactive session
+surface, not the path.]*
 
 ### Cross-session resume drill (Source B, B12) — documented, NOT run this session
 
@@ -773,3 +778,64 @@ in-prose `12,313` mention (amortization line) updated to ≈11,639.
 
 **Suite: `python3 -W error::ResourceWarning -m unittest discover -p 'test_*.py'` → 285 tests,
 OK, warning-clean** (no script reads SKILL.md content; unchanged as expected).
+
+## Per-wake re-injection mechanism — forensics + controlled experiment (2026-07-19)
+
+Context: the context-slimming plan's Fix 2 asked what makes the harness re-inject the rendered
+artifact HTML at watcher wakes. A first forensic pass concluded the re-injection didn't exist
+(false negative — detector blind spot; see `docs/reviews/2026-07-19-per-wake-reinjection-forensics.md`).
+A second pass found it in `type:"attachment"` / `edited_text_file` entries and hypothesized
+scratchpad-location watching. This session settled it with a controlled experiment (session
+`3d35911d`, Claude Code 2.1.215, VSCode extension).
+
+**Measured (tiktoken cl100k on the `snippet` payloads, all echo-positive real sessions):**
+
+| Session | HTML echoes | median tok | max tok | state-file echoes (tok) |
+|---|---|---|---|---|
+| `fa4e497b` (stage-4, 13 tasks) | 14 | 1,738 | 1,952 | 2 (2,128 / 982) |
+| `69f04d45` (stage-3, 12 tasks) | 12 | 1,852 | 2,033 | 0 |
+| `7d1011ea` (stage-2) | 5 | 1,626 | 1,730 | 0 |
+| `aa5f7a76` (B12 resume drill) | 5 | 791 | 1,016 | 2 (687 / 620) |
+| `d87c6263` (stage-5c) | 5 | 600 | 621 | 1 (599) |
+| `43fd86f0` (pre-push run) | 5 | 597 | 628 | 1 (238) |
+
+Watcher event lines (queued_command prompts with a `progress` event): 54–341 tok, median ~120.
+
+**Controlled experiment (six arms, model never touches the files after setup unless stated):**
+
+| Arm | Registered how | Rewritten by | Echo? |
+|---|---|---|---|
+| 4 files in scratchpad / `/tmp` / project `.claude/` | Bash only | background task ×6 | no |
+| Bash-only scratchpad file | Bash only | model's own Bash | **no** |
+| Bash-created file, Artifact-published once | publish | background task ×4 | no |
+| Same published file | publish | model's own Bash | **YES** (inline note, line-numbered) |
+| Write-tool-created file | Write | model's own Bash | **YES** |
+| Same published file | publish | Monitor-managed process ×3 | no |
+
+**Conclusions (proven):**
+- A file enters the harness's tracked set via model Write/Edit **or via an Artifact publish**
+  (`file_path` registration proven: the published-only file echoed, the Bash-only file never did).
+- Script/Bash writes never register a file. Render **location is irrelevant** — scratchpad,
+  `/tmp`, and project `.claude/` behaved identically. Both earlier mechanistic stories ("renders
+  to a non-watched path avoids it", "the scratchpad is watched") are wrong.
+- A change made *during a model-issued Bash call* to a tracked file is echoed immediately
+  (proven). This covers L3 one-shot wakes and any model-run render.
+
+**Conclusion (best-fit, not directly proven):** the dogfood sessions' wake-turn echoes (12/13
+stage-4 echoes sit immediately after a Monitor task-notification; 4/4 in stage-5c) did NOT
+reproduce with a synthetic Monitor rewriting a published file in this session. The surviving
+difference is the interactive surface: in the dogfoods the artifact page was open in the VSCode
+extension while the job ran (also explains `test_render_artifact.py` — an open editor file —
+being echoed 8.2k chars in `aa5f7a76`). Treat "IDE panel open on the artifact → echo per wake"
+as the best-fit explanation; the operational split below holds regardless, since it is measured
+on real runs on both sides.
+
+**Operational reading (what the README row now says):** watching the artifact in the IDE during
+the run costs the full echo per wake (~0.6–2.0k tok, scaling with the task table, ≤1/wake by
+debounce). The walk-away scenario — nothing open locally, progress viewed on phone/browser —
+showed zero wake-turn echoes in the controlled run: per-wake cost = event line + one publish
+turn. State-file echoes are rare (0–2 per session, only where the model touched state at
+declare/resume) — independent validation of the single-writer invariant, not a per-wake cost.
+
+Artifacts of the experiment: disposable private artifact "EXPSIG-E cycle 0"
+(`…/artifact/fdde1edd-…`, safe to delete from the gallery); experiment files removed after the run.
