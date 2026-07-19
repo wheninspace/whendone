@@ -784,7 +784,9 @@ OK, warning-clean** (no script reads SKILL.md content; unchanged as expected).
 
 Context: the context-slimming plan's Fix 2 asked what makes the harness re-inject the rendered
 artifact HTML at watcher wakes. A first forensic pass concluded the re-injection didn't exist
-(false negative — detector blind spot; see `docs/reviews/2026-07-19-per-wake-reinjection-forensics.md`).
+(false negative — detector blind spot; see
+`docs/reviews/2026-07-19-per-wake-reinjection-forensics.md` (internal review record, not
+shipped in this repo)).
 A second pass found it in `type:"attachment"` / `edited_text_file` entries and hypothesized
 scratchpad-location watching. This session settled it with a controlled experiment (session
 `3d35911d`, Claude Code 2.1.215, VSCode extension).

@@ -29,7 +29,8 @@ recorded in [docs/test-log.md](docs/test-log.md):
 - **Source A** — lead/subagent runs (calibrated). Stage-3 live tailer/watcher run,
   render/publish/calibration end-to-end
   ([test-log](docs/test-log.md#stage-3--source-a-tailerwatcher-dogfood--monitoring-run--2026-07-18)).
-- **Source B** — Workflow-engine runs, declared at launch (calibrated). Stage-4 dogfood, a live
+- **Source B** — Workflow-engine runs (Claude Code's built-in multi-agent Workflow feature),
+  declared at launch (calibrated). Stage-4 dogfood, a live
   Workflow run end-to-end
   ([test-log](docs/test-log.md#stage-4--source-b-workflow-engine-dogfood--live-monitor-monitoring-run--2026-07-18)).
 - **Source C** — plain solo / TodoWrite work (pace-based, never calibrated). Stage-5 pace-only
@@ -77,7 +78,8 @@ calibrated:
   claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
   while you work and opens on any other device signed in to the same account — including your
   phone (on iOS via the browser: the mobile app's Artifacts tab doesn't list Code artifacts
-  yet, so use the URL whendone posts in chat, or bookmark the gallery in Safari).
+  yet, so use the URL whendone posts in chat, or bookmark the gallery in Safari; on Android
+  the same browser route is expected but untested).
 - **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
   ±50 %; correction factors move from your first logged data point and carry the label
   low/medium/high confidence as history accumulates. The interval ramps slower than the
@@ -113,9 +115,9 @@ which is which, with provenance):
 |---|---|
 | Every session, used or not | ~140-token trigger description |
 | When it triggers (incl. each resume session) | ≈11,849 cl100k tokens — a real `tiktoken` `cl100k_base` measurement (Task 7 re-measure, 2026-07-19) of the trigger-to-first-publish read path: full SKILL.md file, frontmatter included (loads as the skill, no Read prefixes) + `references/source-a.md` + `references/file-formats.md` + `references/artifact-template.md` + `calibration-summary.md` allowance — see the provenance note below — + ~1.5–2k first artifact/state writes. The Resume mechanics now live in `references/resume.md`, OFF this path (read only when resuming), which is what dropped the figure ≈0.9k from the prior 12,313/12,552 measurements — every non-resume trigger keeps that saving (a later same-day fix pass added back +74 of coherence fixes on the path, then Tasks 2/4/5/7's on-path growth added a further +136 → 11,849). Raw content sum 11,849; as READ at trigger time — the three reference files arrive through the Read tool with line-number prefixes (~3.3–3.6 tok/line, +≈1.55–1.7k over 470 lines) — ≈13,400–13,541 (≈13.4–13.5k), which is the like-for-like number against the 14,000 budget (defined and previously measured prefix-inclusive: stage 4 recorded 13,821/14,000): ≈459–600 tokens (≈0.5–0.6k) to spare, not the 2.3k a raw-only comparison would suggest |
-| Source-B addition to the trigger path | ~0 tokens marginal — `references/source-b.md` (2,210 cl100k tokens, re-measured 2026-07-19 — the file grew further with Task 5's on-path edits after the prior re-measurement of 2,067, itself after the B12 resume-drill fixes and the original stage-4 measurement of 1,810; method: `tiktoken` `cl100k_base`) is OFF the Source-A trigger path entirely; it's read only once Source B is detected, never as part of the trigger read above. Only a ~149-token pointer/event-row was added to SKILL.md + `file-formats.md` combined to describe it — already folded into the trigger-row figure above |
+| Source-B addition to the trigger path | ~0 tokens marginal — `references/source-b.md` (2,210 cl100k tokens, re-measured 2026-07-19 — the file grew further with Task 5's on-path edits after the prior re-measurement of 2,067, itself after the Source-B resume-drill fixes (internally tracked as B12) and the original stage-4 measurement of 1,810; method: `tiktoken` `cl100k_base`) is OFF the Source-A trigger path entirely; it's read only once Source B is detected, never as part of the trigger read above. Only a ~149-token pointer/event-row was added to SKILL.md + `file-formats.md` combined to describe it — already folded into the trigger-row figure above |
 | Source-C addition to the trigger path | ~0 tokens marginal — `references/source-c.md` (921 cl100k tokens, re-measured 2026-07-19 after the review fix pass; method: `tiktoken` `cl100k_base`) is OFF the Source-A trigger path; it's read only once Source C is detected, never as part of the trigger read above |
-| Per watcher wake (Sources A, B, and C — identical watcher path) | Two components, both MEASURED (`tiktoken cl100k_base` on the raw session transcripts of six real runs, stages 2–5 + both resume drills, re-verified 2026-07-19): one compact watcher event line (**~54–341 tokens, median ~120**), plus — when the harness re-injection fires — an echo of the rendered artifact HTML at **~0.6–0.8k tokens on small jobs, ~1.7–2.0k on a 13-task job** (scales with the task table; the debounce bounds it to at most one per wake, well under the 5k/wake threshold that would trigger D11's debounce-raising demotion). Mechanism, pinned by controlled experiment (2026-07-19, [docs/test-log.md](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19)): the harness registers a file when the model Writes/Edits it **or the Artifact tool publishes it** — script/Bash writes never register anything, and the render *location* is irrelevant (an earlier "renders to a non-watched path avoids it" note here was wrong about the mechanism — moving the file does not help). In the dogfood runs (VSCode extension, artifact page open and watched during the job) the echo fired at essentially every wake — those are the figures above. In a controlled run with **no artifact panel open**, watcher/background rewrites of the same registered file produced **zero** wake-turn echoes — leaving only the event line + one Artifact publish per wake. Practical reading: the walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) sits at the low end; "actively watching the artifact inside the IDE buys the full echo" is the best-fit explanation for the dogfood-run echoes, not directly provable from inside a session (see the test-log entry) — the measured low-end/high-end split itself is real-run data on both sides either way. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
+| Per watcher wake (Sources A, B, and C — identical watcher path) | Two components, both MEASURED (`tiktoken cl100k_base` on the raw session transcripts of six real runs, stages 2–5 + both resume drills, re-verified 2026-07-19): one compact watcher event line (**~54–341 tokens, median ~120**), plus — when the harness re-injection fires — an echo of the rendered artifact HTML at **~0.6–0.8k tokens on small jobs, ~1.7–2.0k on a 13-task job** (scales with the task table; the debounce bounds it to at most one per wake, well under the 5k/wake threshold that would trigger the debounce-raising demotion rule (internal id D11)). Mechanism, pinned by controlled experiment (2026-07-19, [docs/test-log.md](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19)): the harness registers a file when the model Writes/Edits it **or the Artifact tool publishes it** — script/Bash writes never register anything, and the render *location* is irrelevant (an earlier "renders to a non-watched path avoids it" note here was wrong about the mechanism — moving the file does not help). In the dogfood runs (VSCode extension, artifact page open and watched during the job) the echo fired at essentially every wake — those are the figures above. In a controlled run with **no artifact panel open**, watcher/background rewrites of the same registered file produced **zero** wake-turn echoes — leaving only the event line + one Artifact publish per wake. Practical reading: the walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) sits at the low end; "actively watching the artifact inside the IDE buys the full echo" is the best-fit explanation for the dogfood-run echoes, not directly provable from inside a session (see the test-log entry) — the measured low-end/high-end split itself is real-run data on both sides either way. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
 | Job end | ~0.8–1k tokens (final publish + full-table script run + calibration regen), scaling mildly with task count |
 | Per resume (additionally) | + `references/resume.md` (1,362 cl100k tokens, re-measured 2026-07-19 after the resume publish-order fix (M6: render+publish moved from step 4 to step 5, after the status flip, incl. a review-fix pass deferring the step-4 new-artifact branch's publish wording too), up from 1,211 after the Source-B/C resume-routing fix — read ONLY when resuming) + ~0.9–1.5k for the full artifact rebuild (the old session's scratchpad file is gone). Accepted trade-off: a resume loads SKILL.md core *plus* resume.md — a small net rise on the rare resume path so that every non-resume trigger (fresh job, ETA question, accuracy report, stop) drops ~0.9k |
 | After a compaction notice | one re-read of SKILL.md's Invariants section (≈930 chars ≈ 0.23k tokens) + the state file (size scales with task count — ~3–6 KB ≈ 0.75–1.55k tokens across this repo's recent runs) ≈ ~1–1.8k tokens — char/4 proxy. Recurs only when the harness issues a compaction notice, not on any fixed checkpoint schedule |
@@ -141,7 +143,7 @@ synthetic 60-row, 8-category, 3-project fixture (3,377 chars — regeneration sn
 [docs/design.md](docs/design.md#reproducing-the-readmes-synthetic-calibration-fixture)), not a
 real user's calibration history. **Provenance (Source-B row):** `references/source-b.md`
 measured standalone with the same `tiktoken` `cl100k_base` method, re-measured 2026-07-19
-(originally 1,810 at stage 4, 2026-07-18; the B12 resume-drill fixes grew the file) —
+(originally 1,810 at stage 4, 2026-07-18; the B12 fixes (above) grew the file) —
 2,067 tokens, under its own 2,500-token budget with 433 tokens to spare; the ~149-token
 combined addition to SKILL.md + `file-formats.md` is the exact before/after delta measured for
 those two files across the same edit. **Provenance (Source-C row):** `references/source-c.md`
@@ -155,7 +157,7 @@ wake occurred that session); the 54-token event-line figure inside it is the sta
 measurement of a representative `tail_progress.py` `progress` line, still accurate since the
 event schema didn't change. **Provenance (other rows):** the job-end token-script figures come
 from calling `token_usage.py`'s `summarize()` against a synthetic state file and transcript —
-confirming `--task N` (landed for C13) now returns a flat ~0.1–0.25k tokens per checkpoint
+confirming `--task N` (landed in the round-2 token fixes (internal id C13)) now returns a flat ~0.1–0.25k tokens per checkpoint
 instead of growing with task count (pre-fix, this script's own output alone measured up to
 ~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in
 this repo's own `assets/demo-artifact.html` (3,256 bytes ≈ 814 tokens for the 3-task demo page,
@@ -203,7 +205,8 @@ fire, on its one recorded run each: an explicit, plan-anchored request ("Execute
 plan.md, and run with whendone") and a salient mention of a paused whendone job when asking to
 resume. Read that as "explicit invocation has worked every time it's been tried, bare-keyword
 auto-trigger has not" — a single run per case either way, not a proven reliability rate. (Older
-numbers elsewhere in this repo's test log, from before the `pacekeeper → whendone` rename and an
+numbers elsewhere in this repo's test log, from before the `pacekeeper → whendone` rename
+(the project's pre-release working name) and an
 earlier untrimmed description, no longer characterize the shipped skill — treat them as history,
 not current behavior.) If you run plan executions routinely, add one line to your CLAUDE.md:
 `When executing a plan of 6+ tasks, also invoke the whendone skill to monitor progress.`
@@ -248,7 +251,7 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 
 - Claude Code (CLI or desktop) signed in to claude.ai — the live artifact needs the Artifact
   tool. API-key-only / Bedrock / Vertex setups: whendone degrades to a progress table in
-  chat. Cowork is expected to work but untested.
+  chat. Cowork (Claude Code's collaborative/desktop-cloud mode) is expected to work but untested.
 - Python 3 (`python3`, `python`, or `py`) for calibration statistics, token display, and
   artifact rendering. Without it these degrade off — whendone never does statistics in the model.
 - It does not work in claude.ai chat — there's no file system there.
