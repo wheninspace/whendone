@@ -750,10 +750,26 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
     held_nr, held = getattr(args, "_held_tokens", (None, None))
     tok_arg = "-"
     if held and held.get("available"):
+        sidecar_path = out_path + ".tokens.json"
         try:
-            with open(out_path + ".tokens.json", "w", encoding="utf-8") as f:
-                json.dump(held, f)
-            tok_arg = out_path + ".tokens.json"
+            with open(sidecar_path, encoding="utf-8") as f:
+                existing = json.load(f)
+        except (OSError, ValueError):
+            existing = None
+        by_nr = {}
+        if isinstance(existing, dict):
+            for e in existing.get("tasks") or []:
+                if isinstance(e, dict) and e.get("nr") is not None:
+                    by_nr[e["nr"]] = e
+        for e in held.get("tasks") or []:                # new held entries override old
+            if isinstance(e, dict) and e.get("nr") is not None:
+                by_nr[e["nr"]] = e
+        merged = dict(held)
+        merged["tasks"] = sorted(by_nr.values(), key=lambda e: e.get("nr"))
+        try:
+            with open(sidecar_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f)
+            tok_arg = sidecar_path
         except OSError:
             tok_arg = "-"
     elif os.path.exists(out_path + ".tokens.json"):

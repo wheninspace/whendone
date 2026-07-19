@@ -21,6 +21,9 @@ Script behavior changed — patch release, no schema breaks (all new state field
 - README truth pass: honest-limits resume-drill claim corrected (both drills ran
   2026-07-19); demo artifact regenerated to the current renderer; trigger-path headroom
   restated like-for-like (raw 11,849 / as-read ≈13.4–13.5k vs the prefix-inclusive 14k budget).
+- **Per-task token lines persist mid-run:** the per-wake token sidecar is now merged by
+  task instead of overwritten — previously only the latest completed task showed its
+  token count until the job-end full refresh.
 
 ## v0.3.0 — 2026-07-19
 

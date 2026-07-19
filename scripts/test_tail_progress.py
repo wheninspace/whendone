@@ -751,6 +751,75 @@ class FinishCycleTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    @staticmethod
+    def _summary(nr, out, job_out):
+        """A task-scoped token_usage.summarize() result, mimicking the real
+        --task filter (token_usage.py:237): 'tasks' holds ONE entry."""
+        entry = {"nr": nr, "output": out, "freshInput": 1, "cacheRead": 0, "models": []}
+        job = {"output": job_out, "freshInput": 5, "cacheRead": 0, "models": []}
+        subs = {"output": 0, "freshInput": 0, "cacheRead": 0, "models": []}
+        return {"available": True, "job": job, "tasks": [entry], "subagents": subs}
+
+    def test_sidecar_merges_across_sequential_completions(self):
+        # Bug repro: each wake's handle_completion holds only ITS task's scoped
+        # summary (token_usage.py:237 filters by nr). Before the fix, finish_cycle
+        # overwrote the sidecar wholesale on wake 2, dropping task 1's entry.
+        env, art = self._env(
+            [todo_entry(T0, [item("task 1", "in_progress")]),
+             todo_entry(T1, [item("task 1", "completed")])],
+            mkstate(tasks=[mktask(1), mktask(2)]))
+        sidecar = art + ".tokens.json"
+        try:
+            with unittest.mock.patch.object(tp.token_usage, "summarize",
+                                            return_value=self._summary(1, 20, 100)):
+                rc1, lines1 = env.run_one_shot()
+            self.assertEqual(rc1, 0)
+            with open(sidecar, encoding="utf-8") as f:
+                after_first = json.load(f)
+            self.assertEqual([e["nr"] for e in after_first["tasks"]], [1])
+
+            # Wake 2: transcript now shows task 2 running -> completed too.
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                todo_entry(T1, [item("task 2", "in_progress")]),
+                todo_entry(T2, [item("task 2", "completed")]),
+            ])
+            with unittest.mock.patch.object(tp.token_usage, "summarize",
+                                            return_value=self._summary(2, 50, 300)):
+                rc2, lines2 = env.run_one_shot()
+            self.assertEqual(rc2, 0)
+
+            with open(sidecar, encoding="utf-8") as f:
+                merged = json.load(f)
+            self.assertEqual(sorted(e["nr"] for e in merged["tasks"]), [1, 2])
+            by_nr = {e["nr"]: e for e in merged["tasks"]}
+            self.assertEqual(by_nr[1]["output"], 20)      # earlier task carried forward
+            self.assertEqual(by_nr[2]["output"], 50)       # newest wake's entry wins for nr 2
+            self.assertEqual(merged["job"]["output"], 300)  # job totals: freshest held object
+        finally:
+            env.cleanup()
+
+    def test_sidecar_merge_degrades_gracefully_on_corrupt_existing_file(self):
+        env, art = self._env(
+            [todo_entry(T0, [item("task 1", "in_progress")]),
+             todo_entry(T1, [item("task 1", "completed")])],
+            mkstate(tasks=[mktask(1)]))
+        sidecar = art + ".tokens.json"
+        try:
+            with open(sidecar, "w", encoding="utf-8") as f:
+                f.write("{not valid json at all")
+            with unittest.mock.patch.object(tp.token_usage, "summarize",
+                                            return_value=self._summary(1, 20, 100)):
+                rc, lines = env.run_one_shot()          # must not raise
+            self.assertEqual(rc, 0)
+            with open(sidecar, encoding="utf-8") as f:
+                merged = json.load(f)
+            self.assertEqual([e["nr"] for e in merged["tasks"]], [1])
+            self.assertEqual(merged["tasks"][0]["output"], 20)
+        finally:
+            env.cleanup()
+
 
 class FollowTest(unittest.TestCase):
     def setUp(self):
