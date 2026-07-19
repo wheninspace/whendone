@@ -168,7 +168,7 @@ adjusted `estimateMin` — low ±50 %, medium ±30 %. Where the category shows q
 widen that task's band to the envelope of the flat band and `[raw_i × min(q1, factor), raw_i
 × max(q3, factor)]` (lower low, higher high) — never tighter than the measured spread. No
 q1/q3 (n < 5) → flat band stands; never fabricate q1/q3. Sum per-task lows/highs over pending
-AND running tasks. Render `± N min (nominal)` when nothing was widened; if ANY task's band
+AND running tasks. Render `± N min (default band — little history)` when nothing was widened; if ANY task's band
 was widened, render `(−A/+B min)` with the marker `(widened to measured spread)`. `q1`/`q3`
 are the IQR bounds of the category's raw-ratio distribution in calibration-summary.md's
 Spread column (also machine-readable in that file's footer, n ≥ 5); `factor` is that

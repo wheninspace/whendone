@@ -18,7 +18,9 @@ planning session to understand why things are built the way they are.
   factor would stop learning anything. Logging the raw number keeps the factor honest.
 - **Frozen default anchors.** The default per-category estimate table never changes. All learning
   lives in the correction factor that multiplies it. This keeps the anchor stable and auditable —
-  if numbers look wrong, the factor is the only place to look, not a moving baseline.
+  if numbers look wrong, the factor is the only place to look, not a moving baseline. The default
+  minutes are hand-set priors from early development (no fitted data behind them); anchoring
+  protection is why they are frozen, calibration is how they stop mattering.
 - **Clamped, estimate-weighted, winsorizing mean over a raw mean.** A single blown estimate (a
   debugging subtask that took ten times longer than expected) shouldn't drag every future estimate
   with it, and a swarm of small tasks shouldn't out-vote the few large tasks that dominate actual

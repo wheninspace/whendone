@@ -511,7 +511,7 @@ def main(jsonl_path, out_path):
         "raw_i × max(q3, factor)]` (take the lower low and the higher high) — the reported band",
         "is never tighter than the measured spread. Where no q1/q3 exist (n < 5) the flat band",
         "stands; never fabricate q1/q3. Sum per-task lows/highs over pending AND running tasks.",
-        "Render `± N min (nominal)` when no task's band was widened; if ANY task's band was",
+        "Render `± N min (default band — little history)` when no task's band was widened; if ANY task's band was",
         "widened, render the asymmetric `(−A/+B min)` form with the visible marker",
         "`(widened to measured spread)`. Never state a point time without an interval, and never",
         "mention factor values in chat or artifact.",

@@ -334,7 +334,7 @@ class TestInterval(unittest.TestCase):
         # band [10,30] -> N = 10
         s = state(tasks=[task(1), task(2)])
         txt = ra.eta_text(s, ra.units(s["tasks"]), {}, self.now)
-        self.assertEqual(txt, "When done: ~10:20 ± 10 min (nominal)")
+        self.assertEqual(txt, "When done: ~10:20 ± 10 min (default band — little history)")
 
     def test_eta_text_widened_marker(self):
         # per task widened band [5,20]; two tasks: low 10 high 40; remaining 20
@@ -439,7 +439,7 @@ class TestFullPage(unittest.TestCase):
         rc, page, out = run_cli(s)
         self.assertEqual(rc, 0)
         self.assertIn("When done: ~", page)
-        self.assertIn("(nominal)", page)          # no summary -> flat bands
+        self.assertIn("(default band — little history)", page)          # no summary -> flat bands
         self.assertIn("Started 09:00", page)
         self.assertIn("60 min elapsed", page)
         self.assertIn("1 of 3 subtasks done", page)

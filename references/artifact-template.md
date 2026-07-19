@@ -23,7 +23,7 @@ normative statement is references/file-formats.md's ETA computation.
   land in text nodes only (never attributes), plus the Artifact CSP: three independent
   layers against instruction-shaped or markup-shaped task/project/plan strings.
 - Status banner (RUNNING/PAUSED/DONE/SUPERSEDED) + "last updated HH:MM" in large type.
-- ETA headline always carries an interval and its honesty marker — `± N min (nominal)`,
+- ETA headline always carries an interval and its honesty marker — `± N min (default band — little history)`,
   `(−A/+B min) (widened to measured spread)`, or plain `(−A/+B min)` at high confidence —
   never a bare point time. Source-c jobs render pace-based ETAs labeled "(uncalibrated)".
 - Task table: status icon, name (+ dim executor line when the task's `model` is known,

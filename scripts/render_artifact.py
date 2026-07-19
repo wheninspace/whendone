@@ -594,7 +594,7 @@ def eta_text(state, us, summary, now):
     if high:
         return "When done: ~%s (%s%d/+%d min)" % (hhmm(eta, now), MINUS, a, b)
     n = max(1, round((highsum - lowsum) / 2))
-    return "When done: ~%s ± %d min (nominal)" % (hhmm(eta, now), n)
+    return "When done: ~%s ± %d min (default band — little history)" % (hhmm(eta, now), n)
 
 
 def main(argv=None):
