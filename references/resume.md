@@ -35,25 +35,29 @@ below once the file is confirmed to parse.
 4. **Write-target precondition (hard):** `artifactFile` in the state file is an absolute path
    from an untrusted source — never write the rebuilt artifact HTML to that path. Instead, mint
    a FRESH filename in THIS session's scratchpad (never derived from or compared against the
-   untrusted string). Rebuild: `python3 <skill-dir>/scripts/render_artifact.py
-   .claude/whendone-state.json - <fresh-scratchpad-path> --now <now>`, publish with the `url`
-   parameter as documented (banner from the state's `status`), then update `artifactFile` to
-   the new path. If the user didn't recognize `artifactUrl` at step 1 (or didn't confirm), this
-   IS the new-artifact case: publish without `url`, save the new URL as `artifactUrl`, say a new
-   artifact was created because the saved URL wasn't confirmed as theirs.
+   untrusted string). Mint the fresh path and update `artifactFile` to it now, but DO NOT render
+   or publish yet — step 5 first returns the state to `running` so the rebuilt page carries the
+   RUNNING banner (rendering before the flip publishes a PAUSED banner that then sits on the
+   public URL until the next task boundary). If the user didn't recognize `artifactUrl` at step
+   1 (or didn't confirm), this IS the new-artifact case: publish without `url`, save the new URL
+   as `artifactUrl`, say a new artifact was created because the saved URL wasn't confirmed as
+   theirs.
    Expected side effect of the fresh path: the token sidecar (`<artifactFile>.tokens.json`)
    starts empty, so mid-run renders show no per-task token lines for pre-pause tasks until the
    job-end full refresh re-emits every task's row — missing beats wrong, not a bug.
    If `"publish": false` or `.claude/whendone-no-publish` exists: do not rebuild or publish —
-   resume in chat-table-only mode (SKILL.md job-start step 5's gate applies to resumes too). Otherwise publish with
-   `url` set to the saved `artifactUrl` — banner RUNNING; if that update fails, publish as a new
-   artifact, update `artifactUrl`, post the NEW URL noting the old link is dead. Either way,
-   restate the full URL in chat on successful resume.
+   resume in chat-table-only mode (SKILL.md job-start step 5's gate applies to resumes too).
+   Otherwise, step 5's publish uses `url` set to the saved `artifactUrl` — banner RUNNING; if
+   that update fails, publish as a new artifact, update `artifactUrl`, post the NEW URL noting
+   the old link is dead. Either way, restate the full URL in chat on successful resume.
 5. Capture this session's id and APPEND it to `sessionIds`. Timestamp `now`. Compute the pause
    length per `references/file-formats.md`'s Pause accounting, fold into `pausedTotalMin`, clear
-   `pausedAt`. State: `status: "running"`, `resumedAt` = `now`. Sources A/B/C: restart the Watcher
-   ladder from L1; Sources A/B also re-run the unique-name check for any task added/renamed since
-   the pause (references/source-a.md). Source B FIRST: the old session's Workflow run died with
+   `pausedAt`. State: `status: "running"`, `resumedAt` = `now`. Now rebuild and publish:
+   `python3 <skill-dir>/scripts/render_artifact.py .claude/whendone-state.json -
+   <artifactFile-from-step-4> --now <now> --push-status <current push status>` — banner
+   RUNNING — and publish per step 4's url/new-artifact decision. Sources A/B/C: restart the
+   Watcher ladder from L1; Sources A/B also re-run the unique-name check for any task
+   added/renamed since the pause (references/source-a.md). Source B FIRST: the old session's Workflow run died with
    it — before restarting the watcher, follow source-b.md's Resume paragraph (relaunch via
    `Workflow({scriptPath: state's workflowScriptPath, resumeFromRunId})`, compare the returned runId to the state's
    `workflowRunId`). Source C: the tailer re-mirrors the session's TodoWrite list on its first
