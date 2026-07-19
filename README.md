@@ -73,7 +73,8 @@ calibrated:
   account-scoped page throughout — one URL, republished at every subtask boundary. It's a
   claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
   while you work and opens on any other device signed in to the same account — including your
-  phone.
+  phone (on iOS via the browser: the mobile app's Artifacts tab doesn't list Code artifacts
+  yet, so use the URL whendone posts in chat, or bookmark the gallery in Safari).
 - **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
   ±50 %; correction factors move from your first logged data point and carry the label
   low/medium/high confidence as history accumulates. The interval ramps slower than the
@@ -203,7 +204,7 @@ not current behavior.) If you run plan executions routinely, add one line to you
 
 | Data | Where it goes |
 |---|---|
-| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all; HTML-escaping applied in code by the render script |
+| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all; HTML-escaping applied in code by the render script. Housekeeping: each job adds one page to your gallery (there is no delete API, so whendone can't clean up for you); old WhenDone pages — findable by their fixed "WhenDone progress monitor" subtitle — are safe to delete from the artifact's own menu |
 | State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
 | Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
 | Session transcript | read locally by the token script — usage numbers only, never content |
