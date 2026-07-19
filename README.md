@@ -139,7 +139,7 @@ SKILL.md, `references/source-a.md`, `references/file-formats.md`, and
 `references/artifact-template.md` as they ship in this repo (`references/resume.md` is NOT in
 this set — it is read only when resuming), plus the calibration-summary figure — the actual
 output size of `scripts/calibration_summary.py` (unmodified) run against a deterministic
-synthetic 60-row, 8-category, 3-project fixture (3,377 chars — regeneration snippet in
+synthetic 60-row, 8-category, 3-project fixture (3,401 bytes (3,330 chars) — regeneration snippet in
 [docs/design.md](docs/design.md#reproducing-the-readmes-synthetic-calibration-fixture)), not a
 real user's calibration history. **Provenance (Source-B row):** `references/source-b.md`
 measured standalone with the same `tiktoken` `cl100k_base` method, re-measured 2026-07-19
