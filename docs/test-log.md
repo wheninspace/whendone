@@ -551,8 +551,8 @@ sync_cycle_c, calibration guard, follow-mode pins, renderer pins, and workflow_j
 (`references/file-formats.md`:1, `scripts/calibration_summary.py`:1; SKILL.md + all three
 `source-*.md` at 0). Unchanged from the stage-4 baseline — no formula prose was touched in stage 5.
 
-**Forbidden-string + secrets sweep (tracked files).** `git grep` for `FBR`, `fbrswe`, `robocopy`,
-`framdrift`, `G:\`, and the spelled-out agency name (case-insensitive fragment): **all absent.**
+**Forbidden-string + secrets sweep (tracked files).** `git grep` for the agreed private marker
+strings (case-insensitive): **all absent.**
 Secrets scan (`api[_-]?key|secret|BEGIN … PRIVATE KEY|Bearer …`): the only hits are two benign
 security-context prose mentions in `README.md` (the sensitivity-flagging paragraph and the
 "API-key-only setups" note) — no credentials, tokens, or keys. Manual skim: no Swedish prose in
@@ -629,3 +629,103 @@ per `progress`/`all-done`, verbatim `etaText`), and job-end (no calibration-summ
 all matched observed behavior. Dogfood limit: because the run tracked the model's own multi-minute
 work items, wakes were minutes apart (not sub-second), which exercised the debounce/render tail
 naturally.
+
+## Source-A cross-session resume drill (flip checklist A1) — 2026-07-19
+
+The first of the two never-run-live paths, run against a real job: the flip checklist's own Part-B
+pre-push verification, declared as a 4-subtask Source-A job. Session 1 declared and ran the job
+under an L1 watcher; the session was ended with subtask 4 in flight (state `paused`, subtask 4
+`running` with `startedAt` set and `finishedAt` null). Session 2 was a fresh session opened with
+only "resume the whendone job".
+
+**All five drill checkpoints verified.**
+
+- **State summarized and confirmed before any action:** the fresh session read
+  `.claude/whendone-state.json`, presented job name, plan-file path, the saved `artifactUrl` as a
+  quoted literal, and the done/remaining task split, then waited for explicit confirmation
+  (including URL ownership) before touching anything.
+- **Artifact republished onto the SAME URL** (`57a29fda-62e0-49be-a7ce-78788436fec8`): a fresh
+  `artifactFile` was minted in the new session's scratchpad (the state file's path was never
+  written to), rendered with the RUNNING banner, and published with the `url` parameter — same
+  link before and after the kill, DONE banner included.
+- **Done subtasks kept `actualMin`, never re-appended:**
+  `wc -l ~/.claude/whendone-data/calibration.jsonl` = **75 before resume, 76 after completion** —
+  exactly one new row, for the redone subtask 4; subtasks 1–3 kept their logged times untouched.
+- **Watcher restarted at L1** (Monitor, `tail_progress.py --follow`); it detected the final
+  completion itself, emitted `all-done`, and exited rc 0 on its own.
+- **DONE banner completion:** `"Done — took 21 m (estimated 17.4 m)"`, 4/4 subtasks; pause
+  accounting folded 10.4 min into `pausedTotalMin`; the calibration summary was regenerated at
+  job end.
+
+The interrupted subtask 4 followed the crash-resume rule as written: read-only (documentation
+category), so redone with a fresh `startedAt` and `actualMin: null` for the lost partial run —
+its earlier partial time landed in pause accounting, not work time.
+
+**Drill finding (fixed same day):** the tailer's default `now` was `datetime.now(timezone.utc)`,
+and since the renderer displays every time in `now`'s tz, all tailer-driven renders painted the
+artifact in UTC ("last updated 08:05" against a 10:05 local wall clock). Fixed as a local-time
+policy across the scripts (`tail_progress.py` default `now`, `token_usage.parse_ts`, overlap
+reference, `lastActivity`); pinned by three new tests (`LocalTimePolicyTest` in
+`test_tail_progress.py`, `ParseTsTimezoneTest` in `test_token_usage.py`). Suites after the fix:
+**270 tests, OK, warning-clean.**
+
+## Source-B cross-session resume drill (flip checklist A2 / B12) — 2026-07-19
+
+The second of the two never-run-live paths. Session 1 declared a 4-phase Source-B job
+("B12 Source-B cross-session resume drill (attempt 3)": Scan / Cross-check / Audit / Report,
+estimate 14.5 m) over a tagged Workflow run and was killed mid-Audit (71 s into the run, 1 of
+2 audit agents in flight). Session 2 was a fresh session opened with only "resume the whendone
+job".
+
+**Resume procedure verified:** state summarized and confirmed — including `artifactUrl`
+ownership — before any action; fresh `artifactFile` minted in the new session's scratchpad (the
+state file's path never written to); artifact republished onto the SAME URL
+(`c97b117b-9f0f-4e44-b8d1-a721ed8dfff0`) with the RUNNING banner; pause accounting folded
+3.8 min into `pausedTotalMin` (crash-resume fallback, `now − last finishedAt`); the crashed
+Audit phase (review, read-only) reset for a clean redo; workflow relaunched via
+`Workflow({scriptPath, resumeFromRunId})`; the run completed end-to-end with the DONE banner
+`"Done — took 8 m (estimated 14.5 m)"` on the same URL, push sent, calibration summary
+regenerated.
+
+**Procedure correction: the engine REUSES the runId on resume** — the stage-4 notes and
+source-b.md's resume section assumed a new one. `workflowRunId` needs no update (compare and
+update only if it ever differs); the resumed run's dir appears under the NEW session while the
+dead session's dir persists under the old — same runId, two dirs.
+
+**Drill finding (fixed same day): a killed run's record finalized the job.** The session kill
+had written `<old-session>/workflows/<runId>.json` with `status: "killed"` and
+`error: "Workflow aborted"` — `run_finished()` checked only that the file exists, and
+`find_run_dir()` returned the first `sessionIds` match, i.e. the dead session's dir. First
+watcher cycle after resume: a false `all-done` off the dead run — Audit/Report stamped done
+(Audit with `finishedAt` null, Report with no timestamps at all), watcher exited while the
+resumed run was still live. Scan/Cross-check were finalized in that same pass from their real
+run-1 spans (two calibration rows, `actualMin` 0.5 each — early, but valid data). Recovery
+workaround (state data only, watcher stopped): `sessionIds` reordered newest-first, false-done
+phases reverted to pending. The resumed run then finished for real (7 engine agents: 4
+cached-prefix replays + 3 live), and the final one-shot sync appended **exactly 2 new rows
+(81 → 83)** for the newly finished Audit (7.0 m) and Report (0.5 m) — **done phases kept
+`actualMin` and were never re-appended** (done-is-done, the drill's core assertion).
+
+**Fixes (same day, TDD — all four new tests watched fail on the old behavior first):**
+
+- `workflow_journal.run_finished()` parses the record and requires `status == "completed"`;
+  killed / failed / statusless / unparseable / oversized (>1 MB) all fail closed to "not
+  finished" — stale visibility over a false DONE. Predicate backed by a survey of 24 real run
+  records across 8 projects: `status` always present (completed 22, killed 1, failed 1;
+  killed/failed carry `error`).
+- `workflow_journal.find_run_dir()` collects every matching run dir across `sessionIds` and
+  returns the one with the newest `journal.jsonl` mtime (no journal sorts oldest; ties keep
+  list order, preserving single-dir behavior).
+- `references/source-b.md`: resume section rewritten for runId reuse; "completion record"
+  defined as a status-`completed` record only.
+- Tests: `test_run_finished_killed_or_failed_record_fails_closed`,
+  `test_run_finished_statusless_or_unparseable_record_fails_closed`,
+  `test_find_run_dir_prefers_newest_journal`,
+  `test_find_run_dir_without_journals_falls_back_to_first` (unit), plus the integration
+  regression `test_killed_record_does_not_finalize`; `WfEnv.finish_run` now writes a
+  real-shaped record instead of `{}`. The fix was also replayed against the real on-disk run
+  dirs from the drill: old/killed → not finished, new/completed → finished, and the original
+  `sessionIds` order now picks the live dir.
+
+Suites after the fix: **275 tests, OK, warning-clean.** Both never-run-live resume paths (A1,
+B12) have now been exercised end-to-end against real jobs.
