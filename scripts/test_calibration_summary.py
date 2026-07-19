@@ -283,6 +283,12 @@ class TestHardening(unittest.TestCase):
         self.assertNotIn("`", r["model"])
         self.assertFalse(r["model"].startswith("#"))
 
+    def test_sanitize_strips_control_and_escape_chars(self):
+        s = cs.sanitize("acme\x1b]0;pwned\x07x\x1b[31mred\x00\tz")
+        for ch in ("\x1b", "\x07", "\x00"):
+            self.assertNotIn(ch, s)
+        self.assertIn("pwned", s)        # content survives, control bytes don't
+
     def test_model_mix_caveat_renders_backtick_quoted(self):
         # M15: model strings in the Model-mix caveat are backtick-quoted inline code.
         out = run_main([row(model="alpha"), row(model="beta")])

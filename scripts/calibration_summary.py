@@ -80,10 +80,12 @@ MAX_JSONL_BYTES = 20_000_000
 
 
 def sanitize(s, maxlen=64):
-    """Model/project/job strings come from the jsonl — never trusted as markdown.
-    Strip newlines/pipes (table delimiter) and backticks (breaks inline-code spans),
-    and drop a leading '#' run (markdown heading), before capping length."""
-    s = str(s).replace("\n", " ").replace("\r", " ").replace("|", "/").replace("`", "'")
+    """Model/project/job strings come from the jsonl — never trusted as markdown or
+    terminal output. Strip C0/C1 controls incl. ESC (ANSI/OSC injection), pipes (table
+    delimiter) and backticks (inline-code spans), and drop a leading '#' run (markdown
+    heading), before capping length."""
+    s = re.sub(r"[\x00-\x1f\x7f]", " ", str(s))
+    s = s.replace("|", "/").replace("`", "'")
     return s.lstrip("#")[:maxlen]
 
 
