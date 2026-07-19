@@ -28,7 +28,11 @@ planning session to understand why things are built the way they are.
   order-independent, and active at every sample size, unlike winsorizing (see below); winsorizing
   then caps the leverage of the top/bottom 20% by rank; the resulting ratios are combined into a
   mean weighted by each row's raw estimate — instead of an unweighted mean — so a 0.5-min quick
-  task and a 60-min task don't get an equal vote (see Calibration statistics).
+  task and a 60-min task don't get an equal vote (see Calibration statistics). This robustness
+  trade has a cost: the winsorized, clamped ratio-of-sums estimator asymptotically undershoots
+  the documented sum-optimal objective (`Σ actualMin / Σ rawEstimateMin`) by roughly −4…−17%,
+  a deliberate bias accepted in exchange for resistance to outlier/poisoned rows — no code
+  change at current sample sizes.
 - **Parallel subtasks are excluded from calibration.** When multiple subtasks run at once, their
   wall-clock durations overlap, so "actual minutes elapsed" no longer corresponds to "work done" —
   logging them would corrupt the ratio calculation. They're still shown individually in the
@@ -197,8 +201,9 @@ The Overhead section's `calibration-summary.md` provenance figure is generated f
 copied from an old run — the log below produces a deterministic 60-row, 8-category, 3-project
 synthetic calibration log, feeds it through the real `scripts/calibration_summary.py` unmodified,
 and prints the resulting summary file's `wc -c`-equivalent size in chars. Re-running it reproduces
-the same byte count every time (verified: 3,377 chars on both of two runs, 2026-07-19 — was
-3,371 on 2026-07-18, before that day's later `calibration_summary.py` display changes):
+the same byte count every time (verified: 3,377 bytes (3,308 chars) on both of two runs,
+2026-07-19 — was 3,371 on 2026-07-18, before that day's later `calibration_summary.py` display
+changes):
 
 ```bash
 python3 - <<'EOF'
@@ -415,3 +420,31 @@ exist yet or would add complexity out of proportion to the current scope:
 - **Asymmetric ETA intervals** (`+P80` / `-P25`, or similar) for categories whose ratio
   distribution is right-skewed, instead of a single symmetric `+/-` percentage — would better
   reflect that overruns are typically larger and more likely than underruns for those categories.
+
+## Appendix: trigger-figure measurement history
+
+The README's Overhead table reports the trigger-path token figure as a single current number
+(≈11,849 raw / ≈13.4–13.5k as-read, 2026-07-19). This appendix records how that number moved
+across the measurements that produced it, for anyone auditing the trend rather than just the
+current value.
+
+Four movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+
+1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
+   renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
+   trigger path to 12,552.
+2. That pass then extracted the Resume mechanics from SKILL.md into `references/resume.md`
+   (off the trigger path), dropping the path to 11,639 — a 913-token saving every non-resume
+   trigger now gets.
+3. The same day's consolidated pre-flip review then fixed stale/contradictory lines on the path
+   (source shipped-status, step-8 Source-C carve-out, pointer repairs), adding +74 → 11,713.
+4. A later task (honest raw-vs-as-read headroom) re-measured after further tasks grew
+   `source-a.md`, `file-formats.md`, and `source-b.md` on- and off-path, plus a SKILL.md "When
+   not to use" edit, moving the raw total to 11,849.
+
+**Method note (for reproduction):** the figures above are a raw token sum of the file contents
+on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
+reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
+~0.6% additive reconstruction variance that cancels out in the 913-token delta between
+movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈0.5–0.6k to spare
+(11,849 raw); see the README Overhead table's provenance note for the current breakdown.

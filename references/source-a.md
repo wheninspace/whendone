@@ -33,7 +33,9 @@ user asks otherwise), and `group` on parallel-group members.
 
 **In the SAME turn, create the TodoWrite list: one item per declared task, item `content`
 EXACTLY the task `name`.** Declared names must be unique — duplicates are unmatchable by
-design, since the tailer matches TodoWrite/dispatch text back to task names verbatim. Subagent
+design, since the tailer matches TodoWrite/dispatch text back to task names verbatim (the
+tailer's matcher additionally tolerates case/whitespace/leading-ordinal differences — never
+looser). Subagent
 dispatch `description`s must equal the task name too. Renaming mid-job breaks matching — update
 the state file and TodoWrite list together, with the watcher stopped, if a rename is needed.
 

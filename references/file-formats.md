@@ -119,7 +119,7 @@ let the user decide). Never silently overwrite. `jobId` is deliberately NOT the 
 here: a same-job crash-restart gets a new `jobId` (derived from the restart's own timestamp),
 so keying on it would misclassify every crash-resume as "another session owns it."
 
-`jobId` IS, however, the ownership key at every later checkpoint: each session remembers the
+`jobId` IS, however, the ownership key at every later wake: each session remembers the
 `jobId` it read/wrote and re-checks the file still carries it before writing. A mismatch means
 another session ran "discard and start fresh" meanwhile — stop touching state/log/artifact and
 tell the user.
@@ -279,5 +279,5 @@ Location: `~/.claude/whendone-data/calibration-summary.md` (created at first job
 that, all factors are 1.0, defaults live in source-a.md's Declare-once estimate table). Regenerated at every job end by
 `scripts/calibration_summary.py` from the FULL calibration.jsonl. Read at job start — NEVER
 read the whole jsonl at start (token budget). Skip regeneration if the job logged zero new
-valid data points. The script auto-archives beyond the newest 1,000 lines to
-`calibration-archive-<year>.jsonl`; `--report` reads archives too.
+valid data points. The script rotates once the log exceeds 2,000 rows, keeping the newest 1,000
+and moving the rest to `calibration-archive-<year>.jsonl`; `--report` reads archives too.

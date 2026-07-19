@@ -101,9 +101,10 @@ two.
    `date -Iseconds; echo "${CLAUDE_CODE_SESSION_ID:-}"` (PowerShell fallback:
    `Get-Date -Format o; $env:CLAUDE_CODE_SESSION_ID`). Never guess times. Store the id in
    `sessionIds` (empty string → token display unavailable, fine). On resume, append the NEW
-   session's id. Calibration logging on pure PowerShell (no bash) uses the SAME
-   `append_calibration.py`/`token_usage.py`/`calibration_summary.py` helpers via `py -3` —
-   shell-agnostic, UTF-8 regardless of invoking shell — never improvise with `Out-File`/`>>`.
+   session's id. Calibration logging happens in-process inside the tailer, never a separate
+   call; on pure PowerShell (no bash), `token_usage.py`/`calibration_summary.py` still need
+   `py -3` — shell-agnostic, UTF-8 regardless of invoking shell — never improvised `Out-File`/`>>`
+   appends.
 7. Two hard preconditions gate the writes in step 8:
    - **Write-target precondition:** for each of `.claude/whendone-state.json`, `.gitignore`,
      and `.claude/whendone-tail.lock`, verify it either doesn't exist yet, or exists as a

@@ -171,22 +171,8 @@ full session context is re-read at cache-read rates; for API-key users that volu
 wakes × context size) typically dominates whendone-attributable dollar cost. Subscription
 users pay it in latency, not money. Current Claude Code deployments may also load the host's OWN
 artifact-design skill before the first Artifact publish — outside whendone's control and not
-counted here. **Why the trigger-path figure moved since the last measurement:** two movements.
-(1) Between the stage-5 release (12,313) and this pass, on-path commits (local-time policy,
-renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the trigger
-path to 12,552 under an identical raw `tiktoken cl100k_base` sum. (2) This pass then extracted
-the Resume mechanics from SKILL.md into `references/resume.md` (off the trigger path), dropping
-the path to 11,639 — a 913-token saving every non-resume trigger now gets. (3) The same day's
-consolidated pre-flip review then fixed stale/contradictory lines on the path (source
-shipped-status, step-8 Source-C carve-out, pointer repairs), adding +74 → 11,713. (4) This task
-(Task 7, honest raw-vs-as-read headroom) re-measured after Tasks 2/4/5 grew `source-a.md`,
-`file-formats.md`, and `source-b.md` on- and off-path, plus this task's own SKILL.md "When not
-to use" edit, moving the raw total to 11,849. **Method note (for
-reproduction):** the figures here are a raw token sum of the file contents listed above (no
-Read-tool line-number prefixes) plus the calibration-summary output; this reconstruction reads
-the stage-5 commit at 12,385 vs the 12,313 recorded there — a ~0.6% additive reconstruction
-variance that cancels in the 913-token delta. The path stays under the 14,000 budget as-read,
-with ≈0.5–0.6k to spare (11,849 raw); see the provenance above for the exact breakdown.
+counted here. Current figure ≈11,849 raw / ≈13.4–13.5k as-read (2026-07-19); full measurement
+history in [docs/design.md](docs/design.md#appendix-trigger-figure-measurement-history).
 
 Statistics never run in the model — calibration summaries and accuracy reports come from the
 script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk away from.

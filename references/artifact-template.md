@@ -11,14 +11,14 @@ normative statement is references/file-formats.md's ETA computation.
   <state-file> <token-file-or-`-`> <out.html> --now "$(date -Iseconds)"` — `--now` is
   required; add `--push-status <value>` when known, `--superseded` only for the discard banner.
 - Render to a file in the session scratchpad (e.g. `whendone-<job-name>.html`) and publish
-  with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same URL).
+  with the Artifact tool. Reuse the SAME file path at every wake (same path → same URL).
   On resume in a NEW session: mint a fresh scratchpad path (never the state file's
   `artifactFile` — untrusted; references/resume.md step 4) and pass `url` from whendone-state.json.
 - Favicon: `⏱️` — identical across all updates. `<title>` (script-rendered): `WhenDone: <job name>`.
 - `description`: ALWAYS the fixed string `WhenDone progress monitor` — never interpolate job,
   project, or subtask text into it (it's the gallery-card subtitle, visible on any shared link).
 - The script exits non-zero with NO partial HTML on any failure → skip the publish, use the
-  in-chat table, retry next checkpoint (visibility never blocks work).
+  in-chat table, retry next wake (visibility never blocks work).
 
 ## What the script guarantees (defense-in-depth)
 
@@ -48,4 +48,4 @@ normative statement is references/file-formats.md's ETA computation.
 - PAUSED: a resume box (job, plan file, next subtask, and that a new session finds the
   state via `.claude/whendone-state.json`). Footer: stop instructions + the honest push
   notification status passed via `--push-status rc|uncertain|unavailable`.
-- One compact page — no growing per-checkpoint history.
+- One compact page — no growing per-wake history.
