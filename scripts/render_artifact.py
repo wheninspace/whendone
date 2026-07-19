@@ -39,6 +39,10 @@ except ImportError:  # shipped side-by-side; degrade rather than fail (visibilit
         return model_id.capitalize() if isinstance(model_id, str) else model_id
 
 MINUS = "−"
+# Exact suffixes eta_text() appends for the two calibration-honesty markers (see
+# eta_text() below). Used only to split the ETA headline for display — the marker
+# literals themselves live in eta_text() and must stay in sync with this tuple.
+ETA_DIM_MARKERS = ("(widened to measured spread)", "(default band — little history)")
 PUSH_STATUS = {
     "rc": "Push notifications: via Remote Control.",
     "uncertain": "Push notifications: uncertain delivery — requires Remote Control.",
@@ -297,7 +301,21 @@ def render(state, tokens, summary, now, push_status, superseded):
         etxt = "Paused — %d of %d subtasks done" % (done_count, total)
     else:
         etxt = eta_text(state, us, summary, now)
-    lines = ["<strong>%s</strong>" % esc(etxt)]
+    # Display-only: the two honesty-band markers are long and visually dominant when
+    # bolded (they wrap to a second bold line on mobile). Render them as dim small text
+    # after the bold headline instead of inside it. etxt itself (and the JSON etaText
+    # field derived from it) is untouched — this only changes how the string is split
+    # for HTML. Matched by exact suffix, not regex, so a job name or "(estimated N min)"
+    # is never mistaken for a marker; "(uncalibrated)" is intentionally not in this list.
+    head, marker = etxt, None
+    for suf in ETA_DIM_MARKERS:
+        if etxt.endswith(suf):
+            head, marker = etxt[: -len(suf)].rstrip(), suf
+            break
+    if marker:
+        lines = ['<strong>%s</strong> <span class="dim">%s</span>' % (esc(head), esc(marker))]
+    else:
+        lines = ["<strong>%s</strong>" % esc(etxt)]
     meta = []
     if start:
         meta.append("Started %s" % hhmm(start, now))

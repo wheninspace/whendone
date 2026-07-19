@@ -5,6 +5,10 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Quieter honesty marker:** the ETA line's band marker ("widened to measured spread" /
+  "default band — little history") now renders as dim small text after the bold headline
+  instead of inside it — same words, less visual weight; the machine-readable etaText is
+  unchanged.
 - **Terminal-injection hardening (M7):** `calibration_summary.py`'s `sanitize()` now strips
   all C0/C1 control bytes incl. ESC — project/job strings from the jsonl can no longer carry
   ANSI/OSC sequences into summary or report output.

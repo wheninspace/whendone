@@ -678,6 +678,54 @@ class TestFullPage(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn("(widened to measured spread)", read_text(op))
 
+    def test_widened_marker_renders_dim_outside_strong(self):
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "s.json"); op = os.path.join(td, "o.html")
+            sm = os.path.join(td, "sum.md")
+            with open(sm, "w", encoding="utf-8") as f:
+                f.write(SUMMARY_MD)
+            st = state(tasks=[task(1, category="debugging", rawEstimateMin=10,
+                                   estimateMin=14)])
+            with open(sp, "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = ra.main([sp, "-", op, "--now", NOW, "--summary", sm])
+            self.assertEqual(rc, 0)
+            page = read_text(op)
+            self.assertIn('</strong> <span class="dim">(widened to measured spread)</span>',
+                          page)
+            # the bold headline itself must not carry the marker text
+            strong = page[page.index("<strong>"):page.index("</strong>")]
+            self.assertNotIn("widened to measured spread", strong)
+
+    def test_default_band_marker_renders_dim_outside_strong(self):
+        s = state(tasks=[task(1), task(2)])  # no summary -> default/flat bands
+        rc, page, _ = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            '</strong> <span class="dim">(default band — little history)</span>', page)
+        strong = page[page.index("<strong>"):page.index("</strong>")]
+        self.assertNotIn("default band", strong)
+
+    def test_source_c_uncalibrated_label_stays_inside_strong(self):
+        # Control: "(uncalibrated)" is NOT one of the two dim markers — it must
+        # remain bold, unsplit, exactly as before.
+        s = state(source="c", tasks=[task(1), task(2)])
+        rc, page, out = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertNotIn('<span class="dim">(uncalibrated', page)
+        strong = page[page.index("<strong>"):page.index("</strong>")]
+        self.assertIn("(uncalibrated)", strong)
+        self.assertIn("ETA not yet known (uncalibrated)", json.loads(out)["etaText"])
+
+    def test_eta_text_json_contract_unchanged_by_dim_rendering(self):
+        # The machine-readable etaText field must still carry the full marker text,
+        # byte-identical to before — only the HTML rendering of it changed.
+        s = state(tasks=[task(1), task(2)])  # no summary -> default band
+        rc, page, out = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertIn("(default band — little history)", json.loads(out)["etaText"])
+
 
 class AgentCounterDisplayTest(unittest.TestCase):
     def test_task_counter_line(self):
