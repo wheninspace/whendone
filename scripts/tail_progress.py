@@ -564,13 +564,16 @@ def finalize_b(state_path, state, per_tag, args):
     for t in state.get("tasks", []):
         if not isinstance(t, dict):
             continue
-        if t.get("status") == "done" and t.get("actualMin") is not None:
-            continue                                  # done-is-done (B12)
+        if t.get("status") == "done" and (t.get("bFinalized")
+                                          or t.get("actualMin") is not None):
+            continue                      # done-is-done (B12); flag closes the I2 window
         slot = per_tag.get(t.get("wdTag")) or {}
         started = slot.get("minStart") or t.get("startedAt")
         finished = slot.get("maxEnd") or t.get("finishedAt")
-        # (b) durable done-marker FIRST
+        # (b) durable done-marker FIRST — bFinalized in the SAME write closes the
+        # append/actualMin crash window (a lost row beats a duplicated one)
         t["status"] = "done"
+        t["bFinalized"] = True
         if started:
             t["startedAt"] = started
         if finished:

@@ -109,7 +109,8 @@ resumed run's dir sits under the NEW session while the dead session's dir persis
 procedure appends the new session id to `sessionIds` rather than replacing the old one (the
 old id is still needed for token counts). Restart the watcher ladder from L1. Cached-prefix
 replays can surface as near-instant started/result pairs for agents that already ran before
-the crash: phases already `done` with `actualMin` set are never re-finalized or re-appended
+the crash: phases already `done` and marked `bFinalized` (pre-v0.3.1 states: with `actualMin` set) are
+never re-finalized or re-appended, including across a resume
 (same done-is-done rule as source-a.md's F9 neighbor). The dead run's record (`status:
 "killed"`) never finalizes anything — see "What the tailer observes" above. F9 rebaseline
 (recompute `originalTotalMin` from the next successful render) applies if the phase list

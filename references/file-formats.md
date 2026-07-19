@@ -97,7 +97,7 @@ Absent ⇒ `"unknown"`.
 
 Source-B additive fields (stage 4): job-level `workflowRunId`, `wfAgentsStarted`,
 `wfAgentsDone`, `wfDriftNotified`; per-task `wdTag`, `agentsExpected`,
-`agentsStarted`, `agentsDone`. Normative definitions, the Workflow journal format,
+`agentsStarted`, `agentsDone`, `bFinalized`. Normative definitions, the Workflow journal format,
 and the tag convention live in `references/source-b.md` (kept off this file to
 protect the Source-A trigger-path token budget).
 

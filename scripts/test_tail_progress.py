@@ -1309,6 +1309,40 @@ class SourceBFinalizeTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_finalized_phase_with_null_actual_is_never_reappended(self):
+        # the I2 crash window: done + bFinalized on disk, actualMin never written
+        env = self._env()
+        st = env.state()
+        st["tasks"][0].update(status="done", bFinalized=True, actualMin=None,
+                              startedAt="2026-07-18T09:05:00+00:00",
+                              finishedAt="2026-07-18T09:20:00+00:00")
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))) as ap:
+                env.run_one_shot()
+            rows = [c.args[0] for c in ap.call_args_list]
+            self.assertEqual(len(rows), 1)              # only "fix", "scan" never again
+            self.assertEqual(rows[0]["category"], "judgment-coding")
+        finally:
+            env.cleanup()
+
+    def test_finalize_sets_bfinalized_with_done_marker(self):
+        env = self._env()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))):
+                env.run_one_shot()
+            self.assertTrue(all(t.get("bFinalized") is True
+                                for t in env.state()["tasks"]))
+        finally:
+            env.cleanup()
+
 
 class RenderOutPathHardeningTest(unittest.TestCase):
     def test_valid_absolute_html_accepted(self):
