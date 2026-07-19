@@ -39,9 +39,9 @@ below once the file is confirmed to parse.
    or publish yet — step 5 first returns the state to `running` so the rebuilt page carries the
    RUNNING banner (rendering before the flip publishes a PAUSED banner that then sits on the
    public URL until the next task boundary). If the user didn't recognize `artifactUrl` at step
-   1 (or didn't confirm), this IS the new-artifact case: publish without `url`, save the new URL
-   as `artifactUrl`, say a new artifact was created because the saved URL wasn't confirmed as
-   theirs.
+   1 (or didn't confirm), this IS the new-artifact case: step 5's publish goes without `url` —
+   save the new URL as `artifactUrl` and say a new artifact was created because the saved URL
+   wasn't confirmed as theirs.
    Expected side effect of the fresh path: the token sidecar (`<artifactFile>.tokens.json`)
    starts empty, so mid-run renders show no per-task token lines for pre-pause tasks until the
    job-end full refresh re-emits every task's row — missing beats wrong, not a bug.
