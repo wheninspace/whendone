@@ -26,8 +26,8 @@ any ETA — never compute one yourself: ETA, interval, deviation, and slip all c
 Never mention factor values in chat or artifact (anchoring pollutes future raw estimates).
 
 Write the state file next: same hard write-target + gitignore preconditions as SKILL.md's
-core (cross-ref there) — extend the gitignore check to also cover
-`.claude/whendone-tail.lock`. Include the stage-3 fields (references/file-formats.md): `client`
+core (cross-ref there; both checks already name
+`.claude/whendone-tail.lock`). Include the stage-3 fields (references/file-formats.md): `client`
 (the environment), `pushStatus` (real notification status), `staleAfterMin` (10 unless the
 user asks otherwise), and `group` on parallel-group members.
 
@@ -82,7 +82,8 @@ line):
 
 1. Final artifact update: run `python3 <skill-dir>/scripts/token_usage.py
    .claude/whendone-state.json` WITHOUT `--task` (full job + subagents + every task's row, the
-   one time per job it's re-emitted), Write its output to the token temp file, set the state's
+   one time per job it's re-emitted), Write its output to a token temp file (a fresh path in
+   this session's scratchpad — `render_artifact.py`'s second positional argument), set the state's
    `status: "done"` first, then render via `render_artifact.py` (`--now` = a fresh
    `date -Iseconds`) and publish — DONE banner, total actual vs estimate; include the full
    artifact URL in chat.

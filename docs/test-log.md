@@ -514,8 +514,9 @@ injected context + one publish turn**, consistent with stage 3's component estim
 line measured at 54 cl100k tokens + a short turn + a publish). The HTML re-injection is
 environment-specific (Claude Code echoing a changed tracked file back to the model); a headless
 watcher that renders to a non-watched path would not incur it.
-*[Correction 2026-07-19: the cost figures above stand (re-measured: median 1,738 tok/echo this
-session), but the "non-watched path" explanation was wrong — see "Per-wake re-injection
+*[Correction 2026-07-19: re-measurement revised the echo cost UPWARD — median 1,738 tok/echo
+this session, vs the ~800–1,000 estimated above — and the "non-watched path" explanation was
+wrong — see "Per-wake re-injection
 mechanism — forensics + controlled experiment" below. Render location is irrelevant; the file is
 registered by the Artifact publish itself, and the echo is tied to the interactive session
 surface, not the path.]*
@@ -839,3 +840,30 @@ declare/resume) — independent validation of the single-writer invariant, not a
 
 Artifacts of the experiment: disposable private artifact "EXPSIG-E cycle 0"
 (`…/artifact/fdde1edd-…`, safe to delete from the gallery); experiment files removed after the run.
+
+## Consolidated pre-flip review — fix pass + re-measure — 2026-07-19
+
+An independent whole-picture audit ran before the public flip: protocol coherence traced
+end-to-end across SKILL.md + all six reference files, cross-reference grep sweeps, docs-vs-code
+verification of ~45 script claims, security/egress posture, and independent re-measurement.
+
+**Verified before fixes:** the 285-test suite passed warning-clean
+(`python3 -W error::ResourceWarning -m unittest discover`), and the README's 11,639 trigger-path
+figure reproduced EXACTLY under an independent `tiktoken cl100k_base` run (3,342 + 1,965 +
+4,358 + 878 + 1,096). No code, measurement, or security defects found.
+
+**Findings (all doc coherence/staleness) and fixes:** see the CHANGELOG's "Pre-flip
+consolidated review" block. Highest-severity: a stale "only source shipped today" /
+"Source C ships later" pair left over from before the stage-5 flip; an unhedged IDE-echo
+causation sentence in the README's per-wake row (now labeled best-fit, matching this log's
+entry above); the resume flow never routing Source-B jobs to source-b.md's Workflow-relaunch
+paragraph; step 8 instructing task-list invention for Source-C jobs; a stale source-b.md
+token figure.
+
+**Post-fix re-measure (same `tiktoken cl100k_base` raw-content-sum method):** trigger path
+**11,713** = SKILL.md 3,375 + source-a.md 1,984 + file-formats.md 4,376 +
+artifact-template.md 882 + calibration-summary fixture 1,096 (fixture output now 3,377 chars,
+identical across two regeneration runs). Standalone: source-b.md **2,067** (was 1,810 before
+the B12 resume-drill fixes), source-c.md **921**, resume.md **1,211** (grew with the
+Source-B/C resume-routing fix). Spare vs the 14,000 budget: **2,287**. Suite re-run after all
+edits: 285 tests OK, warning-clean (docs-only pass — expected, and verified anyway).

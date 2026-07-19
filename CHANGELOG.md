@@ -93,6 +93,31 @@ v0.2.1.
 - `references/source-c.md` stub replaced by the full Source-C protocol; SKILL.md source
   detection flips Source C to shipped.
 
+### Pre-flip consolidated review — fix pass (2026-07-19)
+
+An independent whole-picture audit (protocol coherence, cross-references, docs-vs-code,
+re-measured numbers, security posture) found no code or measurement defects; all findings
+were doc coherence/staleness, fixed in one pass:
+
+- SKILL.md no longer calls Source A "the only source shipped today"; the
+  `unsupported-source` event row no longer says "Source C ships later" (both leftovers
+  from before the stage-5 flip).
+- README's per-wake row now labels the "IDE panel open → full echo" causation as the
+  best-fit explanation (matching the test-log and forensics wording), not proven fact;
+  the measured walk-away/watching split is unchanged.
+- `references/resume.md` now routes Source-B resumes through source-b.md's Workflow
+  relaunch (`resumeFromRunId`, runId comparison) and exempts Source C from
+  classify/estimate — previously the resume flow only cited source-a.md.
+- SKILL.md job-start step 8 no longer tells the model to invent a task list for
+  Source-C jobs; error table and notifications rows de-Source-A'd; stale pointers
+  repaired (estimate-table location, Watcher-ladder attribution, token temp file spec,
+  artifact `<title>` prefix, redundant gitignore "extend" phrasing).
+- Overhead table re-stamped from fresh `tiktoken cl100k_base` measurements: trigger path
+  11,713 (fix pass added +74 over the 11,639 slimming measurement), source-b.md 2,067
+  (was 1,810 pre-B12-fixes), source-c.md 921, resume.md 1,211; proxy-vs-measurement
+  framing corrected; stale state-file/fixture sizes updated (fixture now 3,377 chars,
+  deterministic across two runs).
+
 ## v0.2.1 — 2026-07-18
 
 Doc/protocol correctness fixes plus one additive script feature, closed after a third

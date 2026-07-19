@@ -10,8 +10,8 @@ Source A instead; Source C is for jobs already underway or too fluid to declare.
 ## Job start (replaces Source A's Declare-once)
 
 No classification, no estimate table, no calibration-summary read. Write the state file —
-same step-7 write-target + gitignore preconditions as SKILL.md's core, extended to
-`.claude/whendone-tail.lock` — with `source: "c"`, `tasks: []`, `originalTotalMin: null`,
+same step-7 write-target + gitignore preconditions as SKILL.md's core (they already cover
+`.claude/whendone-tail.lock`) — with `source: "c"`, `tasks: []`, `originalTotalMin: null`,
 and the stage-3 fields (`client`, `pushStatus`, `staleAfterMin` — references/file-formats.md).
 The tailer materializes `tasks` from the session's TodoWrite list on its first pass; the model
 never hand-fills them. The job needs a TodoWrite list as its own working list — whendone does

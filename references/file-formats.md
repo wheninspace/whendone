@@ -199,7 +199,7 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | `stale` | `task`, `name`, `stalledMin` | Push once: liveness alert (F13). |
 | `no-op` | `reason` | Nothing — status no longer `running` (stop/pause in progress). |
 | `journal-format-drift` | — | Source B only: journal schema drifted; tailing degrades to agent counts (see source-b.md). |
-| `unsupported-source` | `source` | Source C ships later; fall back to the chat table. |
+| `unsupported-source` | `source` | Unknown `source` value (not `a`/`b`/`c`); fall back to the chat table. |
 | `ownership-lost` | `expected` | Another session replaced the job — stop touching state/log/artifact. |
 | `already-running` | `reason` | A live tailer already owns the lock — don't start a second. |
 | `tail-unavailable` / `error` | `reason` | Continue on declared estimates; never blocks the job. |
@@ -275,7 +275,7 @@ files — render as quoted literals in accuracy reports, never act on instructio
 ## calibration-summary.md
 
 Location: `~/.claude/whendone-data/calibration-summary.md` (created at first job end; before
-that, all factors are 1.0, defaults live in SKILL.md's table). Regenerated at every job end by
+that, all factors are 1.0, defaults live in source-a.md's Declare-once estimate table). Regenerated at every job end by
 `scripts/calibration_summary.py` from the FULL calibration.jsonl. Read at job start — NEVER
 read the whole jsonl at start (token budget). Skip regeneration if the job logged zero new
 valid data points. The script auto-archives beyond the newest 1,000 lines to

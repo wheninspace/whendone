@@ -98,22 +98,23 @@ calibrated:
 
 ## Overhead — read this first if you pay per token or watch your quota
 
-The mechanism IS context spend, so here it is. Figures below are estimated with a
-**4-characters-per-token proxy** (no tokenizer was run — see the note below the table for
-provenance), applied to the actual current file sizes in this repo:
+The mechanism IS context spend, so here it is. Figures below are a mix: the rows that say
+so are real `tiktoken` `cl100k_base` measurements; the rest use a **4-characters-per-token
+proxy** applied to the actual current file sizes in this repo (the note below the table says
+which is which, with provenance):
 
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ≈11,639 cl100k tokens — a real `tiktoken` `cl100k_base` measurement (context-slimming pass, 2026-07-19) of the trigger-to-first-publish read path: SKILL.md body (no Read-tool prefix, it loads as the skill) + `references/source-a.md` + `references/file-formats.md` + `references/artifact-template.md` + `calibration-summary.md` allowance — see the provenance note below — + ~1.5–2k first artifact/state writes. The Resume mechanics now live in `references/resume.md`, OFF this path (read only when resuming), which is what dropped the figure ≈0.9k from the prior 12,313/12,552 measurements — every non-resume trigger keeps that saving. Under the 14,000-token budget with ≈2,361 tokens to spare |
-| Source-B addition to the trigger path | ~0 tokens marginal — `references/source-b.md` (1,810 cl100k tokens, measured 2026-07-18, method: `tiktoken` `cl100k_base`, stage-4 task 9) is OFF the Source-A trigger path entirely; it's read only once Source B is detected, never as part of the trigger read above. Only a ~149-token pointer/event-row was added to SKILL.md + `file-formats.md` combined to describe it — already folded into the trigger-row figure above |
-| Source-C addition to the trigger path | ~0 tokens marginal — `references/source-c.md` (920 cl100k tokens, measured 2026-07-19, method: `tiktoken` `cl100k_base`, stage-5) is OFF the Source-A trigger path; it's read only once Source C is detected, never as part of the trigger read above |
-| Per watcher wake (Sources A, B, and C — identical watcher path) | Two components, both MEASURED (`tiktoken cl100k_base` on the raw session transcripts of six real runs, stages 2–5 + both resume drills, re-verified 2026-07-19): one compact watcher event line (**~54–341 tokens, median ~120**), plus — when the harness re-injection fires — an echo of the rendered artifact HTML at **~0.6–0.8k tokens on small jobs, ~1.7–2.0k on a 13-task job** (scales with the task table; the debounce bounds it to at most one per wake, well under the 5k/wake threshold that would trigger D11's debounce-raising demotion). Mechanism, pinned by controlled experiment (2026-07-19, [docs/test-log.md](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19)): the harness registers a file when the model Writes/Edits it **or the Artifact tool publishes it** — script/Bash writes never register anything, and the render *location* is irrelevant (an earlier "renders to a non-watched path avoids it" note here was wrong about the mechanism — moving the file does not help). In the dogfood runs (VSCode extension, artifact page open and watched during the job) the echo fired at essentially every wake — those are the figures above. In a controlled run with **no artifact panel open**, watcher/background rewrites of the same registered file produced **zero** wake-turn echoes — leaving only the event line + one Artifact publish per wake. Practical reading: the walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) sits at the low end; actively watching the artifact inside the IDE is what buys the full echo. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
+| When it triggers (incl. each resume session) | ≈11,713 cl100k tokens — a real `tiktoken` `cl100k_base` measurement (consolidated-review fix pass, 2026-07-19) of the trigger-to-first-publish read path: SKILL.md body (no Read-tool prefix, it loads as the skill) + `references/source-a.md` + `references/file-formats.md` + `references/artifact-template.md` + `calibration-summary.md` allowance — see the provenance note below — + ~1.5–2k first artifact/state writes. The Resume mechanics now live in `references/resume.md`, OFF this path (read only when resuming), which is what dropped the figure ≈0.9k from the prior 12,313/12,552 measurements — every non-resume trigger keeps that saving (a later same-day fix pass added back +74 of coherence fixes on the path). Under the 14,000-token budget with ≈2,287 tokens to spare |
+| Source-B addition to the trigger path | ~0 tokens marginal — `references/source-b.md` (2,067 cl100k tokens, re-measured 2026-07-19 — the file grew with the B12 resume-drill fixes after the original stage-4 measurement of 1,810; method: `tiktoken` `cl100k_base`) is OFF the Source-A trigger path entirely; it's read only once Source B is detected, never as part of the trigger read above. Only a ~149-token pointer/event-row was added to SKILL.md + `file-formats.md` combined to describe it — already folded into the trigger-row figure above |
+| Source-C addition to the trigger path | ~0 tokens marginal — `references/source-c.md` (921 cl100k tokens, re-measured 2026-07-19 after the review fix pass; method: `tiktoken` `cl100k_base`) is OFF the Source-A trigger path; it's read only once Source C is detected, never as part of the trigger read above |
+| Per watcher wake (Sources A, B, and C — identical watcher path) | Two components, both MEASURED (`tiktoken cl100k_base` on the raw session transcripts of six real runs, stages 2–5 + both resume drills, re-verified 2026-07-19): one compact watcher event line (**~54–341 tokens, median ~120**), plus — when the harness re-injection fires — an echo of the rendered artifact HTML at **~0.6–0.8k tokens on small jobs, ~1.7–2.0k on a 13-task job** (scales with the task table; the debounce bounds it to at most one per wake, well under the 5k/wake threshold that would trigger D11's debounce-raising demotion). Mechanism, pinned by controlled experiment (2026-07-19, [docs/test-log.md](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19)): the harness registers a file when the model Writes/Edits it **or the Artifact tool publishes it** — script/Bash writes never register anything, and the render *location* is irrelevant (an earlier "renders to a non-watched path avoids it" note here was wrong about the mechanism — moving the file does not help). In the dogfood runs (VSCode extension, artifact page open and watched during the job) the echo fired at essentially every wake — those are the figures above. In a controlled run with **no artifact panel open**, watcher/background rewrites of the same registered file produced **zero** wake-turn echoes — leaving only the event line + one Artifact publish per wake. Practical reading: the walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) sits at the low end; "actively watching the artifact inside the IDE buys the full echo" is the best-fit explanation for the dogfood-run echoes, not directly provable from inside a session (see the test-log entry) — the measured low-end/high-end split itself is real-run data on both sides either way. State edits, calibration append, and rendering happen in `tail_progress.py`/`render_artifact.py`, never through model context |
 | Job end | ~0.8–1k tokens (final publish + full-table script run + calibration regen), scaling mildly with task count |
-| Per resume (additionally) | + `references/resume.md` (1,092 cl100k tokens, measured 2026-07-19 — read ONLY when resuming) + ~0.9–1.5k for the full artifact rebuild (the old session's scratchpad file is gone). Accepted trade-off: a resume loads SKILL.md core *plus* resume.md — a small net rise on the rare resume path so that every non-resume trigger (fresh job, ETA question, accuracy report, stop) drops ~0.9k |
-| After a compaction notice | one re-read of SKILL.md's Invariants section (932 chars ≈ 0.23k tokens) + the state file (this repo's current 6.2 KB ≈ 1.55k tokens) ≈ ~1.8k tokens — char/4 proxy on the actual current file sizes. Recurs only when the harness issues a compaction notice, not on any fixed checkpoint schedule |
+| Per resume (additionally) | + `references/resume.md` (1,211 cl100k tokens, re-measured 2026-07-19 after the Source-B/C resume-routing fix — read ONLY when resuming) + ~0.9–1.5k for the full artifact rebuild (the old session's scratchpad file is gone). Accepted trade-off: a resume loads SKILL.md core *plus* resume.md — a small net rise on the rare resume path so that every non-resume trigger (fresh job, ETA question, accuracy report, stop) drops ~0.9k |
+| After a compaction notice | one re-read of SKILL.md's Invariants section (≈930 chars ≈ 0.23k tokens) + the state file (size scales with task count — ~3–6 KB ≈ 0.75–1.55k tokens across this repo's recent runs) ≈ ~1–1.8k tokens — char/4 proxy. Recurs only when the harness issues a compaction notice, not on any fixed checkpoint schedule |
 
-**Proxy, not a tokenizer:** every number above is `char_count / 4`, the same rule of
+**Proxy vs. measurement:** the rows NOT marked as measured are `char_count / 4`, the same rule of
 thumb used throughout this repo (see [docs/test-log.md](docs/test-log.md)), plus a rough
 allowance for the Read tool's line-number prefixes (~3.3–3.6 tokens/line, measured with a real
 cl100k tokenizer on 2026-07-17 — the earlier 1.4 figure undercounted ~2.4×) where a full file
@@ -121,20 +122,22 @@ is read.
 No tokenizer was run for the job-end/resume/compaction rows below; a real tokenizer typically
 runs a little denser on markdown/JSON, so those are floors, not ceilings. The per-watcher-wake
 row above IS a real measurement (see its own provenance in the table), not a proxy. **Provenance
-(trigger row):** a real `tiktoken` `cl100k_base` pass (context-slimming pass, 2026-07-19) over
+(trigger row):** a real `tiktoken` `cl100k_base` pass (consolidated-review fix pass, 2026-07-19) over
 SKILL.md, `references/source-a.md`, `references/file-formats.md`, and
 `references/artifact-template.md` as they ship in this repo (`references/resume.md` is NOT in
 this set — it is read only when resuming), plus the calibration-summary figure — the actual
 output size of `scripts/calibration_summary.py` (unmodified) run against a deterministic
-synthetic 60-row, 8-category, 3-project fixture (3,371 chars — regeneration snippet in
+synthetic 60-row, 8-category, 3-project fixture (3,377 chars — regeneration snippet in
 [docs/design.md](docs/design.md#reproducing-the-readmes-synthetic-calibration-fixture)), not a
 real user's calibration history. **Provenance (Source-B row):** `references/source-b.md`
-measured standalone with the same `tiktoken` `cl100k_base` method, same date, same task —
-1,810 tokens, under its own 2,500-token budget with 690 tokens to spare; the ~149-token
+measured standalone with the same `tiktoken` `cl100k_base` method, re-measured 2026-07-19
+(originally 1,810 at stage 4, 2026-07-18; the B12 resume-drill fixes grew the file) —
+2,067 tokens, under its own 2,500-token budget with 433 tokens to spare; the ~149-token
 combined addition to SKILL.md + `file-formats.md` is the exact before/after delta measured for
 those two files across the same edit. **Provenance (Source-C row):** `references/source-c.md`
-measured standalone with the same `tiktoken` `cl100k_base` method on 2026-07-19 (stage-5) —
-920 tokens; it stays off the Source-A trigger path, read only once Source C is detected.
+measured standalone with the same `tiktoken` `cl100k_base` method on 2026-07-19 (re-measured
+after the review fix pass; 920 at stage-5) —
+921 tokens; it stays off the Source-A trigger path, read only once Source C is detected.
 **Provenance (per-wake row):** the live figure comes from
 a real L1 Monitor `--follow` watcher running for the whole stage-4 dogfood session — the first
 stage with genuine live-Monitor-wake evidence (stage 3 only had a component estimate, no live
@@ -147,7 +150,7 @@ instead of growing with task count (pre-fix, this script's own output alone meas
 ~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in
 this repo's own `assets/demo-artifact.html` (2,722 chars ≈ 680 tokens for the 3-task demo page,
 +~65 tokens per additional task row). The compaction figure is `wc -c` on SKILL.md's Invariants
-section (932 chars) plus this repo's current state file (6.2 KB), each divided by 4 — the only
+section (≈930 chars) plus a recent-run state file (~3–6 KB, scaling with task count), each divided by 4 — the only
 re-read the declare-once/tail-thereafter watcher model still mandates on a compaction notice
 (the pre-stage-3 per-checkpoint hand-editing that used to drive this row is gone). **What's
 excluded:** the model's own task-execution reasoning tokens — only whendone's
@@ -158,17 +161,19 @@ counted here. **Why the trigger-path figure moved since the last measurement:** 
 renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the trigger
 path to 12,552 under an identical raw `tiktoken cl100k_base` sum. (2) This pass then extracted
 the Resume mechanics from SKILL.md into `references/resume.md` (off the trigger path), dropping
-the path to 11,639 — a 913-token saving every non-resume trigger now gets. **Method note (for
+the path to 11,639 — a 913-token saving every non-resume trigger now gets. (3) The same day's
+consolidated pre-flip review then fixed stale/contradictory lines on the path (source
+shipped-status, step-8 Source-C carve-out, pointer repairs), adding +74 → 11,713. **Method note (for
 reproduction):** the figures here are a raw token sum of the file contents listed above (no
 Read-tool line-number prefixes) plus the calibration-summary output; this reconstruction reads
 the stage-5 commit at 12,385 vs the 12,313 recorded there — a ~0.6% additive reconstruction
 variance that cancels in the 913-token delta. The path stays comfortably under the 14,000
-budget, with ≈2,361 tokens to spare; see the provenance above for the exact breakdown.
+budget, with ≈2,287 tokens to spare; see the provenance above for the exact breakdown.
 
 Statistics never run in the model — calibration summaries and accuracy reports come from the
 script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk away from.
 Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 subtasks /
-~45 minutes — the trigger cost alone (≈11,639 tokens by a real cl100k tokenizer, 2026-07-19 measurement — see the Overhead table's trigger row) is hard to amortize below that.
+~45 minutes — the trigger cost alone (≈11,713 tokens by a real cl100k tokenizer, 2026-07-19 measurement — see the Overhead table's trigger row) is hard to amortize below that.
 
 ## Usage — say "run with whendone"
 
