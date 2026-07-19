@@ -18,6 +18,10 @@ never hand-fills them. The job needs a TodoWrite list as its own working list �
 not invent one, and until one exists the artifact honestly shows "ETA not yet known
 (uncalibrated)".
 
+Persist `artifactFile` (the minted path) into the state before starting the watcher, and
+`artifactUrl` right after the first publish returns — the wake moves and any future resume
+read both from state (applies here too, even though Source C declares no task list).
+
 First render + publish (references/artifact-template.md; fixed description constant
 `WhenDone progress monitor`, favicon ⏱️), state the full artifact URL as a plain markdown link
 in chat, and start the same watcher ladder as Source A — references/source-a.md's "Watcher

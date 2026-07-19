@@ -35,7 +35,9 @@ State-file write: same hard write-target + gitignore preconditions as SKILL.md's
 `workflowScriptPath` = the script path the same tool result reports (every invocation
 persists its script and returns the path) — write the state AFTER the Workflow call returns,
 BEFORE starting the watcher. **No TodoWrite list** (Source B has no per-subtask dispatch text
-to match against).
+to match against). Persist `artifactFile` (the minted path) into the state before starting the
+watcher too, and `artifactUrl` right after the first publish returns — the wake moves and any
+future resume read both from state.
 
 First render + publish, identical mechanics to source-a.md (cross-ref artifact-template.md):
 `originalTotalMin` from that render's `estimateTotalMin` (never hand-computed), full artifact

@@ -56,8 +56,9 @@ below once the file is confirmed to parse.
    `python3 <skill-dir>/scripts/render_artifact.py .claude/whendone-state.json -
    <artifactFile-from-step-4> --now <now> --push-status <current push status>` — banner
    RUNNING — and publish per step 4's url/new-artifact decision. Sources A/B/C: restart the
-   Watcher ladder from L1; Sources A/B also re-run the unique-name check for any task
-   added/renamed since the pause (references/source-a.md). Source B FIRST: the old session's Workflow run died with
+   Watcher ladder from L1; Source A also re-runs the unique-name check for any task
+   added/renamed since the pause (references/source-a.md); Source B's analogue is `wdTag`
+   uniqueness (source-b.md) — names never key anything there. Source B FIRST: the old session's Workflow run died with
    it — before restarting the watcher, follow source-b.md's Resume paragraph (relaunch via
    `Workflow({scriptPath: state's workflowScriptPath, resumeFromRunId})`, compare the returned runId to the state's
    `workflowRunId`). Source C: the tailer re-mirrors the session's TodoWrite list on its first

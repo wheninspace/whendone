@@ -7,6 +7,9 @@ normative statement is references/file-formats.md's ETA computation.
 
 ## Publish mechanics (model-side)
 
+- Canonical render invocation (all paths): `python3 <skill-dir>/scripts/render_artifact.py
+  <state-file> <token-file-or-`-`> <out.html> --now "$(date -Iseconds)"` — `--now` is
+  required; add `--push-status <value>` when known, `--superseded` only for the discard banner.
 - Render to a file in the session scratchpad (e.g. `whendone-<job-name>.html`) and publish
   with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same URL).
   On resume in a NEW session: mint a fresh scratchpad path (never the state file's

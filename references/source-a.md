@@ -37,6 +37,10 @@ design, since the tailer matches TodoWrite/dispatch text back to task names verb
 dispatch `description`s must equal the task name too. Renaming mid-job breaks matching — update
 the state file and TodoWrite list together, with the watcher stopped, if a rename is needed.
 
+Persist `artifactFile` (the minted path) into the state before starting the watcher, and
+`artifactUrl` right after the first publish returns — the wake moves and any future resume
+read both from state.
+
 First render + publish (cross-ref references/artifact-template.md for publish mechanics;
 `description` stays the fixed constant `WhenDone progress monitor`, favicon `⏱️`), set
 `originalTotalMin` from that render's `estimateTotalMin` (never hand-computed), and state the
