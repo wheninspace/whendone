@@ -24,8 +24,8 @@ first publish.
 
 Jobs under ~6 subtasks or under ~45 min expected total — run without it (the user can always
 decline: "run without whendone"). Matches the README's "worth it for ~6+ subtasks or an
-hour-plus" line: the trigger-to-first-publish read path alone measures ≈11.8k tokens raw
-(≈13.4–13.5k as read, incl. Read-tool prefixes — README's Overhead table), which a 4-5-subtask
+hour-plus" line: the trigger-to-first-publish read path alone measures ≈12.0k tokens raw
+(≈13.6–13.8k as read, incl. Read-tool prefixes — README's Overhead table), which a 4-5-subtask
 job cannot amortize.
 
 The user can also say **"run without the artifact"**: keep calibration logging and the in-chat

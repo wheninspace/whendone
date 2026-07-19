@@ -1,5 +1,49 @@
 # Changelog
 
+## [Unreleased]
+
+Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
+changed only in hardening details — no schema breaks, no formula changes.
+
+- **Terminal-injection hardening (M7):** `calibration_summary.py`'s `sanitize()` now strips
+  all C0/C1 control bytes incl. ESC — project/job strings from the jsonl can no longer carry
+  ANSI/OSC sequences into summary or report output.
+- **Private calibration data (M8):** `~/.claude/whendone-data/` is created 0700; the
+  calibration log, archives, and generated summary are opened 0600 with the permission
+  tightened on the file descriptor BEFORE any content is written (pre-existing looser files
+  are tightened on first touch).
+- **Private render output (M9):** the tailer's rendered HTML and its `.tokens.json` sidecar
+  are 0600 — including under `publish: false`, where the page previously landed
+  world-readable at a predictable temp path every wake. Rendering itself still never blocks.
+- **Resume publishes the right banner (M6):** references/resume.md now flips the state to
+  `running` BEFORE the rebuilt page is rendered and published — a resumed job's public page
+  no longer shows PAUSED until the next task boundary.
+- **Honest ETA-band marker (M11):** the artifact's nominal-band marker now reads
+  "(default band — little history)" instead of the jargon "(nominal)"; all doc/test
+  consumers updated; demo artifact regenerated (3,256 bytes).
+- **Cold-start candor (M10):** README states plainly that a first-run point estimate can be
+  off severalfold and the ±50 % band is a labeling convention, not a coverage guarantee;
+  docs/design.md now records the default minutes' provenance honestly (hand-set priors from
+  early development, no fitted data).
+- **Overhead-section honesty (M1/M2/M5):** wake turns' own inference cost named as the
+  dominant per-wake dollar cost for API-key users; all figures labeled as `cl100k_base`
+  counts (~10–25 % below Claude's tokenizer on this kind of text); char/4 rows labeled
+  approximate, not floors.
+- **Public-prose hygiene (M12–M15 + cold-read pass):** internal finding-codes glossed at
+  first use; Android status stated (untested); Cowork and the Workflow engine and the old
+  `pacekeeper` working name each glossed; no markdown links into unshipped directories;
+  unshipped internal docs labeled as such in the test log.
+- **Protocol doc gaps (M16/M17):** resume no longer claims Source B re-runs a unique-NAME
+  check (B keys on `wdTag`); canonical render CLI documented once; artifactFile/artifactUrl
+  state write-backs made explicit in all three source protocols.
+- **Doc backlog (Stage-3 items 2/7/8):** winsorize+clamp's −4…−17 % asymptotic undershoot
+  acknowledged in design.md; the trigger-figure movement history moved out of the README
+  into a design.md appendix; M19 trivia sweep (rotation wording matched to code, matcher
+  tolerance note, checkpoint→wake vocabulary, fixture figures re-measured live).
+- Trigger path re-measured after the on-path edits: **raw 12,029 / as-read ≈13.6–13.8k**
+  vs the prefix-inclusive 14,000 budget (≈0.2–0.4k spare). Suite: **300 tests** (296 + 4
+  new: sanitize, calibration perms ×2, render-output perms), warning-clean.
+
 ## v0.3.1 — 2026-07-19
 
 Pre-flip adversarial-review fixes (8-persona audit, findings in the internal review record).

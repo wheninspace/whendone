@@ -912,3 +912,34 @@ reappeared at the job-end refresh). Fixed in `finish_cycle` by merging the sidec
 (fail-soft on missing/corrupt sidecar). Tests:
 `test_sidecar_merges_across_sequential_completions`,
 `test_sidecar_merge_survives_corrupt_existing_file`. **Suite: 296 tests OK, warning-clean.**
+
+## Stage-2 polish pass (post-v0.3.1, flip deferred) — 2026-07-19
+
+Owner deferred the public flip (3-week absence) and asked for every known finding fixed,
+including Minors. Executed task-by-task with per-task independent review; 10 tasks
+(plan Tasks 10–17 + Stage-3 doc items 2/7/8 + this wrap-up).
+
+**Script hardening (each TDD, red→green):** `sanitize()` strips C0/C1 controls incl. ESC
+(`test_sanitize_strips_control_and_escape_chars`); calibration dir 0700 + log/archive/summary
+0600 via fd-level tighten-before-write `_open_private`
+(`test_log_and_dir_are_private`, `test_rotation_and_summary_outputs_are_private`); rendered
+HTML + tokens sidecar 0600 incl. under no-publish
+(`test_no_publish_render_output_is_0600`).
+
+**Docs/prose:** resume publish-order fixed (RUNNING banner, both branches); nominal marker →
+"(default band — little history)" across 9 consumer sites, demo regenerated (3,256 bytes,
+idempotent); cold-start candor + defaults provenance (hand-set priors, confirmed via git
+archaeology to ac86ba8); overhead honesty (wake-turn inference cost, cl100k caveat,
+approximate-not-floors — the +40 % claim verified live: demo real 1,149 vs char/4 803 = +43 %);
+public-prose hygiene (finding-codes glossed, Android untested stated, Workflow engine/Cowork/
+pacekeeper glossed, no links into unshipped dirs); protocol gaps (B resumes key on wdTag,
+canonical render CLI, artifactFile/Url write-backs); winsorize-bias note; trigger-figure
+history moved to a design.md appendix; M19 trivia sweep with code-verified wording.
+
+**Re-measured (tiktoken cl100k_base, post-pass):** trigger path raw **12,029**
+(SKILL.md 3,402 + source-a 2,094 + file-formats 4,468 + artifact-template 966 + fixture 1,099);
+as-read (479 ref-file lines × 3.3–3.6 prefix allowance) **13,610–13,753** vs the
+prefix-inclusive 14,000 budget — **247–390 to spare**. Standalone: source-b 2,257,
+source-c 980, resume.md 1,385. Fixture output 3,401 bytes / 3,330 chars, two-run identical.
+
+**Suite after all fixes: 300 tests OK, warning-clean** (296 + 4 new).
