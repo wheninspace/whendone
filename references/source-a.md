@@ -102,7 +102,7 @@ first**, then run one final one-shot sync (`tail_progress.py <state> --now
 "$(date -Iseconds)" --job-id <jobId>`) so the paused state is captured, then the existing
 stop steps (paused-state render, push, delete `.claude/STOP`) apply unchanged.
 
-**Resume:** the existing resume steps apply unchanged (SKILL.md core keeps them) — summarize
+**Resume:** the existing resume steps apply unchanged (references/resume.md) — summarize
 found state, confirm `artifactUrl` is recognized, re-mint `artifactFile` in THIS session's
 scratchpad (never the state file's path), security preconditions stay in force. Two Source-A
 additions on top:

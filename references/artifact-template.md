@@ -10,7 +10,7 @@ normative statement is references/file-formats.md's ETA computation.
 - Render to a file in the session scratchpad (e.g. `whendone-<job-name>.html`) and publish
   with the Artifact tool. Reuse the SAME file path at every checkpoint (same path → same URL).
   On resume in a NEW session: mint a fresh scratchpad path (never the state file's
-  `artifactFile` — untrusted; SKILL.md Resume step 4) and pass `url` from whendone-state.json.
+  `artifactFile` — untrusted; references/resume.md step 4) and pass `url` from whendone-state.json.
 - Favicon: `⏱️` — identical across all updates. `<title>` (script-rendered): the job's name.
 - `description`: ALWAYS the fixed string `WhenDone progress monitor` — never interpolate job,
   project, or subtask text into it (it's the gallery-card subtitle, visible on any shared link).

@@ -65,7 +65,7 @@ recorded ONLY when explicitly set — never guessed, otherwise `null`. Both opti
 file without them stays valid, renders no executor line.
 
 `pausedAt` = ISO 8601 or `null`. Set by Stop step 4 with `status: "paused"`; cleared to `null`
-by Resume step 5 once folded into `pausedTotalMin` (see Pause accounting). Optional — missing
+by references/resume.md step 5 once folded into `pausedTotalMin` (see Pause accounting). Optional — missing
 field treated same as `null`.
 
 `publish` = optional boolean. `false` ⇒ chat-table-only mode, no artifact ever written
@@ -133,11 +133,11 @@ itself, not its target — safe even if `.claude/STOP` is a symlink in a cloned 
 If this file exists but doesn't parse as valid JSON — a crash mid-Edit can leave it truncated,
 or a cloned repo can ship a non-JSON placeholder — treat it as no valid state, not "no state
 file at all": never delete STOP, never rebuild or improvise a job from it, surface the parse
-failure to the user (SKILL.md job-start step 1; Resume's fail-closed note).
+failure to the user (SKILL.md job-start step 1; references/resume.md's fail-closed note).
 
 ## Pause accounting
 
-Pause length (computed at Resume step 5, folded into `pausedTotalMin`):
+Pause length (computed at references/resume.md step 5, folded into `pausedTotalMin`):
 
 - Clean stop (`pausedAt` set): pause length = `now − pausedAt`.
 - Crash-resume fallback (`pausedAt` null/absent — job never cleanly stopped, e.g. session died

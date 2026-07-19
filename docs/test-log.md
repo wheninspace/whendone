@@ -729,3 +729,47 @@ cached-prefix replays + 3 live), and the final one-shot sync appended **exactly 
 
 Suites after the fix: **275 tests, OK, warning-clean.** Both never-run-live resume paths (A1,
 B12) have now been exercised end-to-end against real jobs.
+
+## Context-slimming Fix 1 — Resume extracted to references/resume.md — 2026-07-19
+
+De-monolithized SKILL.md: the entire `## Resume` section (fail-closed preamble + steps 0-6) moved
+verbatim into `references/resume.md`, read only on a resume trigger. SKILL.md keeps a 4-line
+`## Resume` stub pointing at it; the fail-closed rule stays in job-start step 1 (where it is
+relied on before any resume path is chosen). Two bare "step-5" references inside the moved text —
+which pointed at SKILL.md job-start step 5 while Resume lived in the same file — were made
+explicit ("SKILL.md job-start step 5") to survive the move; nothing else in the prose changed.
+All cross-references repointed (SKILL.md job-start ×2, `source-a.md`, `artifact-template.md`,
+`file-formats.md` ×3); `grep -rn "Resume step\|go to Resume"` over SKILL.md/references/README.md/
+docs/design.md returns zero survivors.
+
+**Measurement (`tiktoken cl100k_base`, method = raw token sum of file contents, no Read-tool
+line-number prefixes, + `calibration_summary.py` output on the design.md synthetic fixture — the
+same composition as the README trigger row).** Trigger-to-first-publish read set = SKILL.md +
+`source-a.md` + `file-formats.md` + `artifact-template.md` + calibration-summary allowance;
+`resume.md` is OFF this path.
+
+| Point | Trigger read set | SKILL.md body |
+|---|---|---|
+| Stage-5 commit `e42b0f1` (recorded 12,313) | 12,385 (this reconstruction, +72 / 0.6%) | 4,262 |
+| HEAD pre-edit (drift from post-stage-5 commits) | 12,552 | 4,262 |
+| HEAD post-edit (Resume extracted) | **11,639** | 3,342 |
+
+- **Saving on every non-resume trigger: 913 tokens** (12,552 → 11,639), matching the plan's
+  expected ~0.9–1.1k. The absolute lands above the plan's 11.2–11.4k estimate only because
+  current HEAD had drifted to 12,552 (local-time policy + renderer-overhaul commits grew
+  `file-formats.md`/`artifact-template.md`) before this edit; the delta is on target.
+- `references/resume.md` standalone: **1,092 cl100k tokens** (4,287 chars) — the added cost paid
+  only on resume sessions (accepted trade-off; documented in the README resume row).
+- The +72-token (0.6%) reconstruction variance vs the recorded 12,313 comes from an unrecovered
+  formatting detail in the original run (the synthetic fixture output measures 3,302 chars here
+  vs the 3,371 recorded in design.md); it is an additive constant that cancels in the 913-token
+  delta. The prefixed-variant check (Read-tool line prefixes on the three ref files) gives 13,342
+  — far from any documented figure — confirming raw-content summation is the faithful method.
+
+README Overhead table updated: trigger row → 11,639 (2,361 to spare under the 14k budget), resume
+row now lists the `resume.md` read, and the "why the figure moved" note documents both movements
+(drift up to 12,552, then extraction down to 11,639) plus the method/variance note. Second
+in-prose `12,313` mention (amortization line) updated to ≈11,639.
+
+**Suite: `python3 -W error::ResourceWarning -m unittest discover -p 'test_*.py'` → 285 tests,
+OK, warning-clean** (no script reads SKILL.md content; unchanged as expected).
