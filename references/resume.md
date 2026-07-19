@@ -41,6 +41,9 @@ below once the file is confirmed to parse.
    the new path. If the user didn't recognize `artifactUrl` at step 1 (or didn't confirm), this
    IS the new-artifact case: publish without `url`, save the new URL as `artifactUrl`, say a new
    artifact was created because the saved URL wasn't confirmed as theirs.
+   Expected side effect of the fresh path: the token sidecar (`<artifactFile>.tokens.json`)
+   starts empty, so mid-run renders show no per-task token lines for pre-pause tasks until the
+   job-end full refresh re-emits every task's row — missing beats wrong, not a bug.
    If `"publish": false` or `.claude/whendone-no-publish` exists: do not rebuild or publish —
    resume in chat-table-only mode (SKILL.md job-start step 5's gate applies to resumes too). Otherwise publish with
    `url` set to the saved `artifactUrl` — banner RUNNING; if that update fails, publish as a new
