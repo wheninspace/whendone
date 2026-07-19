@@ -38,6 +38,17 @@ from calibration_summary import CATEGORIES, PARALLEL
 DEFAULT_DATA_DIR = os.path.expanduser("~/.claude/whendone-data")
 
 
+def _open_private(path, flags):
+    """Open with 0600, then fchmod the fd BEFORE any content is written — closes the
+    write-before-chmod window a trailing os.chmod(path, ...) would leave open for a
+    pre-existing 0644 file (e.g. a pre-fix log): content must never be written while
+    the file is still world/group-readable."""
+    fd = os.open(path, flags, 0o600)
+    if os.name == "posix":
+        os.fchmod(fd, 0o600)
+    return fd
+
+
 def _parse_ts(s):
     """Parse an ISO 8601 timestamp (Z or numeric offset). None if not a valid string."""
     if not isinstance(s, str) or not s:
@@ -113,11 +124,9 @@ def append_obj(obj, data_dir=None):
         if os.name == "posix":
             os.chmod(resolved_dir, 0o700)  # makedirs' mode arg skips already-existing dirs
         log_path = os.path.join(resolved_dir, "calibration.jsonl")
-        fd = os.open(log_path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+        fd = _open_private(log_path, os.O_APPEND | os.O_CREAT | os.O_WRONLY)
         with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
-        if os.name == "posix":
-            os.chmod(log_path, 0o600)  # tighten a pre-existing 0644 log
     except OSError as e:
         return False, f"cannot append to calibration.jsonl: {e}"
     return True, row
