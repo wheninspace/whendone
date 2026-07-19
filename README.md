@@ -265,13 +265,13 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 ## Install
 
 ```bash
-git clone --branch v0.3.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.3.1 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.3.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.3.1 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 **Windows honesty:** the install command above works. Running the skill — the declare-once

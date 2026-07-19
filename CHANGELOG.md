@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.3.1 — 2026-07-19
+
+Pre-flip adversarial-review fixes (8-persona audit, findings in the internal review record).
+Script behavior changed — patch release, no schema breaks (all new state fields additive).
+
+- **STOP-file control re-homed (C1):** v0.3.0's pivot deleted the checkpoint loop that
+  polled `.claude/STOP` without re-homing the check — the file was advertised (artifact
+  footer, README) but dead. The tailer now emits a `stop-requested` event when the file
+  exists; the model runs the Stop procedure on that wake. The tailer never deletes the file.
+- **Source-B status guard (I1):** `sync_cycle_b` now no-ops when `status` isn't `running` —
+  a paused Source-B job could previously keep processing and append calibration rows.
+- **Finalize idempotency (I2):** per-task `bFinalized` flag (additive), written atomically
+  with the done-marker — closes a crash window that could append duplicate calibration rows
+  (v0.3.0's "never re-appended" held only for phases with `actualMin` set).
+- **One-shot lock respect (I3):** an L3 one-shot now yields (`already-running`, rc 4) to a
+  LIVE lock holder instead of double-writing state and calibration beside it.
+- **Source-B resume made executable from state (I4):** new additive `workflowScriptPath`
+  state field written at declare; resume.md/source-b.md route through it.
+- README truth pass: honest-limits resume-drill claim corrected (both drills ran
+  2026-07-19); demo artifact regenerated to the current renderer; trigger-path headroom
+  restated like-for-like (raw 11,849 / as-read ≈13.4–13.5k vs the prefix-inclusive 14k budget).
+
 ## v0.3.0 — 2026-07-19
 
 The pivot release (stages 2-5 of docs/specs/2026-07-18-whendone-pivot-design.md): whendone
