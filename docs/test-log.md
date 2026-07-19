@@ -867,3 +867,38 @@ identical across two regeneration runs). Standalone: source-b.md **2,067** (was 
 the B12 resume-drill fixes), source-c.md **921**, resume.md **1,211** (grew with the
 Source-B/C resume-routing fix). Spare vs the 14,000 budget: **2,287**. Suite re-run after all
 edits: 285 tests OK, warning-clean (docs-only pass — expected, and verified anyway).
+
+## Pre-flip adversarial-review fix run — 2026-07-19
+
+An 8-persona adversarial review (internal record, not shipped in this repo) preceded the
+public flip; every Stage-1 (P0) finding was fixed in this run, executed task-by-task with
+per-task independent review.
+
+**Script fixes (each TDD, red→green):**
+
+- **C1 STOP-file re-home:** `stop-requested` event emitted by the tailer when `.claude/STOP`
+  exists and status is `running`; non-terminal, source-independent, `_emit_once`-deduped,
+  added to the follow wake set. Tests: `StopRequestedTest` (emit + ordering, no-file, paused
+  suppression) + a Source-A twin in `OneShotTest`.
+- **I1 Source-B status guard:** `sync_cycle_b` no-ops on non-running status (a paused
+  Source-B job could append calibration rows). Test:
+  `test_paused_b_state_noops_without_writes`.
+- **I2 finalize idempotency:** per-task `bFinalized` flag written atomically with the
+  done-marker before the append. Tests:
+  `test_finalized_phase_with_null_actual_is_never_reappended`,
+  `test_finalize_sets_bfinalized_with_done_marker`.
+- **I3 one-shot lock respect:** `_live_lock_holder` + guard in `one_shot` — yields
+  (`already-running`, rc 4) to a live lock holder; dead/absent/garbled lock proceeds. Tests:
+  `test_one_shot_defers_to_live_lock_holder`, `test_one_shot_proceeds_past_dead_pid_lock`.
+
+**Docs:** I4 `workflowScriptPath` persisted at Source-B declare (resume executable from
+state); I5 honest-limits resume claim corrected; I6 demo artifact regenerated (3,232 bytes,
+reproducible + idempotent); I7/M3/M4 trigger headroom restated like-for-like.
+
+**Re-measured trigger path (tiktoken cl100k_base, 2026-07-19 post-fix):** raw **11,849**
+(SKILL.md + source-a.md + file-formats.md + artifact-template.md + 1,096 fixture); as-read
+(≈3.3–3.6 tok/line Read prefixes on the three reference files) **13,400–13,541** vs the
+prefix-inclusive 14,000 budget — **459–600 to spare**. Standalone: source-b.md 2,210
+(budget 2,500), source-c.md 921, resume.md 1,217.
+
+**Suite after all fixes: 294 tests OK, warning-clean** (285 + 9 new).
