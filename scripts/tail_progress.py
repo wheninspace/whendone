@@ -773,6 +773,11 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
 
 def one_shot(a):
     a._force_render = True        # L3 boundary refresh always renders (ETA drifts with time)
+    holder = _live_lock_holder(a.state)
+    if holder:
+        emit({"event": "already-running",
+              "reason": "live tailer (pid %d) holds whendone-tail.lock" % holder})
+        return 4
     now = token_usage.parse_ts(a.now) or datetime.now().astimezone()
     state, events = sync_cycle(a.state, now, a)
     if state is None:
@@ -790,10 +795,24 @@ def _pid_alive(pid):
     return True
 
 
+def _lock_path(state_path):
+    return os.path.join(os.path.dirname(os.path.abspath(state_path)), "whendone-tail.lock")
+
+
+def _live_lock_holder(state_path):
+    """Pid of a LIVE tailer holding the lock, else None (absent/dead/garbled)."""
+    try:
+        with open(_lock_path(state_path), encoding="utf-8") as f:
+            pid = int(f.read().strip() or "0")
+    except (OSError, ValueError):
+        return None
+    return pid if pid and _pid_alive(pid) else None
+
+
 def acquire_lock(state_path):
     """O_EXCL pid lockfile beside the state file. None -> a LIVE tailer owns it.
     A dead pid's lock is removed and re-acquired (crashed watcher)."""
-    lock = os.path.join(os.path.dirname(os.path.abspath(state_path)), "whendone-tail.lock")
+    lock = _lock_path(state_path)
     for _ in range(3):
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)

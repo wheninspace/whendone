@@ -201,7 +201,7 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | `journal-format-drift` | — | Source B only: journal schema drifted; tailing degrades to agent counts (see source-b.md). |
 | `unsupported-source` | `source` | Unknown `source` value (not `a`/`b`/`c`); fall back to the chat table. |
 | `ownership-lost` | `expected` | Another session replaced the job — stop touching state/log/artifact. |
-| `already-running` | `reason` | A live tailer already owns the lock — don't start a second. |
+| `already-running` | `reason` | A live tailer already owns the lock — don't start a second (also emitted by an L3 one-shot that yielded to a live watcher; that boundary is already covered). |
 | `tail-unavailable` / `error` | `reason` | Continue on declared estimates; never blocks the job. |
 
 Exit codes: 0 clean/terminal, 2 error, 3 ownership lost, 4 duplicate tailer.

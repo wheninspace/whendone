@@ -1372,5 +1372,44 @@ class RenderOutPathHardeningTest(unittest.TestCase):
         self.assertTrue(out.startswith(tempfile.gettempdir()))
 
 
+class OneShotLockTest(unittest.TestCase):
+    def test_one_shot_defers_to_live_lock_holder(self):
+        env = WfEnv(mkstate_b(), journal=[wf_started(B_A1), wf_result(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")])])
+        env.finish_run()
+        before = env.state()
+        lock = tp._lock_path(env.state_path)
+        with open(lock, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))                 # this test process: alive
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap:
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 4)
+            self.assertEqual(lines[-1]["event"], "already-running")
+            ap.assert_not_called()
+            self.assertEqual(env.state(), before)
+        finally:
+            os.remove(lock)
+            env.cleanup()
+
+    def test_one_shot_proceeds_past_dead_pid_lock(self):
+        env = WfEnv(mkstate_b(), journal=[wf_started(B_A1), wf_result(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")])])
+        env.finish_run()
+        lock = tp._lock_path(env.state_path)
+        with open(lock, "w", encoding="utf-8") as f:
+            f.write("99999999")                        # not a live pid
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)                    # proceeded normally
+        finally:
+            with contextlib.suppress(OSError):
+                os.remove(lock)
+            env.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()
