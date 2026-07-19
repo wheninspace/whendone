@@ -18,22 +18,31 @@ a { color:var(--link); }
 table { width:100%; border-collapse:collapse; table-layout:fixed; }
 td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
         overflow-wrap:anywhere; vertical-align:top; }
+th { overflow-wrap:normal; }
 th:nth-child(1),td:nth-child(1) { width:2em; }
 th:nth-child(2),td:nth-child(2) { width:auto; }
 th:nth-child(3),td:nth-child(3) { width:18%; }
-th:nth-child(4),td:nth-child(4) { width:4em; white-space:nowrap; }
+th:nth-child(4),td:nth-child(4) { width:3.6em; white-space:nowrap; }
 th:nth-child(5),td:nth-child(5) { width:26%; }
 td:nth-child(5) .dev { white-space:nowrap; }
+tr.total td { border-top:2px solid var(--dim); border-bottom:none; font-weight:600; }
 .dim { color:var(--dim); font-size:.9em; }
 .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
+@media (max-width:480px) {
+  body { font-size:15px; padding:12px; }
+  td,th { padding:5px 5px; }
+  th:nth-child(1),td:nth-child(1) { width:1.7em; }
+  th:nth-child(3),td:nth-child(3) { width:17%; }
+}
 </style>
 <div class="banner running">🔄 RUNNING — last updated 14:35</div>
-<div class="eta"><strong>Done ~14:58 ± 18 min (nominal)</strong><br>
+<div class="eta"><strong>When done: ~14:58 ± 18 min (nominal)</strong><br>
 <span class="dim">Started 14:02 · 33 min elapsed · 1 of 3 subtasks done</span></div>
 <table>
 <tr><th></th><th>Subtask</th><th class="dim">Category</th><th>Est.</th><th>Actual</th></tr>
-<tr><td>✅</td><td>Failing test read_skill<br><span class="dim">Haiku 4.5 · low effort</span></td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m (+38 %)</span></td></tr>
+<tr><td>✅</td><td>Failing test read_skill<br><span class="dim">Haiku 4.5 · low effort</span></td><td class="dim">testing</td><td>8 m</td><td><span class="dev">11 m</span> <span class="dev">(+38 %)</span></td></tr>
 <tr><td>🔄</td><td>Implement read_skill<br><span class="dim">Fable 5</span></td><td class="dim">judgment-coding</td><td>15 m</td><td>overrunning by 7 min</td></tr>
 <tr><td>⬜</td><td>Cost cap per turn</td><td class="dim">judgment-coding</td><td>20 m</td><td>—</td></tr>
+<tr class="total"><td></td><td>Total<br><span class="dim">sum of subtasks</span></td><td class="dim"></td><td>43 m</td><td><span class="dev">11 m</span></td></tr>
 </table>
 <p class="dim">Stop: type "stop after the current subtask" in the chat or create the file <code>.claude/STOP</code> in the project root. Push notifications: uncertain delivery — requires Remote Control.</p>

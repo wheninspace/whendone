@@ -36,8 +36,11 @@ recorded in [docs/test-log.md](docs/test-log.md):
   live dogfood
   ([test-log](docs/test-log.md#stage-5--source-c-pace-only-live-dogfood--2026-07-19)).
 
-Honest limits: cross-session resume is still the least-tested path — the resume drills remain
-on the flip-to-public checklist, not yet run. The 14-subtask hardening run behind the hero
+Honest limits: both cross-session resume drills were run live on 2026-07-19 — a session
+killed mid-job and resumed fresh, once per calibrated source — and each found and fixed a
+real bug (a local-time display bug; a killed Workflow run's leftover record falsely
+finalizing a job) — see [docs/test-log.md](docs/test-log.md). What remains untested is a
+resume from a fresh clone at the tag (both drills ran in the dev tree). The 14-subtask hardening run behind the hero
 image used the dev working tree (the installed skill dir is a symlink to this repo) on the
 release branch, **not** a fresh clone at the tag; that run is headless, so the hero image is a
 screenshot of *its own* DONE artifact
@@ -148,7 +151,7 @@ from calling `token_usage.py`'s `summarize()` against a synthetic state file and
 confirming `--task N` (landed for C13) now returns a flat ~0.1–0.25k tokens per checkpoint
 instead of growing with task count (pre-fix, this script's own output alone measured up to
 ~2.5–3k+ tokens by checkpoint 18–20 of a 20-task job). The resume-rebuild figure is grounded in
-this repo's own `assets/demo-artifact.html` (2,722 chars ≈ 680 tokens for the 3-task demo page,
+this repo's own `assets/demo-artifact.html` (3,232 bytes ≈ 808 tokens for the 3-task demo page,
 +~65 tokens per additional task row). The compaction figure is `wc -c` on SKILL.md's Invariants
 section (≈930 chars) plus a recent-run state file (~3–6 KB, scaling with task count), each divided by 4 — the only
 re-read the declare-once/tail-thereafter watcher model still mandates on a compaction notice
