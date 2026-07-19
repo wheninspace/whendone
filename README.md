@@ -23,7 +23,7 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.3.0 (2026-07-19), single author. Three job sources, each dogfooded live and
+**Status:** v0.3.1 (2026-07-19), single author. Three job sources, each dogfooded live and
 recorded in [docs/test-log.md](docs/test-log.md):
 
 - **Source A** — lead/subagent runs (calibrated). Stage-3 live tailer/watcher run,
@@ -179,7 +179,7 @@ with ≈0.5–0.6k to spare (11,849 raw); see the provenance above for the exact
 Statistics never run in the model — calibration summaries and accuracy reports come from the
 script. Worth it for jobs of ~6+ subtasks or an hour-plus that you actually walk away from.
 Wrong tool for many-micro-subtask jobs; the skill itself declines jobs under ~6 subtasks /
-~45 minutes — the trigger cost alone (≈11,849 tokens by a real cl100k tokenizer, 2026-07-19 measurement — see the Overhead table's trigger row) raw (≈13.4–13.5k as read) is hard to amortize below that.
+~45 minutes — the trigger cost alone (≈11,849 tokens raw by a real cl100k tokenizer, 2026-07-19 measurement — see the Overhead table's trigger row; ≈13.4–13.5k as read) is hard to amortize below that.
 
 ## Usage — say "run with whendone"
 
