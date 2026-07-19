@@ -902,3 +902,11 @@ prefix-inclusive 14,000 budget — **459–600 to spare**. Standalone: source-b.
 (budget 2,500), source-c.md 921, resume.md 1,217.
 
 **Suite after all fixes: 294 tests OK, warning-clean** (285 + 9 new).
+
+**Post-review addendum (same day, pre-tag):** a live dogfood of this very fix run surfaced one
+more bug — mid-run, per-task token lines in the artifact survived only for the latest completed
+task (the per-wake `task_nr`-scoped token sidecar was overwritten, not merged; full list only
+reappeared at the job-end refresh). Fixed in `finish_cycle` by merging the sidecar per task nr
+(fail-soft on missing/corrupt sidecar). Tests:
+`test_sidecar_merges_across_sequential_completions`,
+`test_sidecar_merge_survives_corrupt_existing_file`. **Suite: 296 tests OK, warning-clean.**
