@@ -201,9 +201,9 @@ The Overhead section's `calibration-summary.md` provenance figure is generated f
 copied from an old run — the log below produces a deterministic 60-row, 8-category, 3-project
 synthetic calibration log, feeds it through the real `scripts/calibration_summary.py` unmodified,
 and prints the resulting summary file's `wc -c`-equivalent size in chars. Re-running it reproduces
-the same byte count every time (verified: 3,377 bytes (3,308 chars) on both of two runs,
+the same byte count every time (verified: 3,401 bytes (3,330 chars) on both of two runs,
 2026-07-19 — was 3,371 on 2026-07-18, before that day's later `calibration_summary.py` display
-changes):
+changes, including Task 15's marker change):
 
 ```bash
 python3 - <<'EOF'
