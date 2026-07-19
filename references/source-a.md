@@ -70,6 +70,8 @@ only the model's three moves here:
   if speaking; never recompute ETA, interval, or slip yourself.
 - `slipAlert: true` → one push notification (the tailer already set `etaAlertSent`).
 - `stale` → one push naming the task.
+- `stop-requested` → the user created `.claude/STOP`: finish the current subtask, then run
+  SKILL.md's Stop procedure (it deletes the file at its end).
 
 Publish failures: retry at the next wake; after 3 straight misses, stop trying and say so
 (same row as SKILL.md's error table).

@@ -197,6 +197,7 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | `progress` | `done`, `total`, `changed`, `justDone[]`, `rendered`, `etaText?`, `slipAlert?` | Publish the artifact file (same path → same URL); quote `etaText` if speaking. `slipAlert: true` ⇒ push once (tailer already set `etaAlertSent`). |
 | `all-done` | same as `progress` | Run the job-end procedure (source-a.md). |
 | `stale` | `task`, `name`, `stalledMin` | Push once: liveness alert (F13). |
+| `stop-requested` | — | `.claude/STOP` exists: finish the current subtask, then run SKILL.md's Stop procedure (its last step deletes the file). Emitted once per watcher run. |
 | `no-op` | `reason` | Nothing — status no longer `running` (stop/pause in progress). |
 | `journal-format-drift` | — | Source B only: journal schema drifted; tailing degrades to agent counts (see source-b.md). |
 | `unsupported-source` | `source` | Unknown `source` value (not `a`/`b`/`c`); fall back to the chat table. |

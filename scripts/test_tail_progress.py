@@ -474,6 +474,22 @@ class OneShotTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_stop_file_emits_stop_requested_and_keeps_monitoring(self):
+        # C1: Source-A twin of StopRequestedTest's first case.
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")])],
+                      mkstate(tasks=[mktask(1)]))
+        stop_path = os.path.join(os.path.dirname(env.state_path), "STOP")
+        open(stop_path, "w").close()
+        try:
+            rc, lines = env.run_one_shot()
+            kinds = [e["event"] for e in lines]
+            self.assertIn("stop-requested", kinds)
+            self.assertEqual(kinds.index("stop-requested"), 0)   # before source events
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(stop_path))  # tailer never deletes
+        finally:
+            env.cleanup()
+
 
 def usage_entry(ts, model, out_tokens, mid):
     return {"type": "assistant", "timestamp": ts,
@@ -1408,6 +1424,47 @@ class OneShotLockTest(unittest.TestCase):
         finally:
             with contextlib.suppress(OSError):
                 os.remove(lock)
+            env.cleanup()
+
+
+class StopRequestedTest(unittest.TestCase):
+    def _stop_path(self, env):
+        return os.path.join(os.path.dirname(env.state_path), "STOP")
+
+    def test_stop_file_emits_stop_requested_and_keeps_monitoring(self):
+        env = WfEnv(mkstate_b(), journal=[wf_started(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")])])
+        open(self._stop_path(env), "w").close()
+        try:
+            rc, lines = env.run_one_shot()
+            kinds = [e["event"] for e in lines]
+            self.assertIn("stop-requested", kinds)
+            self.assertEqual(kinds.index("stop-requested"), 0)   # before source events
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(self._stop_path(env)))  # tailer never deletes
+        finally:
+            env.cleanup()
+
+    def test_no_stop_file_no_event(self):
+        env = WfEnv(mkstate_b(), journal=[wf_started(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")])])
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertNotIn("stop-requested", [e["event"] for e in lines])
+        finally:
+            env.cleanup()
+
+    def test_paused_status_suppresses_stop_requested(self):
+        env = WfEnv(mkstate_b(), journal=[wf_started(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go")])])
+        st = env.state(); st["status"] = "paused"
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        open(self._stop_path(env), "w").close()
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertNotIn("stop-requested", [e["event"] for e in lines])
+        finally:
             env.cleanup()
 
 

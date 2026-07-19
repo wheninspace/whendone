@@ -278,6 +278,11 @@ def sync_cycle(state_path, now, args):
     if args.job_id and state.get("jobId") != args.job_id:
         out.append({"event": "ownership-lost", "expected": args.job_id})
         emit(out[-1]); return state, out
+    # C1: a user-created .claude/STOP is a stop REQUEST — surface it, never act on
+    # or delete it (delete-only-by-model; lexists so a shipped symlink still counts)
+    stop_flag = os.path.join(os.path.dirname(os.path.abspath(state_path)), "STOP")
+    if state.get("status") == "running" and os.path.lexists(stop_flag):
+        _emit_once(args, out, {"event": "stop-requested"})
     src = state.get("source", "a")
     if src == "b":
         return sync_cycle_b(state_path, state, now, args, out)
@@ -888,7 +893,8 @@ def follow(a):
             a._render_ok = (mono - last_emit) >= a.debounce
             a._force_render = bool(getattr(a, "_pending", False) and a._render_ok)
             state, events = sync_cycle(a.state, now, a)
-            woke = [e for e in events if e.get("event") in ("progress", "all-done")]
+            woke = [e for e in events
+                    if e.get("event") in ("progress", "all-done", "stop-requested")]
             if woke:
                 last_emit = mono
             for e in events:
