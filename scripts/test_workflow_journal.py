@@ -180,15 +180,67 @@ class FindRunDirTest(unittest.TestCase):
             self.assertIsNone(wj.find_run_dir(["sidA"], "../../etc", d))
             self.assertIsNone(wj.find_run_dir(["sidA"], None, d))
 
+    def test_find_run_dir_prefers_newest_journal(self):
+        # A resume REUSES the runId (observed 2026-07-19): two sessions can
+        # hold dirs for one run. The dead session's dir must not win by
+        # sessionIds list order — the liveliest journal does.
+        with tempfile.TemporaryDirectory() as d:
+            old = make_run(d, sid="sidA")
+            new = make_run(d, sid="sidB")
+            for run_dir, mtime in ((old, 1000), (new, 2000)):
+                j = os.path.join(run_dir, "journal.jsonl")
+                open(j, "w").close()
+                os.utime(j, (mtime, mtime))
+            for order in (["sidA", "sidB"], ["sidB", "sidA"]):
+                self.assertEqual(
+                    wj.find_run_dir(order, "wf_test01-abc", d), new, order)
+
+    def test_find_run_dir_without_journals_falls_back_to_first(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = make_run(d, sid="sidA")
+            make_run(d, sid="sidB")
+            self.assertEqual(wj.find_run_dir(["sidA", "sidB"],
+                                             "wf_test01-abc", d), a)
+
     def test_run_finished_via_completion_record(self):
+        # Record shape from live runs surveyed 2026-07-19 (24 records, 8
+        # projects): "status" always present — "completed" (22), "killed" (1),
+        # "failed" (1); killed/failed also carry "error". Only "completed"
+        # means finished-for-finalize.
         with tempfile.TemporaryDirectory() as d:
             run_dir = make_run(d)
             self.assertFalse(wj.run_finished(run_dir))
             wf_dir = os.path.join(d, "proj", "sidA", "workflows")
             os.makedirs(wf_dir)
             with open(os.path.join(wf_dir, "wf_test01-abc.json"), "w") as f:
-                f.write("{}")
+                json.dump({"runId": "wf_test01-abc", "status": "completed"}, f)
             self.assertTrue(wj.run_finished(run_dir))
+
+    def test_run_finished_killed_or_failed_record_fails_closed(self):
+        # A session kill writes the record too (status "killed", observed live
+        # 2026-07-19, B12 resume drill) — mere existence must not finalize the
+        # job off a dead run.
+        for status in ("killed", "failed"):
+            with tempfile.TemporaryDirectory() as d:
+                run_dir = make_run(d)
+                wf_dir = os.path.join(d, "proj", "sidA", "workflows")
+                os.makedirs(wf_dir)
+                with open(os.path.join(wf_dir, "wf_test01-abc.json"), "w") as f:
+                    json.dump({"status": status,
+                               "error": "Error: Workflow aborted"}, f)
+                self.assertFalse(wj.run_finished(run_dir), status)
+
+    def test_run_finished_statusless_or_unparseable_record_fails_closed(self):
+        # Unknown record shapes degrade to "not finished" (stale visibility,
+        # never a false DONE) — same fail-closed posture as the drift reader.
+        for body in ("{}", "not json", '"completed"', ""):
+            with tempfile.TemporaryDirectory() as d:
+                run_dir = make_run(d)
+                wf_dir = os.path.join(d, "proj", "sidA", "workflows")
+                os.makedirs(wf_dir)
+                with open(os.path.join(wf_dir, "wf_test01-abc.json"), "w") as f:
+                    f.write(body)
+                self.assertFalse(wj.run_finished(run_dir), repr(body))
 
 
 class AgentReadersTest(unittest.TestCase):

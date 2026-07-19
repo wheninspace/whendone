@@ -928,11 +928,13 @@ class WfEnv(SyncEnv):
             write_jsonl(os.path.join(self.run_dir, "agent-%s.jsonl" % aid),
                         list(entries))
 
-    def finish_run(self):
+    def finish_run(self, status="completed"):
+        # Real record shape (surveyed 2026-07-19): "status" always present;
+        # killed/failed runs get a record too, so tests must write one.
         wf = os.path.join(self.projects, "proj", "sidA", "workflows")
         os.makedirs(wf, exist_ok=True)
         with open(os.path.join(wf, "wf_test01-abc.json"), "w") as f:
-            f.write("{}")
+            json.dump({"runId": "wf_test01-abc", "status": status}, f)
 
 
 class SourceBObserveTest(unittest.TestCase):
@@ -1067,6 +1069,29 @@ class SourceBObserveTest(unittest.TestCase):
                               if l.get("event") == "journal-format-drift"])
             self.assertEqual(lines2[-1]["event"], "all-done")
             ap2.assert_not_called()
+        finally:
+            env.cleanup()
+
+    def test_killed_record_does_not_finalize(self):
+        """A session kill writes the completion record too (status "killed",
+        observed live 2026-07-19, B12 resume drill): the tailer must keep the
+        job open — no all-done, no calibration rows, no phase stamped done off
+        the dead run — so a later resume can relaunch and finish it."""
+        env = WfEnv(mkstate_b(),
+                    journal=[wf_started(B_A1), wf_result(B_A1)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "done")])])
+        env.finish_run(status="killed")
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap:
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertFalse([l for l in lines if l.get("event") == "all-done"])
+            st = env.state()
+            self.assertNotEqual(st["tasks"][1]["status"], "done")
+            self.assertTrue(all(t["actualMin"] is None for t in st["tasks"]))
+            ap.assert_not_called()
         finally:
             env.cleanup()
 

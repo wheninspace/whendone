@@ -5,7 +5,7 @@ The Workflow engine writes, per run:
   <session-dir>/subagents/workflows/<runId>/journal.jsonl        started/result per agent
   <session-dir>/subagents/workflows/<runId>/agent-<id>.jsonl     full agent transcript
   <session-dir>/subagents/workflows/<runId>/agent-<id>.meta.json {agentType, spawnDepth[, model]}
-  <session-dir>/workflows/<runId>.json                           completion record (run END only)
+  <session-dir>/workflows/<runId>.json                           run record (any END: completed/killed/failed)
 
 journal.jsonl v2 (verified 2026-07-18 against a live probe + 17 historical runs;
 pinned in test_workflow_journal.py — a FormatAssumptionTest failure means engine
@@ -91,29 +91,56 @@ def drifted(stats):
 
 
 def find_run_dir(session_ids, run_id, projects_dir):
-    """First existing run dir for (sessionIds, workflowRunId), or None. Both come
-    from the state file — untrusted, validated before feeding a glob/path."""
+    """Best existing run dir for (sessionIds, workflowRunId), or None. Both come
+    from the state file — untrusted, validated before feeding a glob/path.
+    A resume REUSES the runId (observed 2026-07-19), so several sessions can
+    hold dirs for one run: prefer the liveliest journal (newest journal.jsonl
+    mtime); dirs without a journal sort oldest, ties keep sessionIds order."""
     if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
         return None
+    candidates = []
     for sid in session_ids or []:
         if not isinstance(sid, str) or not token_usage.SID_RE.fullmatch(sid):
             continue
         for d in sorted(glob.glob(os.path.join(
                 projects_dir, "*", sid, "subagents", "workflows", run_id))):
             if os.path.isdir(d):
-                return d
-    return None
+                candidates.append(d)
+    if not candidates:
+        return None
+
+    def journal_mtime(d):
+        try:
+            return os.path.getmtime(os.path.join(d, "journal.jsonl"))
+        except OSError:
+            return float("-inf")
+    return max(candidates, key=journal_mtime)
+
+
+RECORD_MAX_BYTES = 1_000_000
 
 
 def run_finished(run_dir):
-    """<session-dir>/workflows/<runId>.json exists <=> the engine wrote its
-    completion record <=> the run ended (verified: end-of-run only)."""
+    """<session-dir>/workflows/<runId>.json is written whenever the run ENDS —
+    including killed/aborted and failed runs (status "killed"/"failed", both
+    observed; survey 2026-07-19: 24 records, status always present). Finished-
+    for-finalize means status "completed"; anything else — killed, failed,
+    unknown status, statusless, unparseable, oversized — fails closed to False
+    (stale visibility over a false DONE)."""
     run_dir = os.path.abspath(run_dir)
     run_id = os.path.basename(run_dir)
     if not RUN_ID_RE.fullmatch(run_id):
         return False
     session_dir = os.path.dirname(os.path.dirname(os.path.dirname(run_dir)))
-    return os.path.isfile(os.path.join(session_dir, "workflows", run_id + ".json"))
+    record_path = os.path.join(session_dir, "workflows", run_id + ".json")
+    try:
+        if os.path.getsize(record_path) > RECORD_MAX_BYTES:
+            return False
+        with open(record_path, encoding="utf-8") as f:
+            record = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return isinstance(record, dict) and record.get("status") == "completed"
 
 
 def _first_text(content):

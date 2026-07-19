@@ -51,7 +51,11 @@ state files stay valid without them.
 
 Per run: `journal.jsonl` (started/result per agent, no timestamps/labels/phases),
 `agent-<id>.jsonl` (full transcript — timing comes from HERE), `agent-<id>.meta.json` (model
-id), and a completion record written only at run END. The journal's two-line schema (verified
+id), and a run record (`<session-dir>/workflows/<runId>.json`) written whenever the run ENDS —
+any end: `status` is `"completed"`, `"killed"`, or `"failed"` (killed/failed also carry an
+`error` field; surveyed 2026-07-19 across 24 records). "Completion record" below always means
+a record whose status is `"completed"` — the tailer's `run_finished()` fails closed on
+everything else, so a killed run never finalizes the job (B12 drill finding, 2026-07-19). The journal's two-line schema (verified
 2026-07-18, undocumented and unstable, version-detected on the `v2:` key prefix):
 
 ```json
@@ -97,13 +101,19 @@ re-emission is needed (the finalize pass already refreshed full-job tokens once)
 before the paused-state render.
 
 **Resume:** a Workflow run dies with its launching session — there is no process to reattach
-to. On resume, relaunch via `Workflow({scriptPath, resumeFromRunId})`, which yields a NEW
-`runId`; update `workflowRunId` to it and restart the watcher ladder from L1. Cached-prefix
+to. On resume, relaunch via `Workflow({scriptPath, resumeFromRunId})`. The engine REUSES the
+runId (verified 2026-07-19; an earlier draft assumed a new one): compare the tool result's
+`runId` to the state's `workflowRunId` and update only if it differs. Same runId means the
+resumed run's dir sits under the NEW session while the dead session's dir persists —
+`find_run_dir()` disambiguates by newest `journal.jsonl` mtime, which is why the resume
+procedure appends the new session id to `sessionIds` rather than replacing the old one (the
+old id is still needed for token counts). Restart the watcher ladder from L1. Cached-prefix
 replays can surface as near-instant started/result pairs for agents that already ran before
 the crash: phases already `done` with `actualMin` set are never re-finalized or re-appended
-(same done-is-done rule as source-a.md's F9 neighbor). F9 rebaseline (recompute
-`originalTotalMin` from the next successful render) applies if the phase list itself changed
-across the resume.
+(same done-is-done rule as source-a.md's F9 neighbor). The dead run's record (`status:
+"killed"`) never finalizes anything — see "What the tailer observes" above. F9 rebaseline
+(recompute `originalTotalMin` from the next successful render) applies if the phase list
+itself changed across the resume.
 
 ## Fail-soft table (tailer rows, Source B)
 
