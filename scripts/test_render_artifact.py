@@ -360,6 +360,47 @@ class TestInterval(unittest.TestCase):
         self.assertEqual(txt, "ETA not yet known (uncalibrated)")
 
 
+class SourceCMinimalStateTest(unittest.TestCase):
+    """Tasks exactly as tail_progress.mirror_c materializes them: no estimateMin,
+    no category, no model — the renderer must render and never slip-alert."""
+
+    def _tasks(self):
+        return [{"nr": 1, "name": "collect inputs", "status": "done",
+                 "startedAt": "2026-07-18T09:00:00+02:00",
+                 "finishedAt": "2026-07-18T09:30:00+02:00"},
+                {"nr": 2, "name": "write summary", "status": "running",
+                 "startedAt": "2026-07-18T09:30:00+02:00"},
+                {"nr": 3, "name": "publish", "status": "pending"}]
+
+    def test_minimal_tasks_render_with_uncalibrated_label(self):
+        rc, page, out = run_cli(state(source="c", originalTotalMin=None,
+                                      tasks=self._tasks()))
+        self.assertEqual(rc, 0)
+        st = json.loads(out)
+        self.assertIn("uncalibrated", st["etaText"])
+        self.assertFalse(st["slipAlert"])
+        self.assertEqual(st["estimateTotalMin"], 0)
+        self.assertIn("collect inputs", page)
+
+    def test_estimate_cells_show_dash_not_zero(self):
+        rc, page, _ = run_cli(state(source="c", originalTotalMin=None,
+                                    tasks=self._tasks()))
+        row = [l for l in page.splitlines() if "publish" in l][0]
+        self.assertIn("<td>—</td>", row)
+
+    def test_done_state_renders_done_uncalibrated(self):
+        tasks = self._tasks()
+        for t in tasks:
+            t["status"] = "done"
+            t.setdefault("finishedAt", "2026-07-18T09:45:00+02:00")
+            t.setdefault("startedAt", "2026-07-18T09:00:00+02:00")
+        s = state(source="c", originalTotalMin=None, status="done", tasks=tasks)
+        rc, page, out = run_cli(s)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["etaText"], "Done (uncalibrated)")
+        self.assertIn("DONE", page)
+
+
 def tokens_obj(job_out=300_000, job_fresh=112_000, job_cr=3_100_000, tasks=()):
     return {"available": True,
             "job": {"output": job_out, "freshInput": job_fresh, "cacheRead": job_cr,

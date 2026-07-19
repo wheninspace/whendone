@@ -536,3 +536,96 @@ follow-up run (still the least-tested path, as in stages 2–3):
 
 The done-is-done guard this drill checks is unit-tested (`test_finalize_never_reappends_done_phase`
 in `scripts/test_tail_progress.py`); the drill is the live cross-session confirmation of it.
+
+## Stage 5 — flip-gate check — 2026-07-19
+
+The release gate (design spec §2): Sources A and B both working, plus Source C and the positioning
+rewrite, all precede the public flip. This section RECORDS the gate; it does not push (the push is
+the owner-run flip checklist, `docs/plans/2026-07-18-flip-checklist.md`).
+
+**Suites (warning-clean).** `python3 -W error::ResourceWarning -m unittest discover -p 'test_*.py'`
+across the six suites: **267 tests, OK** (243 baseline + 24 stage-5 additions — Source-C observer,
+sync_cycle_c, calibration guard, follow-mode pins, renderer pins, and workflow_journal containment).
+
+**Formula parity.** `widen that task's band to the envelope` → **1/1/0/0/0/0**
+(`references/file-formats.md`:1, `scripts/calibration_summary.py`:1; SKILL.md + all three
+`source-*.md` at 0). Unchanged from the stage-4 baseline — no formula prose was touched in stage 5.
+
+**Forbidden-string + secrets sweep (tracked files).** `git grep` for `FBR`, `fbrswe`, `robocopy`,
+`framdrift`, `G:\`, and the spelled-out agency name (case-insensitive fragment): **all absent.**
+Secrets scan (`api[_-]?key|secret|BEGIN … PRIVATE KEY|Bearer …`): the only hits are two benign
+security-context prose mentions in `README.md` (the sensitivity-flagging paragraph and the
+"API-key-only setups" note) — no credentials, tokens, or keys. Manual skim: no Swedish prose in
+tracked docs.
+
+**Token budget (stage-5 re-measurement, `tiktoken cl100k_base`, 2026-07-19).** Source-A
+trigger-to-first-publish path (same composition as stage-4's 12,182): **12,313 tokens** (+131 drift
+from the five SKILL.md flips + the file-formats note), under the 14,000 gate with 1,687 to spare.
+`references/source-c.md` standalone: **920 tokens** (gate <2,500) — off the Source-A trigger path,
+read only when Source C is detected.
+
+**Gate evidence (cited, not re-run).**
+- Source A working → the Stage-3 Source-A dogfood entry above (this file, 2026-07-18).
+- Source B working → the Stage-4 Source-B dogfood entry above (runId `wf_0580e207-b1b`, 2026-07-18).
+- Source C working → the live Source-C dogfood entry below (this session, artifact
+  `048ecc36-4bfb-407b-9d43-403c4a5429fb`, 2026-07-19).
+- Docs consistency → `git grep "not shipped"` over SKILL.md/references/README.md: zero survivors;
+  README install tag `v0.3.0`; CHANGELOG header order v0.3.0 → v0.2.1 → v0.2.0 → v0.1.0.
+
+All gate conditions met. The two never-run-live paths (Source-A and Source-B cross-session resume
+drills) remain owner tasks on the flip checklist — they gate the flip, not this branch's merge.
+
+## Stage 5 — Source-C (pace-only) live dogfood — 2026-07-19
+
+A real end-to-end Source-C run in the stage-5 execution session — no mocks. whendone monitored the
+final stretch of its own build: the TodoWrite list mirrored was the five remaining work items of
+this stage (the flip-gate check and the flip-checklist/ledger/final-review of Tasks 13–14), and the
+watcher ran while that work was actually done.
+
+**Environment.** macOS, `zsh`; real `.claude/whendone-state.json` with `source:"c"`,
+`originalTotalMin:null`, this session's id in `sessionIds`; artifact
+`048ecc36-4bfb-407b-9d43-403c4a5429fb`. Watcher level: **L1 Monitor** (`tail_progress.py --follow`,
+5 s interval / 30 s debounce), the first stage-5 Source-C run under a live Monitor watcher.
+
+**Job start.** State written per `references/source-c.md` (no classification, no estimate table, no
+calibration-summary read; `tasks:[]`). The gitignore precondition was already satisfied
+(`.claude/whendone-state.json` + `.claude/whendone-tail.lock`). A one-shot sync mirrored the five
+TodoWrite items into `tasks` on the first pass — each carrying only
+`nr`/`name`/`status`/`startedAt`/`finishedAt` (no estimate/category/model keys), with `startedAt`
+taken from the transcript's TodoWrite timestamp. First render + publish emitted
+`etaText:"ETA not yet known (uncalibrated)"` (empty→one running item), published to the URL above.
+
+**Observed event lines (representative).** One `progress` line per mirrored transition, then the
+terminal `all-done`:
+```
+{"event":"progress","done":0,"total":5,"etaText":"ETA not yet known (uncalibrated)"}
+{"event":"progress","done":1,"total":5,"justDone":["Run full test suites (267) warning-clean"],"etaText":"Done ~22:51 (uncalibrated — pace-based)"}
+{"event":"progress","done":2,"total":5,"justDone":["Formula-parity + forbidden-string + secrets sweeps"],"etaText":"Done ~22:41 (uncalibrated — pace-based)"}
+{"event":"progress","done":3,"total":5,"justDone":["Record flip-gate evidence + write flip-gate test-log entry"],"etaText":"Done ~22:39 (uncalibrated — pace-based)"}
+{"event":"progress","done":4,"total":5,"justDone":["Write the public-flip checklist + update SDD ledger"],"etaText":"Done ~22:36 (uncalibrated — pace-based)"}
+{"event":"all-done","done":5,"total":5,"justDone":["Final whole-branch code review + apply fixes"],"etaText":"Done (uncalibrated)"}
+```
+
+**What the dogfood confirmed.**
+- **Mirror transitions** on each wake: the newest TodoWrite snapshot drove `done` count, per-task
+  status icons, and computed `Actual` times (e.g. 2.1 m, 1.4 m, 4.7 m) with no hand-editing.
+- **Uncalibrated label everywhere:** `etaText` carried `(uncalibrated — pace-based)` while running
+  and exactly `Done (uncalibrated)` at end; the page's ETA headline matched. The pace ETA adapted as
+  items completed (~22:51 → ~22:36). **Category and Est. columns rendered `—`** (no estimates);
+  `slipAlert` never fired; `estimateTotalMin` was `0`.
+- **`justDone` naming** correctly named the item(s) newly completed at each wake.
+- **Same artifact URL** (`048ecc36…`) across all ~six republishes (same scratchpad file path).
+- **Zero calibration writes:** `wc -l ~/.claude/whendone-data/calibration.jsonl` = **72 before and
+  72 after** — the §5.1 guard held live for a full Source-C completion (no `handle_completion`/append
+  on the Source-C path).
+- **Job end:** on `all-done` the watcher exited **rc 0**, removed `.claude/whendone-tail.lock`, and
+  the Monitor stream ended. The model then set `status:"done"`, ran `token_usage.py` (no `--task`),
+  and rendered + published the **DONE (uncalibrated)** banner; a best-effort "job done" push was sent
+  (delivery uncertain — no Remote Control).
+
+**Deviations from `references/source-c.md`:** none. The protocol was followed as written and the
+document needed no correction — job-start (mirror-only, no declaration), wake handling (one publish
+per `progress`/`all-done`, verbatim `etaText`), and job-end (no calibration-summary regeneration)
+all matched observed behavior. Dogfood limit: because the run tracked the model's own multi-minute
+work items, wakes were minutes apart (not sub-second), which exercised the debounce/render tail
+naturally.

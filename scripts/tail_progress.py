@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Source-A tailer/watcher for whendone: declare-once, tail-thereafter (stage 3).
+"""Tailer/watcher for whendone sources A, B, and C: declare-once (A/B) or mirror-only (C),
+tail-thereafter.
 
 Usage:
   python3 tail_progress.py <whendone-state.json> [--now ISO]          # one-shot sync (L3)
@@ -197,6 +198,50 @@ def observe(events, idx):
     return obs
 
 
+C_STATUS = {"pending": "pending", "in_progress": "running", "completed": "done"}
+
+
+def observe_c(events):
+    """Source C (spec §4.3): newest TodoWrite snapshot + first-seen start/finish
+    evidence per normalized item name, transcript timestamps only. Events are
+    ts-sorted, so the last 'todos' payload seen is the newest."""
+    snapshot, first_started, first_finished = None, {}, {}
+    for ts, kind, payload in events:
+        if kind != "todos":
+            continue
+        snapshot = payload
+        for it in payload:
+            key = normalize(it.get("content"))
+            if not key:
+                continue
+            st = it.get("status")
+            if st in ("in_progress", "completed") and key not in first_started:
+                first_started[key] = ts.isoformat()
+            if st == "completed" and key not in first_finished:
+                first_finished[key] = ts.isoformat()
+    return snapshot, first_started, first_finished
+
+
+def mirror_c(snapshot, first_started, first_finished):
+    """Materialize state tasks from the newest snapshot — no declared plan, the
+    list IS the plan. Statuses are revertible (mirror semantics, same posture as
+    Source B's display states); timestamps only ever come from transcript entries.
+    No estimates, no categories: pace-based ETA only, never calibrated (§5.1)."""
+    tasks = []
+    for it in snapshot or []:
+        content = it.get("content")
+        if not isinstance(content, str) or not content:
+            continue
+        status = C_STATUS.get(it.get("status"), "pending")
+        key = normalize(content)
+        tasks.append({
+            "nr": len(tasks) + 1, "name": content, "status": status,
+            "startedAt": first_started.get(key) if status != "pending" else None,
+            "finishedAt": first_finished.get(key) if status == "done" else None,
+        })
+    return tasks
+
+
 def plan_transitions(state, obs):
     starts, completions = [], []
     for t in state.get("tasks", []):
@@ -236,6 +281,8 @@ def sync_cycle(state_path, now, args):
     src = state.get("source", "a")
     if src == "b":
         return sync_cycle_b(state_path, state, now, args, out)
+    if src == "c":
+        return sync_cycle_c(state_path, state, now, args, out)
     if src != "a":
         out.append({"event": "unsupported-source", "source": state.get("source")})
         emit(out[-1]); return state, out
@@ -342,11 +389,11 @@ def observe_b(state, args):
                         "model": None, "final": False}
                 cache[aid] = info
             if info["start"] is None or info["tag"] is None:
-                s, tag = workflow_journal.agent_first(path)
+                s, tag = workflow_journal.agent_first(path, root=run_dir)
                 info["start"] = info["start"] or s
                 info["tag"] = info["tag"] or tag
             if done:
-                info["end"] = workflow_journal.agent_last_ts(path)
+                info["end"] = workflow_journal.agent_last_ts(path, root=run_dir)
                 info["model"] = workflow_journal.agent_model(run_dir, aid)
                 info["final"] = True          # frozen: completed agents never re-read
         if info["tag"] is None:
@@ -458,6 +505,46 @@ def sync_cycle_b(state_path, state, now, args, out):
                          just_done, all_done_now)
 
 
+def sync_cycle_c(state_path, state, now, args, out):
+    """Source-C pass (spec §4.3/§5.1): mirror the newest TodoWrite snapshot into
+    state.tasks — no declaration, no estimates, and NEVER a calibration append
+    (handle_completion is not on this path, and guards besides). Shares Source A's
+    transcript tailing and the _maybe_finish debounce/render tail."""
+    if state.get("status") != "running":
+        out.append({"event": "no-op", "reason": "status %s" % state.get("status")})
+        emit(out[-1]); return state, out
+    try:
+        events, last_ts = extract_events(transcript_files(state, args.projects_dir))
+    except token_usage.TranscriptTooLarge:
+        events, last_ts = [], None
+        out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})
+        emit(out[-1])
+    args._last_ts = last_ts
+    snapshot, first_started, first_finished = observe_c(events)
+    changed, just_done = False, []
+    if snapshot is not None:
+        new_tasks = mirror_c(snapshot, first_started, first_finished)
+        prev = {t.get("name"): t for t in state.get("tasks", []) if isinstance(t, dict)}
+        for t in new_tasks:                      # stale flags survive a rebuild
+            p = prev.get(t["name"])
+            if p and p.get("status") == "running" and t["status"] == "running" \
+                    and p.get("staleNotifiedAt"):
+                t["staleNotifiedAt"] = p["staleNotifiedAt"]
+        old = [(t.get("name"), t.get("status")) for t in state.get("tasks", [])
+               if isinstance(t, dict)]
+        if [(t["name"], t["status"]) for t in new_tasks] != old:
+            done_before = {n for n, s in old if s == "done"}
+            just_done = [t["name"] for t in new_tasks
+                         if t["status"] == "done" and t["name"] not in done_before]
+            state["tasks"] = new_tasks
+            write_state(state_path, state)
+            changed = True
+    all_done_now = changed and bool(state.get("tasks")) and all(
+        t.get("status") == "done" for t in state["tasks"])
+    return _maybe_finish(state_path, state, now, args, out, changed,
+                         just_done, all_done_now)
+
+
 def finalize_b(state_path, state, per_tag, args):
     """Completion record observed: the run ENDED, so spans are final and rows can
     no longer be contradicted by a late agent (B4). Same crash order as
@@ -549,6 +636,9 @@ def group_row(state, group_id):
 def handle_completion(state_path, state, t, started, finished, args):
     """Today's checkpoint order, in code: (b) done-marker -> (b2) tokens+alias ->
     (c) append -> (d) actualMin. Every step past (b) is fail-soft."""
+    if state.get("source") == "c":
+        return          # spec §5.1: Source C never logs calibration — hard guard
+
     # (b) durable done-marker FIRST
     t["status"] = "done"
     if started and not t.get("startedAt"):
