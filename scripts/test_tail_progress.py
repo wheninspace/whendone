@@ -1291,6 +1291,24 @@ class SourceBFinalizeTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_paused_b_state_noops_without_writes(self):
+        env = self._env()
+        st = env.state()
+        st["status"] = "paused"
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        before = env.state()
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj") as ap:
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "no-op")
+            ap.assert_not_called()
+            self.assertEqual(env.state(), before)   # not one byte written
+        finally:
+            env.cleanup()
+
 
 class RenderOutPathHardeningTest(unittest.TestCase):
     def test_valid_absolute_html_accepted(self):

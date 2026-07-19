@@ -423,6 +423,9 @@ def observe_b(state, args):
 def sync_cycle_b(state_path, state, now, args, out):
     """Source-B pass: observe -> display transitions (revertible, B4) ->
     [Task 5: finalize on completion record] -> shared debounce/render tail."""
+    if state.get("status") != "running":
+        out.append({"event": "no-op", "reason": "status %s" % state.get("status")})
+        emit(out[-1]); return state, out
     per_tag, meta = observe_b(state, args)
     args._last_ts = meta["lastActivity"]
     if meta["tooLarge"] or meta["runDir"] is None:
