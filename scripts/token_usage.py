@@ -54,7 +54,7 @@ Privacy: only message.usage numbers and the message.model string are read; conve
 content is never extracted.
 """
 import glob, json, os, re, sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 BUCKETS = ("output", "freshInput", "cacheRead")
 
@@ -72,7 +72,7 @@ def parse_ts(s):
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone()
     except (ValueError, TypeError, AttributeError):
         return None
 
@@ -230,7 +230,7 @@ def summarize(state_path, projects_dir=None, task_nr=None):
         valid_tasks.append((t.get("nr"), s, parse_ts(t.get("finishedAt"))))
 
     # M1: overlap detection always runs over ALL tasks, independent of --task filtering.
-    overlap_nrs = compute_overlaps(valid_tasks, datetime.now(timezone.utc))
+    overlap_nrs = compute_overlaps(valid_tasks, datetime.now().astimezone())
 
     result_tasks = []
     for nr, s, e in valid_tasks:

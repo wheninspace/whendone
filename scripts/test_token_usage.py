@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 """Tests for token_usage.py. Run: python3 scripts/test_token_usage.py -v"""
 import json, os, sys, tempfile, unittest
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import token_usage as tu
+
+
+class ParseTsTimezoneTest(unittest.TestCase):
+    """Local-time policy: timestamps the scripts emit carry the system-local
+    UTC offset, never a hardcoded +00:00. parse_ts anchors that — same
+    instant, local offset (trivially equal on a UTC machine)."""
+
+    def test_parse_ts_preserves_instant_in_local_offset(self):
+        dt = tu.parse_ts("2026-07-18T10:00:00.000Z")
+        ref = datetime(2026, 7, 18, 10, 0, tzinfo=timezone.utc)
+        self.assertEqual(dt, ref)                                    # same instant
+        self.assertEqual(dt.utcoffset(), ref.astimezone().utcoffset())  # local offset
 
 
 def entry(msg_id, ts, out=100, inp=10, cc=50, cr=1000, model="claude-sonnet-5"):

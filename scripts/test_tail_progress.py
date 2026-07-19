@@ -167,6 +167,52 @@ class SyncEnv:
         self.dir.cleanup()
 
 
+class LocalTimePolicyTest(unittest.TestCase):
+    """Local-time policy: when no --now is given (L1 --follow and bare
+    one-shot), the tailer's internal `now` must be local-tz aware — the
+    renderer displays every time in now's tz, so a UTC default paints the
+    whole artifact in UTC (live bug found in the 2026-07-19 resume drill)."""
+
+    def test_one_shot_default_now_renders_local_hhmm(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1)]))
+        out_path = None
+        try:
+            before = datetime.now().astimezone()
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = tp.main([env.state_path, "--projects-dir", env.projects])
+            after = datetime.now().astimezone()
+            self.assertEqual(rc, 0)
+            out_path = tp._render_out_path(env.state())
+            with open(out_path, encoding="utf-8") as f:
+                html = f.read()
+            accepted = {before.strftime("last updated %H:%M"),
+                        after.strftime("last updated %H:%M")}
+            self.assertTrue(any(s in html for s in accepted),
+                            "banner must show local HH:MM (accepted %r)" % accepted)
+        finally:
+            if out_path:
+                with contextlib.suppress(OSError):
+                    os.remove(out_path)
+            env.cleanup()
+
+    def test_follow_default_now_stamps_local_offset(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1, status="running",
+                                               startedAt="2026-07-18T09:00:00+00:00")]))
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = tp.main([env.state_path, "--projects-dir", env.projects,
+                              "--follow", "--max-cycles", "1", "--interval", "0"])
+            self.assertEqual(rc, 0)
+            stamp = env.state()["tasks"][0]["staleNotifiedAt"]
+            self.assertIsNotNone(stamp)      # task started 2026-07-18 -> stale fired
+            dt = datetime.fromisoformat(stamp)
+            self.assertEqual(dt.utcoffset(), datetime.now().astimezone().utcoffset())
+        finally:
+            env.cleanup()
+
+
 class ObserveTest(unittest.TestCase):
     def test_todo_start_and_completion_first_seen_wins(self):
         idx = {"task 1": 1}

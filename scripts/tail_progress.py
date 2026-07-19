@@ -27,7 +27,7 @@ names, todo content/status, timestamps, tool_use ids) is read; conversation
 prose is never extracted.
 """
 import argparse, contextlib, errno, io, json, os, re, sys, tempfile, time
-from datetime import datetime, timezone
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import token_usage
@@ -416,7 +416,7 @@ def observe_b(state, args):
         else:
             slot["inflight"] += 1
     if mtimes:
-        meta["lastActivity"] = datetime.fromtimestamp(max(mtimes), tz=timezone.utc)
+        meta["lastActivity"] = datetime.fromtimestamp(max(mtimes)).astimezone()
     return per_tag, meta
 
 
@@ -605,7 +605,7 @@ def _project_name(state_path):
 
 def _base_row(state, state_path, started, finished):
     return {
-        "date": (token_usage.parse_ts(finished) or datetime.now(timezone.utc))
+        "date": (token_usage.parse_ts(finished) or datetime.now().astimezone())
                 .astimezone().date().isoformat(),
         "project": _project_name(state_path),
         "job": state.get("job", ""),
@@ -767,7 +767,7 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
 
 def one_shot(a):
     a._force_render = True        # L3 boundary refresh always renders (ETA drifts with time)
-    now = token_usage.parse_ts(a.now) or datetime.now(timezone.utc)
+    now = token_usage.parse_ts(a.now) or datetime.now().astimezone()
     state, events = sync_cycle(a.state, now, a)
     if state is None:
         return 2
@@ -858,7 +858,7 @@ def follow(a):
     cycles = 0
     try:
         while True:
-            now = datetime.now(timezone.utc)
+            now = datetime.now().astimezone()
             mono = time.monotonic()
             a._render_ok = (mono - last_emit) >= a.debounce
             a._force_render = bool(getattr(a, "_pending", False) and a._render_ok)
