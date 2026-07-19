@@ -706,6 +706,17 @@ def handle_completion(state_path, state, t, started, finished, args):
         write_state(state_path, state)
 
 
+def _open_private(path, flags):
+    """Open with 0600, then fchmod the fd BEFORE any content is written -- closes the
+    write-before-chmod window a trailing os.chmod(path, ...) would leave open for a
+    pre-existing 0644 file (e.g. a pre-fix sidecar): content must never be written while
+    the file is still world/group-readable. (Mirrors append_calibration._open_private.)"""
+    fd = os.open(path, flags, 0o600)
+    if os.name == "posix":
+        os.fchmod(fd, 0o600)
+    return fd
+
+
 def _render_out_path(state):
     """Validate-not-trust (stage-4 hardening): artifactFile comes from the state
     file, an untrusted source. The protocol layer already re-mints it in the
@@ -767,7 +778,8 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
         merged = dict(held)
         merged["tasks"] = sorted(by_nr.values(), key=lambda e: e.get("nr"))
         try:
-            with open(sidecar_path, "w", encoding="utf-8") as f:
+            fd = _open_private(sidecar_path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(merged, f)
             tok_arg = sidecar_path
         except OSError:
@@ -776,6 +788,14 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
         tok_arg = out_path + ".tokens.json"              # reuse last refresh on drift renders
 
     status = render_now(state_path, tok_arg, out_path, now, state)
+    if status is not None and os.name == "posix":
+        # M9: render_artifact.py's atomic write (plain open() + os.replace) lands
+        # 0644 by default umask; tighten unconditionally regardless of `publish` --
+        # the no-publish path still renders every wake for the chat table's
+        # etaText, and 0600 costs nothing when a publish does happen.
+        for p in (out_path, out_path + ".tokens.json"):
+            with contextlib.suppress(OSError):
+                os.chmod(p, 0o600)
     ev = {"event": "all-done" if all_done else "progress", "done": done,
           "total": len(tasks), "changed": changed, "justDone": just_done,
           "rendered": status is not None}

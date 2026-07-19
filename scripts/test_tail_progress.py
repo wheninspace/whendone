@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for tail_progress.py. Run: python3 scripts/test_tail_progress.py -v"""
-import contextlib, io, json, os, sys, tempfile, unittest
+import contextlib, io, json, os, stat, sys, tempfile, unittest
 import unittest.mock
 from datetime import datetime, timezone
 
@@ -819,6 +819,38 @@ class FinishCycleTest(unittest.TestCase):
             self.assertEqual(merged["tasks"][0]["output"], 20)
         finally:
             env.cleanup()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file-mode semantics")
+    def test_no_publish_render_output_is_0600(self):
+        # M9: under publish:false the tailer still renders every wake (the chat
+        # table needs etaText) to a predictable /tmp path with a null artifactFile
+        # (tempdir fallback) -- both the HTML and its .tokens.json sidecar must
+        # land 0600, never the default-open 0644.
+        job_id = "nopubtest01"
+        out_path = os.path.join(tempfile.gettempdir(),
+                                 "whendone-render-%s.html" % job_id)
+        sidecar = out_path + ".tokens.json"
+        for p in (out_path, sidecar):
+            with contextlib.suppress(OSError):
+                os.remove(p)
+        env = SyncEnv(
+            [todo_entry(T0, [item("task 1", "in_progress")]),
+             usage_entry(T1, "claude-haiku-4-5-20251001", 50, "m-u1"),
+             todo_entry(T2, [item("task 1", "completed")])],
+            mkstate(jobId=job_id, publish=False, artifactFile=None,
+                    tasks=[mktask(1), mktask(2)]))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(out_path))
+            self.assertTrue(os.path.exists(sidecar))
+            self.assertEqual(stat.S_IMODE(os.stat(out_path).st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(os.stat(sidecar).st_mode), 0o600)
+        finally:
+            env.cleanup()
+            for p in (out_path, sidecar):
+                with contextlib.suppress(OSError):
+                    os.remove(p)
 
 
 class FollowTest(unittest.TestCase):
