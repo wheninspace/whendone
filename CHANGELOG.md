@@ -5,6 +5,15 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **README: per-subtask model/token ledger surfaced early (docs only):** the "Do you need
+  this?" section gains a "Delegation transparency" bullet (which model ran each subtask +
+  per-subtask token consumption — the receipt for model-tiering strategies), and the
+  statusline paragraph now names it as the third differentiator alongside the calibrated ETA
+  and the off-machine link — previously this capability first appeared in "What you get",
+  after the section where at-the-desk readers decide. Also: `docs/test-log.md` retitled from
+  the pre-rename "Pacekeeper skill test log" to "WhenDone skill test log" (its naming note
+  and verbatim historical `pacekeeper` run records stay — they document what was actually
+  run). README/test-log are off the trigger path — no re-measure.
 - **Trigger-path dedup pass (docs only, −734 raw tokens → 9,785 raw / ≈11.0–11.2k as-read):**
   removed third copies of rules whose normative homes already existed — file-formats.md's
   restated preconditions and concurrency/STOP/malformed-JSON rules now point to SKILL.md

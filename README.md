@@ -24,6 +24,11 @@ Useful beyond that case too:
 
 - **Job sizing** — the declared plan with calibrated per-category estimates shows how big a
   job actually is and how long to expect it to take, whether or not you walk away.
+- **Delegation transparency** — the task table records which model executed each subtask
+  (full version, e.g. "Haiku 4.5") and what it consumed in tokens, per subtask and per job.
+  If you tier work across models to protect quota, this is the after-the-fact receipt of
+  what the orchestrator actually chose for each type of work and what each piece cost —
+  attribution a session total can't give you.
 - **Time-boxing** — "stop after the current subtask", a `.claude/STOP` file, or an up-front
   instruction like "don't start a new subtask after 16:45" (one dogfooded run so far — it's
   the declared plan plus subtask-boundary discipline that makes such an instruction
@@ -33,10 +38,11 @@ Useful beyond that case too:
 
 If you live in the terminal and never leave it, maybe not. A statusline (e.g. claude-hud) and
 `/workflows` already show you what's running, in the same window you're already watching —
-that's real, and for a lot of jobs it's enough. Two things a statusline can't give you: a
-*calibrated* finish-time ETA, and a link that **leaves the machine** — open the live page from
-a VSCode extension, a desktop app, or your phone. If neither matters to you, you probably
-don't need whendone.
+that's real, and for a lot of jobs it's enough. Three things a statusline can't give you: a
+*calibrated* finish-time ETA; a link that **leaves the machine** — open the live page from
+a VSCode extension, a desktop app, or your phone; and a per-subtask ledger of which model
+ran each subtask and what it consumed, in the same table as the estimates. If none of those
+matter to you, you probably don't need whendone.
 
 LLMs misjudge how long their own work will take — pre-task estimates overshoot actual duration
 by 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An

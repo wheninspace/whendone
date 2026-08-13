@@ -1,4 +1,4 @@
-# Pacekeeper skill test log
+# WhenDone skill test log
 
 > **Naming note (2026-07-17):** entries dated 2026-07-16 and earlier were recorded when this
 > skill was named `pacekeeper` (renamed to `whendone` on 2026-07-17). Their `pacekeeper` /
