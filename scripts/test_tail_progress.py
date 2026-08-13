@@ -118,6 +118,124 @@ class ExtractEventsTest(unittest.TestCase):
         self.assertIsNone(last_ts)
 
 
+def taskcreate_entry(ts, tool_id, subject):
+    """Assistant entry with one TaskCreate tool_use — the harness's TodoWrite
+    successor; shape verified live 2026-08-13 (agent-orchestra transcript)."""
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"id": "m-" + tool_id, "usage": {},
+                        "content": [{"type": "tool_use", "id": tool_id, "name": "TaskCreate",
+                                     "input": {"subject": subject, "description": "...",
+                                               "activeForm": subject}}]}}
+
+
+def taskcreate_result(ts, tool_id, task_id, subject):
+    return {"type": "user", "timestamp": ts,
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "content": "Task #%s created successfully: %s"
+                                                % (task_id, subject)}]}}
+
+
+def taskupdate_entry(ts, task_id, status, mid="m-tu"):
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"id": mid, "usage": {},
+                        "content": [{"type": "tool_use", "id": "tu-" + mid,
+                                     "name": "TaskUpdate",
+                                     "input": {"taskId": task_id, "status": status}}]}}
+
+
+class TaskToolsSynthesisTest(unittest.TestCase):
+    """TaskCreate/TaskUpdate (the TodoWrite successor in newer harnesses) must
+    synthesize the same 'todos' snapshot events the rest of the pipeline
+    consumes — observe/observe_c/mirror_c stay untouched."""
+
+    def _extract(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
+
+    def test_create_bind_update_synthesizes_snapshots(self):
+        events = self._extract([
+            taskcreate_entry(T0, "tc-1", "Alpha"),
+            taskcreate_result(T0, "tc-1", "1", "Alpha"),
+            taskcreate_entry(T0, "tc-2", "Beta"),
+            taskcreate_result(T0, "tc-2", "2", "Beta"),
+            taskupdate_entry(T1, "1", "in_progress", mid="u1"),
+            taskupdate_entry(T2, "1", "completed", mid="u2"),
+        ])
+        kinds = {k for _, k, _ in events}
+        self.assertNotIn("taskcreate", kinds)
+        self.assertNotIn("taskupdate", kinds)
+        snaps = [p for _, k, p in events if k == "todos"]
+        # bind-time snapshots expose pending items (total visible before any start)
+        self.assertEqual(snaps[0], [{"content": "Alpha", "status": "pending"}])
+        self.assertEqual(snaps[-1], [{"content": "Alpha", "status": "completed"},
+                                     {"content": "Beta", "status": "pending"}])
+
+    def test_unparseable_result_binds_in_creation_order(self):
+        events = self._extract([
+            taskcreate_entry(T0, "tc-1", "Alpha"),
+            result_entry(T0, "tc-1"),                      # content "done", no "#N"
+            taskupdate_entry(T1, "1", "in_progress", mid="u1"),
+        ])
+        snaps = [p for _, k, p in events if k == "todos"]
+        self.assertEqual(snaps[-1], [{"content": "Alpha", "status": "in_progress"}])
+
+    def test_unknown_status_and_unknown_task_are_ignored(self):
+        events = self._extract([
+            taskcreate_entry(T0, "tc-1", "Alpha"),
+            taskcreate_result(T0, "tc-1", "1", "Alpha"),
+            taskupdate_entry(T1, "1", "deleted", mid="u1"),   # unknown status
+            taskupdate_entry(T1, "9", "completed", mid="u2"),  # unknown taskId
+        ])
+        snaps = [p for _, k, p in events if k == "todos"]
+        self.assertEqual(snaps[-1], [{"content": "Alpha", "status": "pending"}])
+
+    def test_result_content_as_block_list_binds_too(self):
+        entry = taskcreate_result(T0, "tc-1", "1", "Alpha")
+        block = entry["message"]["content"][0]
+        block["content"] = [{"type": "text", "text": block["content"]}]
+        events = self._extract([
+            taskcreate_entry(T0, "tc-1", "Alpha"), entry,
+            taskupdate_entry(T1, "1", "completed", mid="u1"),
+        ])
+        snaps = [p for _, k, p in events if k == "todos"]
+        self.assertEqual(snaps[-1], [{"content": "Alpha", "status": "completed"}])
+
+    def test_source_c_mirrors_task_tool_job_end_to_end(self):
+        env = SyncEnv([
+            taskcreate_entry(T0, "tc-1", "collect inputs"),
+            taskcreate_result(T0, "tc-1", "1", "collect inputs"),
+            taskcreate_entry(T0, "tc-2", "write summary"),
+            taskcreate_result(T0, "tc-2", "2", "write summary"),
+            taskupdate_entry(T1, "1", "in_progress", mid="u1"),
+            taskupdate_entry(T2, "1", "completed", mid="u2"),
+            taskupdate_entry(T2, "2", "in_progress", mid="u3"),
+        ], mkstate(source="c", tasks=[], originalTotalMin=None))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            st = env.state()
+            self.assertEqual([(t["name"], t["status"]) for t in st["tasks"]],
+                             [("collect inputs", "done"), ("write summary", "running")])
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertEqual((ev["done"], ev["total"]), (1, 2))
+        finally:
+            env.cleanup()
+
+    def test_source_a_observe_sees_task_tool_checkpoints(self):
+        events = self._extract([
+            taskcreate_entry(T0, "tc-1", "Task 1: build tailer"),
+            taskcreate_result(T0, "tc-1", "1", "Task 1: build tailer"),
+            taskupdate_entry(T1, "1", "in_progress", mid="u1"),
+            taskupdate_entry(T2, "1", "completed", mid="u2"),
+        ])
+        obs = tp.observe(events, tp.name_index([{"nr": 1, "name": "build tailer"}]))
+        self.assertEqual(obs[1]["startedAt"], tp.token_usage.parse_ts(T1).isoformat())
+        self.assertEqual(obs[1]["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+
+
 def mkstate(**kw):
     d = {"job": "demo job", "jobId": "20260718T0900", "planFile": None,
          "artifactUrl": None, "artifactFile": None,

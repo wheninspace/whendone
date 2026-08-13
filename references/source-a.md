@@ -1,7 +1,7 @@
 # Source A — lead/subagent jobs: declare once, tail thereafter
 
 The lead declares the plan once and starts a watcher. `scripts/tail_progress.py` observes
-TodoWrite/subagent completions and owns state, calibration, and rendering from then on. The
+todo-list/subagent completions and owns state, calibration, and rendering from then on. The
 model's per-boundary work collapses to one Artifact publish on wake — never a hand-run
 checkpoint.
 
@@ -31,13 +31,15 @@ core (cross-ref there; both checks already name
 (the environment), `pushStatus` (real notification status), `staleAfterMin` (10 unless the
 user asks otherwise), and `group` on parallel-group members.
 
-**In the SAME turn, create the TodoWrite list: one item per declared task, item `content`
-EXACTLY the task `name`.** Declared names must be unique — duplicates are unmatchable by
-design, since the tailer matches TodoWrite/dispatch text back to task names verbatim (the
+**In the SAME turn, create the todo list: one item per declared task, item text EXACTLY the
+task `name`** (TodoWrite: item `content`; harnesses with TaskCreate/TaskUpdate instead: one
+TaskCreate per task, its `subject` — the tailer observes both). Declared names must be unique —
+duplicates are unmatchable by
+design, since the tailer matches todo/dispatch text back to task names verbatim (the
 tailer's matcher additionally tolerates case/whitespace/leading-ordinal differences — never
 looser). Subagent
 dispatch `description`s must equal the task name too. Renaming mid-job breaks matching — update
-the state file and TodoWrite list together, with the watcher stopped, if a rename is needed.
+the state file and todo list together, with the watcher stopped, if a rename is needed.
 
 Persist `artifactFile` (the minted path) into the state before starting the watcher, and
 `artifactUrl` right after the first publish returns — the wake moves and any future resume

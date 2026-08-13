@@ -75,7 +75,7 @@ only) — suppresses the artifact even before a state file exists.
 
 `source` = optional string, state-model v2: which progress source produced this job — `"a"`
 (lead-model/subagent-driven, today's mode), `"b"` (Workflow-engine run), or `"c"` (plain
-solo/TodoWrite job, pace-based ETA only, "uncalibrated" label, NEVER logged to calibration).
+solo/todo-list job, pace-based ETA only, "uncalibrated" label, NEVER logged to calibration).
 Absent ⇒ `"a"`.
 
 `group` = optional per-task value, state-model v2: tasks sharing a non-null `group` form ONE
@@ -101,7 +101,7 @@ Source-B additive fields (stage 4): job-level `workflowRunId`, `workflowScriptPa
 and the tag convention live in `references/source-b.md` (kept off this file to
 protect the Source-A trigger-path token budget).
 
-Source-C state (`source: "c"`): `tasks` are mirrored from the TodoWrite list by
+Source-C state (`source: "c"`): `tasks` are mirrored from the session todo list by
 `tail_progress.py` and carry only `nr`/`name`/`status`/`startedAt`/`finishedAt` — no
 estimates, no categories, `originalTotalMin` null, and never a calibration row
 (references/source-c.md).

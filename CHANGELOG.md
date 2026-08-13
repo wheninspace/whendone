@@ -5,6 +5,15 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **TaskCreate/TaskUpdate support:** newer Claude Code harnesses replace TodoWrite with a
+  TaskCreate/TaskUpdate/TaskList tool family (no list snapshots — incremental creates and
+  status updates, with the assigned task id only visible in the TaskCreate tool_result
+  text). `tail_progress.py` now synthesizes TodoWrite-equivalent snapshot events from those
+  calls, so Sources A and C track such sessions unchanged; previously they sat at 0 %
+  forever (found live 2026-08-13 when a whendone job ran in a TodoWrite-less harness).
+  Binding rides the `Task #<id> created` result line with a creation-order fallback;
+  unparseable or unknown updates degrade to fewer events, never wrong ones. Docs
+  generalized "TodoWrite list" to "todo list" with the tool families named once per file.
 - **Quieter honesty marker:** the ETA line's band marker ("widened to measured spread" /
   "default band — little history") now renders as dim small text after the bold headline
   instead of inside it — same words, less visual weight; the machine-readable etaText is

@@ -424,11 +424,11 @@ exist yet or would add complexity out of proportion to the current scope:
 ## Appendix: trigger-figure measurement history
 
 The README's Overhead table reports the trigger-path token figure as a single current number
-(≈12,029 raw / ≈13.6–13.8k as-read, 2026-07-19). This appendix records how that number moved
+(≈12,077 raw / ≈13.7–13.8k as-read, 2026-08-13). This appendix records how that number moved
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Five movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Six movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -444,10 +444,13 @@ Five movements, each under an identical raw `tiktoken cl100k_base` sum unless no
 5. The same-day Stage-2 polish pass (nominal-band marker renamed to "default band — little
    history" with its file-formats.md mention, protocol write-back sentences in source-a.md,
    the matcher-tolerance note, and checkpoint→wake vocabulary) added +180 on-path → 12,029.
+6. The 2026-08-13 TaskCreate/TaskUpdate support pass (newer harnesses replace TodoWrite;
+   SKILL.md and source-a.md name both tool families once, other mentions generalized to
+   "todo list") added +48 on-path → 12,077.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈0.2–0.4k to spare
-(12,029 raw); see the README Overhead table's provenance note for the current breakdown.
+movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈0.2–0.3k to spare
+(12,077 raw); see the README Overhead table's provenance note for the current breakdown.

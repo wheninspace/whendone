@@ -3,7 +3,7 @@
 The lead authors the workflow script and declares its phases once, before launch; a journal
 tailer (`scripts/tail_progress.py`, same entry point as Source A) then observes agent
 started/result pairs and phase completion records, mapping them onto the same state model.
-No per-boundary checkpoint, no TodoWrite list — the script's `[wd:<slug>]` prompt tags are the
+No per-boundary checkpoint, no todo list — the script's `[wd:<slug>]` prompt tags are the
 only phase signal that reaches disk.
 
 ## Declare-once (at script-authoring time)
@@ -34,7 +34,7 @@ State-file write: same hard write-target + gitignore preconditions as SKILL.md's
 `source: "b"`, `workflowRunId` = the `runId` from the Workflow tool's result, and
 `workflowScriptPath` = the script path the same tool result reports (every invocation
 persists its script and returns the path) — write the state AFTER the Workflow call returns,
-BEFORE starting the watcher. **No TodoWrite list** (Source B has no per-subtask dispatch text
+BEFORE starting the watcher. **No todo list** (Source B has no per-subtask dispatch text
 to match against). Persist `artifactFile` (the minted path) into the state before starting the
 watcher too, and `artifactUrl` right after the first publish returns — the wake moves and any
 future resume read both from state.

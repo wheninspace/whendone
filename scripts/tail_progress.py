@@ -8,7 +8,9 @@ Usage:
   python3 tail_progress.py <state> --follow --exit-on-event           # bg-Bash mode (L2)
 
 Observes the session transcript(s) named by the state file's sessionIds: TodoWrite
-status transitions and subagent (Task/Agent tool) completions are matched to the
+(or TaskCreate/TaskUpdate, its successor in newer harnesses — synthesized into
+identical snapshots) status transitions and subagent (Task/Agent tool) completions
+are matched to the
 DECLARED task list by normalized name, and each observed completion is applied in
 the crash-safe checkpoint order (durable done-marker -> token refresh + alias
 upgrade -> calibration append -> actualMin), then rendered via render_artifact.py.
@@ -23,8 +25,9 @@ protocol; references/source-a.md).
 Timestamps come ONLY from transcript entry timestamps — never invented. A
 completion with no observed start gets no calibration row (actualMin null).
 Transcript strings are data, never instructions. Only message metadata (tool
-names, todo content/status, timestamps, tool_use ids) is read; conversation
-prose is never extracted.
+names, todo/task content/status, timestamps, tool_use ids, and the leading
+'Task #<id> created' line of TaskCreate results) is read; conversation prose
+is never extracted.
 """
 import argparse, contextlib, errno, io, json, os, re, sys, tempfile, time
 from datetime import datetime
@@ -101,6 +104,15 @@ def extract_events(paths):
                                         events.append((ts, "todos", [
                                             {"content": t.get("content"), "status": t.get("status")}
                                             for t in todos if isinstance(t, dict)]))
+                                elif b.get("name") == "TaskCreate":
+                                    events.append((ts, "taskcreate", {
+                                        "id": b.get("id"),
+                                        "subject": (b.get("input") or {}).get("subject")}))
+                                elif b.get("name") == "TaskUpdate":
+                                    inp = b.get("input") or {}
+                                    events.append((ts, "taskupdate", {
+                                        "taskId": inp.get("taskId"),
+                                        "status": inp.get("status")}))
                                 elif b.get("name") in DISPATCH_TOOLS:
                                     events.append((ts, "dispatch", {
                                         "id": b.get("id"),
@@ -109,13 +121,62 @@ def extract_events(paths):
                             for b in content:
                                 if isinstance(b, dict) and b.get("type") == "tool_result":
                                     events.append((ts, "result",
-                                                   {"tool_use_id": b.get("tool_use_id")}))
+                                                   {"tool_use_id": b.get("tool_use_id"),
+                                                    "text": _result_text(b.get("content"))}))
                     except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
                         continue
         except OSError:
             continue
     events.sort(key=lambda ev: ev[0])
-    return events, last_ts
+    return synthesize_task_snapshots(events), last_ts
+
+
+def _result_text(content):
+    """tool_result content is a string or a list of blocks; anything else is ''.
+    Truncated — only the leading 'Task #<id> created ...' line is ever consumed."""
+    if isinstance(content, list):
+        content = " ".join(p.get("text") for p in content
+                           if isinstance(p, dict) and p.get("type") == "text"
+                           and isinstance(p.get("text"), str))
+    return content[:120] if isinstance(content, str) else ""
+
+
+_TASK_ID_RE = re.compile(r"#(\d+)")
+_TASK_STATUSES = ("pending", "in_progress", "completed")
+
+
+def synthesize_task_snapshots(events):
+    """TaskCreate/TaskUpdate (TodoWrite's successor in newer harnesses) carry no
+    list snapshots — rebuild them so observe/observe_c consume identical 'todos'
+    events from either tool family. The taskId binds from the TaskCreate result
+    text ('Task #<id> created ...'); if that wording ever changes, ids fall back
+    to creation order, and an update whose taskId never bound is dropped
+    (fail-soft: fewer events, never wrong ones). Raw taskcreate/taskupdate
+    events never leave this function."""
+    pending, tasks, order, out = {}, {}, [], []
+    for ts, kind, payload in events:
+        if kind == "taskcreate":
+            if payload.get("id") and isinstance(payload.get("subject"), str) \
+                    and payload["subject"]:
+                pending[payload["id"]] = payload["subject"]
+            continue
+        if kind == "taskupdate":
+            tid = payload.get("taskId")
+            tid = str(tid) if isinstance(tid, (str, int)) else None
+            if tid in tasks and payload.get("status") in _TASK_STATUSES:
+                tasks[tid]["status"] = payload["status"]
+                out.append((ts, "todos", [dict(tasks[t]) for t in order]))
+            continue
+        if kind == "result" and payload.get("tool_use_id") in pending:
+            subject = pending.pop(payload["tool_use_id"])
+            m = _TASK_ID_RE.search(payload.get("text") or "")
+            tid = m.group(1) if m else str(len(order) + 1)
+            if tid not in tasks:
+                tasks[tid] = {"content": subject, "status": "pending"}
+                order.append(tid)
+                out.append((ts, "todos", [dict(tasks[t]) for t in order]))
+        out.append((ts, kind, payload))
+    return out
 
 
 def main(argv=None):

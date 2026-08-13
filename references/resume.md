@@ -26,7 +26,7 @@ below once the file is confirmed to parse.
    tasks from it, keep completed logged times, note the discrepancy — Source A also rebaselines
    `originalTotalMin` from the next successful render (F9; source-a.md). Sources A/B: classify/
    estimate any task added/renamed since the pause per source-a.md's Declare-once table (Source C
-   never classifies or estimates — its tasks re-mirror from the TodoWrite list). All sources:
+   never classifies or estimates — its tasks re-mirror from the todo list). All sources:
    re-run the SKILL.md job-start step-5 sensitivity check before the next republish.
 3. A subtask `"running"` with a `startedAt` but no `finishedAt` crashed mid-flight — check
    whether its effects already landed before restarting it; side-effectful categories
@@ -61,7 +61,7 @@ below once the file is confirmed to parse.
    uniqueness (source-b.md) — names never key anything there. Source B FIRST: the old session's Workflow run died with
    it — before restarting the watcher, follow source-b.md's Resume paragraph (relaunch via
    `Workflow({scriptPath: state's workflowScriptPath, resumeFromRunId})`, compare the returned runId to the state's
-   `workflowRunId`). Source C: the tailer re-mirrors the session's TodoWrite list on its first
+   `workflowRunId`). Source C: the tailer re-mirrors the session's todo list on its first
    pass (references/source-c.md).
 6. State file missing but a plan file exists? Rebuild the state from the checkboxes; new
    artifact (say the old URL is lost).
