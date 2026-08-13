@@ -3,7 +3,8 @@
 The page itself is written by `scripts/render_artifact.py` (state-model v2 in, full HTML
 out) — the model never writes or edits artifact HTML and never computes the figures on it.
 The HTML skeleton, theme handling, and all formulas live in that script; the formulas'
-normative statement is references/file-formats.md's ETA computation.
+normative statement is `references/formulas.md` (maintainers/tests only, never read at
+runtime).
 
 ## Publish mechanics (model-side)
 
@@ -26,25 +27,11 @@ normative statement is references/file-formats.md's ETA computation.
   land in text nodes only (never attributes), plus the Artifact CSP: three independent
   layers against instruction-shaped or markup-shaped task/project/plan strings.
 - Status banner (RUNNING/PAUSED/DONE/SUPERSEDED) + "last updated HH:MM" in large type.
-- ETA headline always carries an interval and its honesty marker — `± N min (default band — little history)`,
-  `(−A/+B min) (widened to measured spread)`, or plain `(−A/+B min)` at high confidence —
-  never a bare point time. Source-c jobs render pace-based ETAs labeled "(uncalibrated)".
-- Task table: status icon, name (+ dim executor line when the task's `model` is known,
-  `· N effort` only when `effort` is set), category, estimate, and an Actual column that is
-  always a computed time — the task's raw wall span in m+s (`11 m 24 s (+42 %)`; the
-  calibration log's 0.5-min floor never shows here — it's a logging rule, not a clock fact),
-  `overrunning by X min` for a running task past its estimate, `—` when unstarted; never a
-  status word. A bold Total row (dim-labeled
-  "sum of subtasks") closes the table: plain column sums — all estimates (whole minutes);
-  done tasks' actuals in m+s precision (`8 m 30 s`), deviation only once every task is done.
-  Sums are work minutes, not group-aware walltime: the job-end "took" line shows walltime,
-  also in m+s (`took 7 m 55 s`) — facts get seconds, estimates stay whole-minute, and the
-  two totals are visibly different labeled quantities rather than one number rounded two ways.
-- Token lines when token JSON is available (omitted entirely otherwise): job-level
-  "Tokens: Nk spent · NM cache reads" (cache reads never summed into the headline), per-task
-  dim lines, and ONE combined `≈Nk tok (group)` figure for parallel dispatch groups whose
-  windows overlap (`token_usage.py` marks them `"overlap": true`) — never precise-looking
-  per-member numbers.
+- ETA headline always carries an interval and its honesty marker — never a bare point time.
+  Source-c jobs render pace-based ETAs labeled "(uncalibrated)".
+- Task table with per-task actual-vs-estimate, executor line, and a Total row; token lines
+  only when token JSON is available (omitted entirely otherwise). Exact column and formatting
+  rules are script-implemented — spec in `references/formulas.md` (never read at runtime).
 - PAUSED: a resume box (job, plan file, next subtask, and that a new session finds the
   state via `.claude/whendone-state.json`). Footer: stop instructions + the honest push
   notification status passed via `--push-status rc|uncertain|unavailable`.

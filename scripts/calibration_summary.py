@@ -462,7 +462,7 @@ def main(jsonl_path, out_path):
             out.append(f"- {cat}: " + ", ".join(f"`{m}` ×{k}" for m, k in sorted(mix.items())))
 
     # F10: advisory only — never downgrades the confidence label (that contract is shared
-    # with SKILL.md/file-formats.md). Project names are stored raw in parse_row, so they
+    # with SKILL.md/references/formulas.md). Project names are stored raw in parse_row, so they
     # are sanitize()d here at emit, like every other re-emitted string in this module.
     pmixes = {c: d["projects"] for c, d in cats.items() if len(d.get("projects", {})) > 1}
     if pmixes:
@@ -499,33 +499,22 @@ def main(jsonl_path, out_path):
         "",
         "## How to use when estimating",
         "",
-        "Produce the raw estimate FIRST from the default table in SKILL.md (adjusted only for the",
-        "subtask's scope), then multiply by the category factor above. Uncertainty on the total ETA",
-        "(one fixed rule — never improvise, stated identically in references/file-formats.md and",
-        "SKILL.md): At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor),",
-        "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered asymmetrically",
-        "as `When done: ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high sum − point ETA). At LOW",
-        "or MEDIUM confidence: start from flat nominal bounds on each task's adjusted",
-        "`estimateMin` — low ±50 %, medium ±30 %. Where the task's category shows q1/q3 (n ≥ 5),",
-        "widen that task's band to the envelope of the flat band and `[raw_i × min(q1, factor),",
-        "raw_i × max(q3, factor)]` (take the lower low and the higher high) — the reported band",
-        "is never tighter than the measured spread. Where no q1/q3 exist (n < 5) the flat band",
-        "stands; never fabricate q1/q3. Sum per-task lows/highs over pending AND running tasks.",
-        "Render `± N min (default band — little history)` when no task's band was widened; if ANY task's band was",
-        "widened, render the asymmetric `(−A/+B min)` form with the visible marker",
-        "`(widened to measured spread)`. Never state a point time without an interval, and never",
-        "mention factor values in chat or artifact.",
+        "Produce the raw estimate FIRST from the default table in references/source-a.md",
+        "(adjusted only for the subtask's scope), then multiply by the category factor above.",
+        "Never state a point time without an interval, and never mention factor values in chat",
+        "or artifact. ETA, interval, deviation, and slip come from render_artifact.py's ONE",
+        "fixed rule — never improvise any of them; quote its `etaText`. The script reads this",
+        "file's factors and q1/q3 itself; the rule's single normative prose statement is",
+        "references/formulas.md (maintainer/test reference, never read at runtime).",
         "",
     ]
     if iqr_by_cat:
         out += [
             "## Per-category q1/q3 (machine-usable)",
             "",
-            "The raw-ratio IQR bounds behind the Spread column above (shown from n >= 5). The",
-            "high-confidence interval formula (n >= 20) applies these directly; below high",
-            "confidence they are the WIDENING floor: the flat nominal band is widened to the",
-            "envelope of itself and the q1/q3 band, never reported tighter than this measured",
-            "spread (categories with n < 5 have no q1/q3 at all; never fabricate one):",
+            "Raw-ratio IQR bounds behind the Spread column above (shown from n >= 5), consumed",
+            "directly by render_artifact.py's interval rule (references/formulas.md); categories",
+            "with n < 5 have no q1/q3 at all — never fabricate one:",
             "",
         ]
         for cat in sorted(iqr_by_cat):

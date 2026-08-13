@@ -82,15 +82,16 @@ class TestStats(unittest.TestCase):
         self.assertEqual(cs.confidence(5), "medium")
         self.assertEqual(cs.confidence(20), "high")
 
-    def test_footer_pins_lowmed_clamp_rule(self):
-        # F2: the low/medium band is clamped to the shown IQR; the rule's distinctive
-        # phrases must appear in the footer so SKILL.md / file-formats.md / footer
-        # cannot drift apart silently.
+    def test_footer_points_to_normative_interval_rule(self):
+        # F2 successor: the interval rule now has ONE prose statement
+        # (references/formulas.md, implemented in render_artifact.py) instead of
+        # copies in SKILL.md / file-formats.md / this footer that could drift —
+        # the footer must point there and forbid improvisation, not restate the rule.
         out = run_main([row()])
-        self.assertIn("widen that task's band to the envelope", out)
-        self.assertIn("never tighter than the measured spread", out)
-        self.assertIn("± N min (default band — little history)", out)
-        self.assertIn("(widened to measured spread)", out)
+        self.assertIn("references/formulas.md", out)
+        self.assertIn("never improvise", out)
+        self.assertIn("Never state a point time without an interval", out)
+        self.assertNotIn("At HIGH confidence", out)  # the full rule no longer ships here
 
 
 class TestMain(unittest.TestCase):
@@ -609,33 +610,17 @@ class TestRotationConcurrencyAndIdempotency(unittest.TestCase):
 
 
 class TestFooterIntervalRule(unittest.TestCase):
-    """C8/M23: the footer must state the same interval rule as file-formats.md/SKILL.md and
-    expose machine-usable q1/q3 per category so a consumer can apply the formula without
-    re-deriving quartiles from the raw jsonl."""
+    """C8/M23 successor: the footer must expose machine-usable q1/q3 per category
+    (consumed by render_artifact.py's interval rule) and point to the rule's single
+    normative statement (references/formulas.md) instead of restating it — restating
+    it here put ~250 tokens of script-only formula prose on every trigger read."""
 
-    def test_footer_states_interval_rule_and_q1_q3(self):
+    def test_footer_exposes_q1_q3_and_points_to_rule(self):
         actuals = (10, 12, 14, 15, 16, 18, 19, 20, 20, 21,
                    22, 23, 24, 25, 26, 28, 30, 32, 35, 40)
         rows = [row(category="debugging", raw=20, actual=a) for a in actuals]
         out = run_main(rows)
-        normalized = " ".join(out.split())  # footer prose soft-wraps at ~90 cols
-        # same interval rule as file-formats.md's ETA computation and SKILL.md step 7
-        # (compared word-for-word, not line-wrap-for-line-wrap)
-        self.assertIn(
-            "At HIGH confidence (n ≥ 20): per-task interval = `[raw_i × min(q1, factor), "
-            "raw_i × max(q3, factor)]`, summed over pending AND running tasks, rendered "
-            "asymmetrically as `When done: ~HH:MM (−A/+B min)` (A = point ETA − low sum, B = high "
-            "sum − point ETA). At LOW or MEDIUM confidence: start from flat nominal bounds "
-            "on each task's adjusted `estimateMin` — low ±50 %, medium ±30 %. Where the "
-            "task's category shows q1/q3 (n ≥ 5), widen that task's band to the envelope of "
-            "the flat band and `[raw_i × min(q1, factor), raw_i × max(q3, factor)]` (take "
-            "the lower low and the higher high) — the reported band is never tighter than "
-            "the measured spread. Where no q1/q3 exist (n < 5) the flat band stands; never "
-            "fabricate q1/q3. Sum per-task lows/highs over pending AND running tasks. Render "
-            "`± N min (default band — little history)` when no task's band was widened; if ANY task's band was "
-            "widened, render the asymmetric `(−A/+B min)` form with the visible marker "
-            "`(widened to measured spread)`.",
-            normalized)
+        self.assertIn("references/formulas.md", out)
         # branch keyed on confidence tier, not on q1/q3 presence (a medium-confidence
         # category can already show q1/q3 in the Spread column without the interval
         # formula applying to it)

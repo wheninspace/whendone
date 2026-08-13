@@ -13,7 +13,7 @@ Contract (design spec §4.2 / round-3 F6):
 - html.escape() on EVERY interpolated field; untrusted strings land in text nodes only
   (defense-in-depth alongside the Artifact CSP).
 - ETA, interval, deviation and the 150%-slip check are computed HERE, from the fixed
-  formulas in references/file-formats.md ("one fixed rule — never improvise"). The model
+  formulas in references/formulas.md ("one fixed rule — never improvise"). The model
   consumes this script's JSON status line and never recomputes them.
 - Reads calibration-summary.md itself for factor/q1/q3 — the factor never enters model
   context. Missing/unreadable summary => factor 1.0, low confidence, flat bands (fail-soft).
@@ -431,7 +431,7 @@ def display_actual(t):
     """Display-only wall span of a done task: the raw startedAt->finishedAt
     span — the 0.5-min floor is a calibration-LOG rule, not a fact about the
     clock — falling back to the logged actualMin when timestamps are missing.
-    ETA/slip math stays on derived_actual (file-formats.md's normative rule)."""
+    ETA/slip math stays on derived_actual (references/formulas.md's normative rule)."""
     s, e = parse_ts(t.get("startedAt")), parse_ts(t.get("finishedAt"))
     if s and e and e >= s:
         return minutes(s, e)
@@ -470,7 +470,7 @@ def units(tasks):
 
 
 def unit_remaining(unit, now):
-    """One unit's contribution to `remaining` (file-formats.md ETA computation): 0 when
+    """One unit's contribution to `remaining` (references/formulas.md ETA computation): 0 when
     every member is done; else MAX over unfinished members of max(0.2×est, est−elapsed).
     A member with no startedAt has elapsed 0 and contributes its full estimate, which
     makes an all-pending group contribute MAX of member estimates — the same rule."""
@@ -537,7 +537,7 @@ def elapsed_min(state, now):
 
 
 def task_band(t, summary):
-    """(low, high, tier, widened) per file-formats.md's ONE fixed interval rule, keyed on
+    """(low, high, tier, widened) per references/formulas.md's ONE fixed interval rule, keyed on
     the task's category's data-point count n (mirrors calibration_summary.confidence):
     n>=20 -> pure [raw*min(q1,factor), raw*max(q3,factor)]; 5<=n<20 -> flat +-30% on the
     adjusted estimate, widened to the envelope of the flat band and the q1/q3 band (take

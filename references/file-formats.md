@@ -65,8 +65,8 @@ recorded ONLY when explicitly set — never guessed, otherwise `null`. Both opti
 file without them stays valid, renders no executor line.
 
 `pausedAt` = ISO 8601 or `null`. Set by Stop step 4 with `status: "paused"`; cleared to `null`
-by references/resume.md step 5 once folded into `pausedTotalMin` (see Pause accounting). Optional — missing
-field treated same as `null`.
+by references/resume.md step 5 once folded into `pausedTotalMin` (Pause accounting lives in
+that file). Optional — missing field treated same as `null`.
 
 `publish` = optional boolean. `false` ⇒ chat-table-only mode, no artifact ever written
 (SKILL.md step 5's no-publish gate, honored on resume too). Absent/`true` ⇒ publishing allowed.
@@ -112,12 +112,11 @@ resumed/restarted task gets a fresh row in a rebuilt plan.
 
 All are additive: pre-upgrade state files without them stay valid.
 
-Concurrency guard: at job start, if this file exists with `status: "running"`, compare its
-`planFile`/`job` to the job being started — same job means a crashed or still-live prior
-session (offer resume/discard/abort); different job means another session may own it (warn,
-let the user decide). Never silently overwrite. `jobId` is deliberately NOT the comparison key
-here: a same-job crash-restart gets a new `jobId` (derived from the restart's own timestamp),
-so keying on it would misclassify every crash-resume as "another session owns it."
+Concurrency guard: at job start, if this file exists with `status: "running"`, follow SKILL.md
+job-start step 3 (same job → resume/discard/abort; different job → warn, user decides; never
+silently overwrite). `jobId` is deliberately NOT the comparison key there — a same-job
+crash-restart gets a new `jobId` (derived from the restart's own timestamp), so keying on it
+would misclassify every crash-resume as "another session owns it."
 
 `jobId` IS, however, the ownership key at every later wake: each session remembers the
 `jobId` it read/wrote and re-checks the file still carries it before writing. A mismatch means
@@ -126,66 +125,27 @@ tell the user.
 
 `.claude/STOP` is deleted only when this file doesn't exist, or parses with `status: "done"` —
 never when `"running"` (same or different job), so a legitimate pending stop request already on
-disk is never eaten by a freshly starting session (SKILL.md job-start steps 1-4). Delete-only:
-only ever checked for existence and deleted, never written. Deleting a symlink unlinks the link
-itself, not its target — safe even if `.claude/STOP` is a symlink in a cloned repo.
+disk is never eaten by a freshly starting session (SKILL.md job-start steps 1-4, incl. the
+delete-only and symlink-safety rules).
 
 If this file exists but doesn't parse as valid JSON — a crash mid-Edit can leave it truncated,
 or a cloned repo can ship a non-JSON placeholder — treat it as no valid state, not "no state
 file at all": never delete STOP, never rebuild or improvise a job from it, surface the parse
 failure to the user (SKILL.md job-start step 1; references/resume.md's fail-closed note).
 
-## Pause accounting
+Pause accounting (pause length, `pausedTotalMin` fold) lives in `references/resume.md` — it
+runs only at resume step 5.
 
-Pause length (computed at references/resume.md step 5, folded into `pausedTotalMin`):
+## ETA, interval, and slip (script-owned)
 
-- Clean stop (`pausedAt` set): pause length = `now − pausedAt`.
-- Crash-resume fallback (`pausedAt` null/absent — job never cleanly stopped, e.g. session died
-  mid-run): pause length = `now −` the latest `finishedAt` among `done` tasks (or `now −` the
-  job's `startedAt` if none finished). This counts a crashed task's lost partial work as pause
-  time rather than elapsed work time — the accepted trade-off since the file can't otherwise
-  distinguish "still working" from "the session died an hour ago."
-
-Add the pause length to `pausedTotalMin`, clear `pausedAt` to `null`. The Elapsed formula below
-stays one fixed computation regardless of which branch produced `pausedTotalMin`.
-
-## ETA computation (one fixed formula — never improvise)
-
-remaining = Σ `estimateMin` of pending sequential tasks
-          + for each pending parallel group: MAX of its members' `estimateMin`
-          + for each running task or running parallel group: MAX over its unfinished
-            members of `max(0.2 × estimateMin_i, estimateMin_i − elapsed_i)`
-
-ETA = now + remaining. Elapsed (in the artifact) = now − job `startedAt` − `pausedTotalMin`.
-The interval never collapses to 0 while anything is running; once a running task's elapsed
-time exceeds its `estimateMin`, show "overrunning by X min" instead of implying imminence.
-
-**Interval (one fixed rule — never improvise):** At HIGH confidence (n ≥ 20): per-task
-interval = `[raw_i × min(q1, factor), raw_i × max(q3, factor)]`, summed over pending AND
-running tasks, rendered asymmetrically as `When done: ~HH:MM (−A/+B min)` (A = point ETA − low
-sum, B = high sum − point ETA). At LOW/MEDIUM confidence: flat nominal bounds on each task's
-adjusted `estimateMin` — low ±50 %, medium ±30 %. Where the category shows q1/q3 (n ≥ 5),
-widen that task's band to the envelope of the flat band and `[raw_i × min(q1, factor), raw_i
-× max(q3, factor)]` (lower low, higher high) — never tighter than the measured spread. No
-q1/q3 (n < 5) → flat band stands; never fabricate q1/q3. Sum per-task lows/highs over pending
-AND running tasks. Render `± N min (default band — little history)` when nothing was widened; if ANY task's band
-was widened, render `(−A/+B min)` with the marker `(widened to measured spread)`. `q1`/`q3`
-are the IQR bounds of the category's raw-ratio distribution in calibration-summary.md's
-Spread column (also machine-readable in that file's footer, n ≥ 5); `factor` is that
-category's blended factor.
-
-**150 %-slip alert:** both sides use the same aggregation — sequential sum + MAX per parallel
-group, never a sum of every member. Left side: per task, `actualMin` if done else
-`estimateMin` (in-flight → `max(estimateMin, elapsed)`), summed with per-group MAX added (a
-fully DONE group contributes the MAX of members' `actualMin`). Alert when total `> 1.5 ×
-originalTotalMin`, computed once at job start over ALL subtasks' initial `estimateMin`, never
-revised.
-
-**Implemented in `scripts/render_artifact.py` (F6).** The renderer computes remaining, ETA,
-elapsed, interval, per-task deviation, and the 150 %-slip check from this section's rules and
-prints a one-line JSON status (`etaText`, `slipAlert`, `estimateTotalMin`, counts) to quote
-and act on — never recomputed by the model; this file is the normative statement the script's
-tests pin against.
+`scripts/render_artifact.py` computes remaining, ETA, elapsed, the uncertainty interval,
+per-task deviation, and the 150 %-slip check from ONE fixed rule set — sequential tasks
+summed, parallel groups (shared `group`) MAX-aggregated, both sides of the slip check alike —
+and prints a one-line JSON status (`etaText`, `slipAlert`, `estimateTotalMin`, counts) to
+quote and act on. Never recompute, hand-adjust, or improvise any of these figures. The
+renderer parses `factor`/`q1`/`q3` from calibration-summary.md itself — they never enter model
+context. Normative prose statement (maintainers/tests only, never read at runtime):
+`references/formulas.md`.
 
 ## Tailer event lines and lock (stage 3)
 
@@ -227,27 +187,14 @@ subtask:
 ```
 
 Rules: `date` = local date. `client` from the environment; unsure → `unknown`. `rawEstimateMin`
-= the raw estimate before the category factor (legacy logs may carry this as `estimateMin` —
-the script reads both). `model` = the full versioned id that executed THE SUBTASK (not
-necessarily the lead's); dispatch alias only ever resolved → log the alias. Include `"effort"`
-ONLY when non-null. The summary script ignores both for factor computation; recorded only so
-historical runs can be compared across model versions later.
-
-`maxAdjusted`/`sumAdjusted` (optional, numeric) — logged ONLY on the synthetic
-`"parallel-group"` row, never an ordinary category row. `maxAdjusted` = max of the group's
-ADJUSTED estimates; `sumAdjusted` = their sum — the ETA rule's actual operands.
-`build_row()` includes each key only when present and rejects the row (same stderr+exit-1 path
-as an invalid `rawEstimateMin`) if present but non-numeric/non-finite; `parse_row` reads both
-as optional and degrades gracefully — a row missing one or both simply doesn't contribute to
-that field's median.
-
-`startedAt`/`finishedAt` are the subtask's own timestamps — same values as the state file's for
-that task. `actualMin` is never LLM arithmetic: `append_calibration.py` computes it from these
-two timestamps (one decimal, minimum 0.5); `calibration_summary.py::parse_row` independently
-re-derives it at read time, falling back to the logged value only for legacy rows predating
-this field, skipping any row where logged and derived values disagree by more than rounding.
-Clock skew (`finishedAt` before `startedAt`) → the script logs `actualMin: null`, excluded,
-never a wrong-but-finite duration and never silently dropped.
+= the raw estimate before the category factor. `model` = the full versioned id that executed
+THE SUBTASK (not necessarily the lead's); dispatch alias only ever resolved → log the alias.
+Include `"effort"` ONLY when non-null. `startedAt`/`finishedAt` are the subtask's own
+timestamps — same values as the state file's for that task. `actualMin` is never LLM
+arithmetic: `append_calibration.py` computes it from those two timestamps. The synthetic
+`"parallel-group"` row may carry `maxAdjusted`/`sumAdjusted`. Field derivations, legacy-row
+handling, and clock-skew rules are script-implemented — spec in `references/formulas.md`
+(never read at runtime).
 
 Append ONLY via `scripts/append_calibration.py` (crash-ordering rationale: docs/design.md's
 "Stage 3" section; implemented in `tail_progress.py::handle_completion`) — never splice

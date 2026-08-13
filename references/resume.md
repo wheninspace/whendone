@@ -51,8 +51,13 @@ below once the file is confirmed to parse.
    that update fails, publish as a new artifact, update `artifactUrl`, post the NEW URL noting
    the old link is dead. Either way, restate the full URL in chat on successful resume.
 5. Capture this session's id and APPEND it to `sessionIds`. Timestamp `now`. Compute the pause
-   length per `references/file-formats.md`'s Pause accounting, fold into `pausedTotalMin`, clear
-   `pausedAt`. State: `status: "running"`, `resumedAt` = `now`. Now rebuild and publish:
+   length — clean stop (`pausedAt` set): `now − pausedAt`; crash-resume fallback (`pausedAt`
+   null/absent — the job never cleanly stopped): `now −` the latest `finishedAt` among `done`
+   tasks, or `now −` the job's `startedAt` if none finished (a crashed task's lost partial work
+   counts as pause time, not work time — the file can't otherwise distinguish "still working"
+   from "the session died an hour ago"). Add it to `pausedTotalMin`, clear `pausedAt` to
+   `null` — the Elapsed formula stays one fixed computation regardless of which branch produced
+   `pausedTotalMin`. State: `status: "running"`, `resumedAt` = `now`. Now rebuild and publish:
    `python3 <skill-dir>/scripts/render_artifact.py .claude/whendone-state.json -
    <artifactFile-from-step-4> --now <now> --push-status <current push status>` — banner
    RUNNING — and publish per step 4's url/new-artifact decision. Sources A/B/C: restart the

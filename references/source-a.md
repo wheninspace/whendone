@@ -5,7 +5,7 @@ todo-list/subagent completions and owns state, calibration, and rendering from t
 model's per-boundary work collapses to one Artifact publish on wake — never a hand-run
 checkpoint.
 
-## Declare-once (replaces the v0.2 per-boundary checkpoint steps 5-12)
+## Declare-once
 
 Classify every subtask per the category taxonomy (references/file-formats.md), and set
 `rawEstimateMin` for every subtask FIRST — from this frozen default table, adjusted only for
@@ -18,11 +18,12 @@ the subtask's scope:
 | testing | 8 min | review | 10 min |
 | debugging | 20 min | deploy-infra | 15 min |
 
-Only THEN read `~/.claude/whendone-data/calibration-summary.md` for the category factors (and
-q1/q3 at high confidence), and set `estimateMin` = rawEstimateMin × factor. File missing (first
+Only THEN read `~/.claude/whendone-data/calibration-summary.md` for the category factors, and
+set `estimateMin` = rawEstimateMin × factor. File missing (first
 run) or factor shown as "— (prior 1.0)" → use 1.0. Always state an uncertainty interval with
 any ETA — never compute one yourself: ETA, interval, deviation, and slip all come from
-`render_artifact.py`'s fixed rule (file-formats.md's ETA computation); quote its `etaText`.
+`render_artifact.py`'s fixed rule (file-formats.md's script-owned ETA section — the renderer
+also reads q1/q3 itself); quote its `etaText`.
 Never mention factor values in chat or artifact (anchoring pollutes future raw estimates).
 
 Write the state file next: same hard write-target + gitignore preconditions as SKILL.md's

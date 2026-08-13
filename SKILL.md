@@ -8,9 +8,9 @@ description: Use when starting a long autonomous job — executing a plan file, 
 Live visibility for long runs, declared once at job start and kept current by a background
 watcher thereafter: an artifact with a task list and a calibrated ETA, graceful stop/resume, and
 push notifications. Mobile access: the artifact URL in a mobile browser (requires claude.ai
-login) or Remote Control — the mobile app has no list of Code artifacts and its artifact card
-isn't tappable, so the full URL must appear as text in chat (references/source-a.md states it
-right after the first publish).
+login) or Remote Control — the mobile app lists no Code artifacts and its artifact card isn't
+tappable, so the full URL must appear as text in chat (references/source-a.md states it right
+after the first publish).
 
 **Core principle: visibility must never block the work.** If the artifact, a notification, or a
 log write fails — continue the job, retry at the next wake.
@@ -22,11 +22,11 @@ first publish.
 
 ## When not to use
 
-Jobs under ~6 subtasks or under ~45 min expected total — run without it (the user can always
-decline: "run without whendone"). Matches the README's "worth it for ~6+ subtasks or an
-hour-plus" line: the trigger-to-first-publish read path alone measures ≈12.0k tokens raw
-(≈13.6–13.8k as read, incl. Read-tool prefixes — README's Overhead table), which a 4-5-subtask
-job cannot amortize.
+Jobs under ~6 subtasks or under ~30 min expected total — run without it (the user can always
+decline: "run without whendone"). Matches the README's "worth it for ~6+ subtasks or ~30
+minutes-plus" line: the trigger-to-first-publish read path alone measures ≈10.5k tokens raw
+(≈11.9–12.0k as read, incl. Read-tool prefixes — README's Overhead table), which a
+4-5-subtask job cannot amortize.
 
 The user can also say **"run without the artifact"**: keep calibration logging and the in-chat
 progress table, but skip the claude.ai publish entirely for this job — e.g. an NDA/confidential
@@ -75,8 +75,8 @@ two.
    URL — the script renders the SUPERSEDED banner. If the old session is still alive, its own
    ownership check (file-formats.md's `ownership-lost` event, or a plain `jobId` comparison)
    detects the mismatch at its next wake and stops touching state/log/artifact on its own — but
-   the banner still matters so anyone watching the old link (e.g. a teammate) sees it is dead
-   rather than RUNNING forever.
+   the banner still matters: anyone watching the old link sees it is dead rather than RUNNING
+   forever.
 4. Only now, if no state file exists, or it parses with `status: "done"`: does
    `<project-root>/.claude/STOP` exist? Delete it and mention it in chat — a stale flag left
    over from a finished or nonexistent job must not stop a freshly started one. (A "discard and
@@ -137,7 +137,7 @@ wake-handling event table, and demotion rules live in `references/source-a.md` (
 references/source-b.md; Source C:
 references/source-c.md). Parallel-group
 tasks (shared `group` value) are MAX-aggregated, never hand-tracked — see file-formats.md's
-`group` field and ETA computation.
+`group` field and its script-owned ETA section.
 
 ## Stop procedure
 
