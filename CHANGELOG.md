@@ -5,6 +5,28 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Trigger-path slimming (−1.6k raw / −1.8k as-read):** the script-implemented formula spec
+  (ETA/interval/slip rules, calibration-row derivation, renderer formatting guarantees) moved
+  off the trigger path into the new maintainer-only `references/formulas.md`; pause accounting
+  moved into `references/resume.md` (its only consumer); the calibration-summary footer now
+  points at the single normative statement instead of restating the ~250-token interval rule
+  (its machine-readable q1/q3 lines are unchanged — the renderer parses those itself, so no
+  behavior changes; the footer's stale "default table in SKILL.md" pointer was also fixed to
+  source-a.md). Trigger path 12,077 → 10,519 raw (≈13.7–13.8k → ≈11.9–12.0k as read); the
+  synthetic fixture summary 3,401 → 2,417 bytes. No formula changes; the two footer-pinning
+  tests now pin the pointer instead of the restated rule.
+- **Trigger threshold lowered ~45 → ~30 min:** with the slimmer trigger path, whendone now
+  accepts jobs down to ~30 min expected total (still ~6+ subtasks) — SKILL.md "When not to
+  use" and the README's "worth it" line updated together.
+- **README restructured for first-time readers** (fresh-eyes review findings): "Do you need
+  this?" moved to the top and now leads with the strongest use case — the machine must shut
+  down (internal-network work, end of day): does the job fit the time left, and stop cleanly
+  at a subtask boundary if not — plus job-sizing and time-boxing ("don't start a new subtask
+  after 16:45") as named secondary cases. Overhead compressed to a one-line-per-row table
+  with per-row provenance and measurement history moved to docs/design.md's appendix;
+  internal tracking IDs removed from user-facing text; Usage leads with the commands;
+  Status/"Honest limits" consolidated into a Maturity section; hero caption cut to one line
+  (asset provenance now a docs/design.md section).
 - **TaskCreate/TaskUpdate support:** newer Claude Code harnesses replace TodoWrite with a
   TaskCreate/TaskUpdate/TaskList tool family (no list snapshots — incremental creates and
   status updates, with the assigned task id only visible in the TaskCreate tool_result
