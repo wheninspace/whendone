@@ -23,18 +23,16 @@ first publish.
 ## When not to use
 
 Jobs under ~6 subtasks or under ~30 min expected total — run without it (the user can always
-decline: "run without whendone"). Matches the README's "worth it for ~6+ subtasks or ~30
-minutes-plus" line: the trigger-to-first-publish read path alone measures ≈10.5k tokens raw
-(≈11.9–12.0k as read, incl. Read-tool prefixes — README's Overhead table), which a
-4-5-subtask job cannot amortize.
+decline: "run without whendone"): the trigger-to-first-publish read path costs more than a
+4-5-subtask job can amortize (measured figures: README's Overhead table, the single home for
+them).
 
 The user can also say **"run without the artifact"**: keep calibration logging and the in-chat
 progress table, but skip the claude.ai publish entirely for this job — e.g. an NDA/confidential
-repo where nothing should reach claude.ai. Treat this identically to the "Artifact tool absent
-entirely" row in the Error-handling table below, just user-invoked instead of environment-forced.
-The persistent, set-once form of the same thing is the no-publish gate in job-start step 5: a
-`<project-root>/.claude/whendone-no-publish` marker file (an NDA-repo template can ship it) or
-`"publish": false` in the state file — no per-session phrase needed.
+repo where nothing should reach claude.ai. This is the per-session, user-invoked form of
+job-start step 5's no-publish gate (which also defines the set-once marker-file /
+`"publish": false` forms) — handled identically to the "Artifact tool absent entirely" row in
+the Error-handling table below.
 
 ## Source detection
 
@@ -59,7 +57,7 @@ two.
    the STOP decision below depends on what it says. If the file exists but fails to parse as
    JSON, treat it as "no valid state": do NOT delete STOP, do NOT improvise a job from it —
    surface the parse failure to the user and stop for a decision (a user-flagged stop, not a
-   silent fresh start; see the malformed-state note in references/file-formats.md). A truncated
+   silent fresh start — this step is the normative malformed-state rule). A truncated
    write from a mid-Edit crash, or a non-JSON file shipped in a cloned repo, both land here.
 2. Does it exist and parse, with `status: "paused"`? → read `references/resume.md` and follow it.
 3. Does it exist and parse, with `status: "running"`? Compare its `planFile`/`job` to the job
@@ -72,11 +70,9 @@ two.
    disk; mention both signals together if STOP also exists. On "discard and start fresh"
    (either branch): before overwriting, if the OLD state file's `artifactUrl` is known, render
    it once with `render_artifact.py --superseded` to a scratchpad file and republish onto that
-   URL — the script renders the SUPERSEDED banner. If the old session is still alive, its own
-   ownership check (file-formats.md's `ownership-lost` event, or a plain `jobId` comparison)
-   detects the mismatch at its next wake and stops touching state/log/artifact on its own — but
-   the banner still matters: anyone watching the old link sees it is dead rather than RUNNING
-   forever.
+   URL — the SUPERSEDED banner shows watchers of the old link a dead job rather than RUNNING
+   forever (a still-live old session also self-detects via the ownership check —
+   file-formats.md's `ownership-lost` event — and stops touching state/log/artifact on its own).
 4. Only now, if no state file exists, or it parses with `status: "done"`: does
    `<project-root>/.claude/STOP` exist? Delete it and mention it in chat — a stale flag left
    over from a finished or nonexistent job must not stop a freshly started one. (A "discard and
@@ -111,8 +107,7 @@ two.
      and `.claude/whendone-tail.lock`, verify it either doesn't exist yet, or exists as a
      REGULAR FILE whose canonical path (`realpath`) resolves INSIDE the project root — not a
      symlink, not outside the root (docs/design.md's Safety decisions). Check fails → STOP,
-     don't write, flag the user. `.claude/STOP` is exempt — only ever deleted, never written,
-     and unlinking a symlink is safe regardless of target.
+     don't write, flag the user. `.claude/STOP` is exempt (delete-only — step 4).
    - **Gitignore precondition:** ensure the state file and tail lock are ignored before the
      first write.
 8. Get the task list from the plan file if one exists; otherwise break the job into subtasks

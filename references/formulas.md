@@ -47,6 +47,19 @@ tests pin against.
 
 ## Calibration row derivation
 
+One line per COMPLETED subtask (moved here from file-formats.md — the model never constructs
+rows; `tail_progress.py`/`append_calibration.py` do):
+
+```json
+{"date":"2026-07-16","project":"<project directory name>","job":"<job name>","category":"debugging","rawEstimateMin":10,"startedAt":"2026-07-16T09:30:00+02:00","finishedAt":"2026-07-16T09:56:00+02:00","actualMin":26.0,"model":"claude-haiku-4-5-20251001","effort":"low","client":"desktop|web|cli|unknown"}
+```
+
+`date` = local date. `client` from the environment; unsure → `unknown`. `rawEstimateMin` = the
+raw estimate before the category factor. `model` = the full versioned id that executed THE
+SUBTASK (not necessarily the lead's); dispatch alias never resolved → log the alias.
+Include `"effort"` ONLY when non-null. The synthetic `"parallel-group"` row may carry
+`maxAdjusted`/`sumAdjusted`.
+
 `maxAdjusted`/`sumAdjusted` (optional, numeric) — logged ONLY on the synthetic
 `"parallel-group"` row, never an ordinary category row. `maxAdjusted` = max of the group's
 ADJUSTED estimates; `sumAdjusted` = their sum — the ETA rule's actual operands.

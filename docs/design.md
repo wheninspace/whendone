@@ -442,11 +442,11 @@ exist yet or would add complexity out of proportion to the current scope:
 ## Appendix: trigger-figure measurement history
 
 The README's Overhead table reports the trigger-path token figure as a single current number
-(≈10,519 raw / ≈11.9–12.0k as-read, 2026-08-13). This appendix records how that number moved
+(≈9,785 raw / ≈11.0–11.2k as-read, 2026-08-13). This appendix records how that number moved
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Seven movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Eight movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -476,10 +476,21 @@ Seven movements, each under an identical raw `tiktoken cl100k_base` sum unless n
    bytes), ≈11.9–12.0k as-read. This pass also lowered the "When not to use" time
    threshold from ~45 to ~30 min — the amortization line the threshold rests on moved with
    the trigger cost.
+8. The 2026-08-13 trigger-path dedup pass (same day, later) removed third copies of rules
+   whose normative homes already existed: file-formats.md's restatements of the write-target/
+   gitignore preconditions, the job-start concurrency/STOP/malformed-JSON rules (normative:
+   SKILL.md steps 1-4 and 7; rationale: this file's Safety decisions), and the calibration-row
+   schema plus field rules (moved to maintainer-only `references/formulas.md` — the model
+   never constructs rows); SKILL.md's copies of the trigger-cost figures (README's Overhead
+   table is now their single home), the no-publish-gate restatement in "When not to use", the
+   superseded-banner rationale, and a repeated symlink-safety note: −734 → 9,785 raw
+   (SKILL.md 3,285 + source-a.md 2,115 + file-formats.md 2,908 + artifact-template.md 651 +
+   calibration-summary allowance 826, fixture unchanged at 2,417 bytes), ≈11.0–11.2k as-read
+   (383 on-path reference lines × 3.3–3.6).
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈2.0k to spare
-(10,519 raw); see the README Overhead table for the current breakdown.
+movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈2.8–3.0k to spare
+(9,785 raw); see the README Overhead table for the current breakdown.

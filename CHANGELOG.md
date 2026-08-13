@@ -5,6 +5,15 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Trigger-path dedup pass (docs only, −734 raw tokens → 9,785 raw / ≈11.0–11.2k as-read):**
+  removed third copies of rules whose normative homes already existed — file-formats.md's
+  restated preconditions and concurrency/STOP/malformed-JSON rules now point to SKILL.md
+  job-start steps 1-4/7 and design.md's Safety decisions; the calibration-row schema and
+  field rules moved to maintainer-only `references/formulas.md` (the model never constructs
+  rows — the tailer does); SKILL.md no longer carries the trigger-cost figures (README's
+  Overhead table is their single home, one fewer re-stamp site). No behavior, schema, or
+  script changes; every removal left a pointer. Measurement movement 8 in design.md's
+  appendix.
 - **Windows verified live; README claims re-scoped to evidence:** a full verification pass
   on real Windows 11 hardware (fresh-clone install, 8-subtask Source-A dogfood with
   TaskCreate/TaskUpdate, per-task token accounting confirmed working, stale-lock hard-kill
