@@ -890,6 +890,19 @@ def one_shot(a):
 
 
 def _pid_alive(pid):
+    if os.name == "nt":
+        # os.kill(pid, 0) is NOT a liveness probe on Windows -- signal 0 is
+        # CTRL_C_EVENT, which sends a console Ctrl-C (can interrupt the very
+        # session being monitored). Probe via OpenProcess instead.
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        h = k32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.get_last_error() == 5   # ERROR_ACCESS_DENIED: exists, not ours
+        code = ctypes.c_ulong()                   # DWORD
+        alive = k32.GetExitCodeProcess(h, ctypes.byref(code)) and code.value == 259
+        k32.CloseHandle(h)                        # 259 = STILL_ACTIVE
+        return bool(alive)
     try:
         os.kill(pid, 0)
     except OSError as e:

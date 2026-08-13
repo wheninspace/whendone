@@ -5,6 +5,13 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Windows lock-liveness fix (found by the new CI on its first run):** `_pid_alive` used
+  `os.kill(pid, 0)`, which on Windows is not a probe — signal 0 is `CTRL_C_EVENT`, so a
+  tailer recovering from a crashed watcher's stale lock would send a console Ctrl-C
+  (in CI it interrupted the test runner itself; live it could interrupt the monitored
+  session). Windows now probes via `OpenProcess`/`GetExitCodeProcess` (ctypes, stdlib);
+  the POSIX path is unchanged. Known edge: a Windows process that exited with code 259
+  (STILL_ACTIVE) reads as alive — safe direction for a lock check.
 - **Windows test portability** (found by an external Windows install test 2026-08-13; all
   five failures were test-environment issues, not script bugs): the three symlink
   containment tests now skip with a clear reason when symlink creation needs privilege
