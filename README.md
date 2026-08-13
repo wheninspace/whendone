@@ -45,8 +45,10 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.3.1 (2026-07-19), single author, every claim dogfooded live — test record in
-[docs/test-log.md](docs/test-log.md), known limits in [Maturity](#maturity) below.
+**Status:** v0.3.1 (2026-07-19), single author. Every feature claim is backed by a recorded
+live run — macOS throughout, Windows verified 2026-08-13 — in
+[docs/test-log.md](docs/test-log.md); what remains untested is listed in
+[Maturity](#maturity) below.
 
 ## Three sources
 
@@ -210,11 +212,14 @@ Windows PowerShell:
 git clone --branch v0.3.1 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
-**Windows honesty:** the install command above works. Running the skill — the declare-once
-watcher, state-file writes, calibration logging — has only been exercised on macOS so far (see
-[docs/test-log.md](docs/test-log.md), every recorded test run is macOS/Darwin). The PowerShell
-fallback path in SKILL.md (`py -3`, `Get-Date`) is written to be shell-agnostic by design, but
-that design has not yet been run end-to-end on a Windows machine.
+**Windows:** verified live end-to-end on 2026-08-13 (Windows 11, Python 3.13, fresh-clone
+install): declare-once watcher, artifact publish with live updates, per-task token
+accounting, calibration logging, full job-end sequence, and stale-lock recovery after a
+hard process kill — see the
+[test log](docs/test-log.md#windows-verification-pass--ci-matrix--live-dogfood--2026-08-13).
+The full suite also runs on Linux/macOS/Windows in CI on every push. One known gap: the
+three symlink-containment tests skip on Windows without Developer Mode (the behavior they
+guard is POSIX-verified).
 
 ## Update
 
@@ -258,8 +263,9 @@ link. Delete it there yourself if you want it gone.
 
 v0.3.1 (2026-07-19), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
-versions are untested, not necessarily unsupported. All three job sources were dogfooded live
-end-to-end:
+versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
+runs in CI on Linux, macOS, and Windows on every push. All three job sources were dogfooded
+live end-to-end:
 
 - **Source A** — lead/subagent runs: live tailer/watcher run, render/publish/calibration
   end-to-end ([test-log](docs/test-log.md#stage-3--source-a-tailerwatcher-dogfood--monitoring-run--2026-07-18)).
@@ -278,6 +284,16 @@ repo). The 14-subtask run behind the hero image also used the dev tree, not a fr
 the tag; that run is headless, so the hero image is a manually captured screenshot of its own
 DONE artifact ([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
 and threat model in [docs/design.md](docs/design.md).
+
+Windows was verified live on 2026-08-13 (Windows 11, Python 3.13): a real 8-subtask Source-A
+job run from a fresh-clone install — watcher, artifact updates at every boundary, per-task
+token accounting, cold-start calibration, full job-end sequence — plus a stale-lock recovery
+drill (the job's own watcher hard-killed mid-run; the relaunch took over the stale lock
+cleanly). That drill exercised a real Windows-only bug CI's first run had caught the same day
+(`os.kill(pid, 0)` is a console Ctrl-C on Windows, not a liveness probe — fixed with an
+`OpenProcess` check). Sources B and C are macOS-verified only; the three symlink-containment
+tests skip on Windows without Developer Mode
+([test log](docs/test-log.md#windows-verification-pass--ci-matrix--live-dogfood--2026-08-13)).
 
 ## How the calibration works
 

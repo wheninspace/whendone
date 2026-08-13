@@ -5,6 +5,16 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Windows verified live; README claims re-scoped to evidence:** a full verification pass
+  on real Windows 11 hardware (fresh-clone install, 8-subtask Source-A dogfood with
+  TaskCreate/TaskUpdate, per-task token accounting confirmed working, stale-lock hard-kill
+  recovery drill, full job-end sequence — recorded in docs/test-log.md). README updated
+  accordingly: "every claim dogfooded live" re-scoped to "every feature claim is backed by
+  a recorded live run" with the untested list pointed to explicitly; the "Windows honesty"
+  install caveat replaced with the verified result and the one remaining gap (symlink
+  containment tests never executed on Windows — need Developer Mode); Maturity section now
+  names the CI matrix and the Windows evidence. README/test-log are off the trigger path —
+  no token-budget re-measure needed.
 - **Windows lock-liveness fix (found by the new CI on its first run):** `_pid_alive` used
   `os.kill(pid, 0)`, which on Windows is not a probe — signal 0 is `CTRL_C_EVENT`, so a
   tailer recovering from a crashed watcher's stale lock would send a console Ctrl-C

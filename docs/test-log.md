@@ -943,3 +943,54 @@ prefix-inclusive 14,000 budget — **247–390 to spare**. Standalone: source-b 
 source-c 980, resume.md 1,385. Fixture output 3,401 bytes / 3,330 chars, two-run identical.
 
 **Suite after all fixes: 300 tests OK, warning-clean** (296 + 4 new).
+
+## Windows verification pass — CI matrix + live dogfood — 2026-08-13
+
+Two external evaluations arrived the same day: an independent reviewer's repo assessment, and
+a Claude session's install test on the owner's Windows 11 machine reporting 5 test failures on
+the v0.3.1 suite. All five were verified to be test-environment issues, not script bugs (three
+symlink tests need a privilege Windows doesn't grant unelevated; one test set `HOME` where
+Windows Python ≥3.8 `expanduser` reads `USERPROFILE`; one injected append-failure via
+`/dev/null/impossible`, a creatable path on Windows, so the fault never injected). Fixed in
+e0af8e9 together with a GitHub Actions CI matrix (ubuntu/macos/windows-latest, full suite with
+`-W error::ResourceWarning`, push to main + PRs).
+
+**CI's first run caught a real Windows-only product bug:** `_pid_alive` probed lock-holder
+liveness with `os.kill(pid, 0)` — on Windows signal 0 is `CTRL_C_EVENT`, so stale-lock
+recovery sent a console Ctrl-C instead of probing (in CI it interrupted the test runner
+itself; live it could have interrupted the monitored session). Fixed in dafb75f with a
+ctypes `OpenProcess`/`GetExitCodeProcess` probe (stdlib invariant holds); POSIX path
+unchanged. **CI green on all three OSes since: 310 OK on Linux/macOS, 310 OK (skipped=6)
+on Windows.**
+
+**Live verification on real hardware (Windows 11 Pro build 26200, Python 3.13.15, repo at
+dafb75f):** performed by a Claude session on the owner's Windows machine, running the
+installed skill from a fresh clone (not a dev tree) — the first end-to-end run from a
+clean install on any platform.
+
+- **Suite:** 310 OK, skipped=6 — 3 symlink-containment tests (WinError 1314, no Developer
+  Mode) + 3 POSIX-permission tests (`skipUnless(os.name == "posix")`, by design — octal
+  modes don't map to NTFS ACLs).
+- **Source-A dogfood (8 subtasks, TaskCreate/TaskUpdate harness):** artifact rendered and
+  republished to the same URL at every subtask boundary (7 republishes, URL equality
+  checked each time); per-task token column and running job total visible from the first
+  completion onward; cold-start path clean (no calibration data existed — factor-1.0
+  fallback, wide "default band — little history" interval that stayed honestly labeled
+  while the ETA tightened ~19:46 → ~19:32 as trivially-fast tasks completed); full job-end
+  sequence (final token table, DONE banner "took 7 m 49 s (estimated 43 m)", push
+  notification, calibration regeneration) with zero degraded paths. This was also the
+  first live-verified TaskCreate/TaskUpdate job on any platform (the e78471e support had
+  only synthetic-fixture coverage before).
+- **Stale-lock recovery drill:** the job's own live L1 watcher hard-killed
+  (`Stop-Process -Force`), dead PID confirmed in the lock, identical relaunch took over
+  cleanly — no `already-running` refusal, no delay, no Ctrl-C side effects anywhere
+  (canary command in a separate console ran uninterrupted). The dafb75f fix verified on
+  real hardware, not just CI.
+- **Note:** the dogfood's 8 calibration rows are trivially fast verification steps
+  (−70…−98 % deviations); the owner was advised to wipe that machine's
+  `~/.claude/whendone-data/` before real use so the factors start unskewed.
+
+**Still untested on Windows:** the three symlink-containment tests have never executed on
+any Windows machine (need Developer Mode or elevation; the containment behavior they guard
+is POSIX-verified). Sources B and C remain macOS-only verified. Suite at this entry:
+**310 tests, warning-clean on all three CI OSes.**
