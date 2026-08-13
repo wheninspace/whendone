@@ -235,7 +235,9 @@ class TestTokenUsage(unittest.TestCase):
             script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "token_usage.py")
             out = subprocess.run(
                 [sys.executable, script, cli_state, "--task", "1"],
-                env={**os.environ, "HOME": fake_home.name},
+                # HOME steers expanduser on POSIX, USERPROFILE on Windows (3.8+)
+                env={**os.environ, "HOME": fake_home.name,
+                     "USERPROFILE": fake_home.name},
                 capture_output=True, text=True, check=True,
             )
             res = json.loads(out.stdout)

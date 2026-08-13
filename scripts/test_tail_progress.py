@@ -696,7 +696,12 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
     def test_append_failure_still_leaves_task_done(self):
-        os.environ["WHENDONE_DATA_DIR"] = "/dev/null/impossible"
+        # a data dir beneath a regular file is uncreatable on every platform
+        # (POSIX ENOTDIR, Windows "directory name is invalid"); /dev/null-style
+        # poison paths are creatable on Windows and silently skip the failure
+        blocker = os.path.join(self.calib.name, "blocker")
+        open(blocker, "w").close()
+        os.environ["WHENDONE_DATA_DIR"] = os.path.join(blocker, "impossible")
         env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
                        todo_entry(T2, [item("task 1", "completed")])],
                       mkstate(tasks=[mktask(1)]))
@@ -1590,7 +1595,10 @@ class RenderOutPathHardeningTest(unittest.TestCase):
             target = os.path.join(d, "target.html")
             open(target, "w").close()
             link = os.path.join(d, "link.html")
-            os.symlink(target, link)
+            try:
+                os.symlink(target, link)
+            except OSError as e:   # Windows: symlinks need Developer Mode or admin
+                self.skipTest("cannot create symlink here: %s" % e)
             self.assertNotEqual(tp._render_out_path({"artifactFile": link}), link)
 
     def test_wrong_suffix_and_missing_parent_rejected(self):

@@ -5,6 +5,19 @@
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
 changed only in hardening details — no schema breaks, no formula changes.
 
+- **Windows test portability** (found by an external Windows install test 2026-08-13; all
+  five failures were test-environment issues, not script bugs): the three symlink
+  containment tests now skip with a clear reason when symlink creation needs privilege
+  (WinError 1314 — Windows without Developer Mode/admin) instead of erroring;
+  `test_cli_task_flag` sets `USERPROFILE` alongside `HOME` (Windows Python ≥3.8
+  `expanduser` ignores `HOME`, so the fake-home fixture never took effect there);
+  `test_append_failure_still_leaves_task_done` injects append failure via a path beneath
+  a regular file instead of `/dev/null/impossible`, which is a creatable path on Windows —
+  there the append silently succeeded and the test asserted against the success path.
+  Script behavior unchanged on all platforms.
+- **CI:** GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full suite with
+  `-W error::ResourceWarning` on ubuntu/macos/windows-latest on every push to main and
+  every PR — the matrix that would have caught the five Windows failures pre-publication.
 - **Trigger-path slimming (−1.6k raw / −1.8k as-read):** the script-implemented formula spec
   (ETA/interval/slip rules, calibration-row derivation, renderer formatting guarantees) moved
   off the trigger path into the new maintainer-only `references/formulas.md`; pause accounting

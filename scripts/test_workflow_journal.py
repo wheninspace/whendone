@@ -343,7 +343,10 @@ class ContainmentTest(unittest.TestCase):
             outside = os.path.join(base, "outside.jsonl")
             write_lines(outside, [self._entry()])
             link = os.path.join(run_dir, "agent-" + "a" * 17 + ".jsonl")
-            os.symlink(outside, link)
+            try:
+                os.symlink(outside, link)
+            except OSError as e:   # Windows: symlinks need Developer Mode or admin
+                self.skipTest("cannot create symlink here: %s" % e)
             self.assertEqual(wj.agent_first(link, root=run_dir), (None, None))
             self.assertIsNone(wj.agent_last_ts(link, root=run_dir))
 
@@ -362,7 +365,10 @@ class ContainmentTest(unittest.TestCase):
             outside = os.path.join(base, "meta.json")
             with open(outside, "w", encoding="utf-8") as f:
                 json.dump({"model": "claude-x"}, f)
-            os.symlink(outside, os.path.join(run_dir, "agent-%s.meta.json" % aid))
+            try:
+                os.symlink(outside, os.path.join(run_dir, "agent-%s.meta.json" % aid))
+            except OSError as e:   # Windows: symlinks need Developer Mode or admin
+                self.skipTest("cannot create symlink here: %s" % e)
             self.assertIsNone(wj.agent_model(run_dir, aid))
 
     def test_run_finished_rejects_non_run_id_basename(self):
