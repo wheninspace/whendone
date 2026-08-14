@@ -1203,7 +1203,7 @@ def check_idle(state_path, state, now, stale_min, args):
     # resumed job's last done task finished BEFORE the pause, so treating
     # resumedAt as an else-branch made a resume fire `idle` seconds later with
     # the whole pause counted as idle time (10:05 -> 14:00 pause reproduced as
-    # idleMin 240.5 half a minute after resume) -- and under --exit-on-event
+    # idleMin 235.5 half a minute after resume) -- and under --exit-on-event
     # that burns the L2 ladder's single permitted relaunch on cycle 1. Pause
     # time is its own bucket (references/resume.md, and the artifact's own
     # pause-adjusted orchestration line); the event must not double-count it as
