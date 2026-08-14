@@ -114,9 +114,11 @@ def extract_events(paths):
                                         "taskId": inp.get("taskId"),
                                         "status": inp.get("status")}))
                                 elif b.get("name") in DISPATCH_TOOLS:
+                                    inp = b.get("input") or {}
                                     events.append((ts, "dispatch", {
                                         "id": b.get("id"),
-                                        "description": (b.get("input") or {}).get("description")}))
+                                        "description": inp.get("description"),
+                                        "model": inp.get("model") if isinstance(inp.get("model"), str) else None}))
                         elif etype == "user":
                             for b in content:
                                 if isinstance(b, dict) and b.get("type") == "tool_result":
@@ -228,14 +230,16 @@ def write_state(path, state):
 
 
 def observe(events, idx):
-    """First-seen start/finish evidence per declared task nr, transcript
-    timestamps only. dispatch/result pairs correlate via tool_use id."""
-    obs, dispatch_nr = {}, {}
+    """Tiered evidence per declared task nr, transcript timestamps only.
+    Todo transitions are the close authority (v0.5 attribution rework);
+    matched dispatch/result pairs are delegated-span display evidence and
+    the start fallback. dispatch/result correlate via tool_use id."""
+    obs, dispatch_open = {}, {}
 
-    def note(nr, key, ts):
-        slot = obs.setdefault(nr, {})
-        if key not in slot:
-            slot[key] = ts.isoformat()
+    def slot(nr):
+        return obs.setdefault(nr, {"startedAt": None, "todoFinishedAt": None,
+                                   "todoSeen": False, "spans": [], "open": 0,
+                                   "model": None})
 
     for ts, kind, payload in events:
         if kind == "todos":
@@ -243,19 +247,32 @@ def observe(events, idx):
                 nr = idx.get(normalize(it.get("content")))
                 if nr is None:
                     continue
-                if it.get("status") == "in_progress":
-                    note(nr, "startedAt", ts)
-                elif it.get("status") == "completed":
-                    note(nr, "finishedAt", ts)
+                st = it.get("status")
+                if st not in ("in_progress", "completed"):
+                    continue
+                s = slot(nr)
+                s["todoSeen"] = True
+                if st == "in_progress" and s["startedAt"] is None:
+                    s["startedAt"] = ts.isoformat()
+                elif st == "completed" and s["todoFinishedAt"] is None:
+                    s["todoFinishedAt"] = ts.isoformat()
         elif kind == "dispatch":
             nr = idx.get(normalize(payload.get("description")))
             if nr is not None and payload.get("id"):
-                dispatch_nr[payload["id"]] = nr
-                note(nr, "startedAt", ts)
+                s = slot(nr)
+                dispatch_open[payload["id"]] = (nr, ts)
+                s["open"] += 1
+                if s["startedAt"] is None:
+                    s["startedAt"] = ts.isoformat()
+                if s["model"] is None and payload.get("model"):
+                    s["model"] = payload["model"]
         elif kind == "result":
-            nr = dispatch_nr.get(payload.get("tool_use_id"))
-            if nr is not None:
-                note(nr, "finishedAt", ts)
+            pair = dispatch_open.pop(payload.get("tool_use_id"), None)
+            if pair is not None:
+                nr, dts = pair
+                s = slot(nr)
+                s["open"] -= 1
+                s["spans"].append((dts.isoformat(), ts.isoformat()))
     return obs
 
 

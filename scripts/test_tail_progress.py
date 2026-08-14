@@ -10,6 +10,7 @@ import tail_progress as tp
 T0 = "2026-07-18T10:00:00.000Z"
 T1 = "2026-07-18T10:05:00.000Z"
 T2 = "2026-07-18T10:12:00.000Z"
+T3 = "2026-07-18T10:20:00.000Z"
 
 
 def todo_entry(ts, todos, mid="m-todo"):
@@ -20,11 +21,14 @@ def todo_entry(ts, todos, mid="m-todo"):
                                      "name": "TodoWrite", "input": {"todos": todos}}]}}
 
 
-def dispatch_entry(ts, tool_id, description, name="Agent"):
+def dispatch_entry(ts, tool_id, description, name="Agent", model=None):
+    inp = {"description": description, "prompt": "..."}
+    if model is not None:
+        inp["model"] = model
     return {"type": "assistant", "timestamp": ts,
             "message": {"id": "m-" + tool_id, "usage": {},
                         "content": [{"type": "tool_use", "id": tool_id, "name": name,
-                                     "input": {"description": description, "prompt": "..."}}]}}
+                                     "input": inp}]}}
 
 
 def result_entry(ts, tool_id):
@@ -332,33 +336,58 @@ class LocalTimePolicyTest(unittest.TestCase):
 
 
 class ObserveTest(unittest.TestCase):
-    def test_todo_start_and_completion_first_seen_wins(self):
-        idx = {"task 1": 1}
-        events = [
-            (tp.token_usage.parse_ts(T0), "todos", [{"content": "task 1", "status": "in_progress"}]),
-            (tp.token_usage.parse_ts(T1), "todos", [{"content": "task 1", "status": "completed"}]),
-            (tp.token_usage.parse_ts(T2), "todos", [{"content": "task 1", "status": "completed"}]),
-        ]
-        obs = tp.observe(events, idx)
-        self.assertEqual(obs[1]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
-        self.assertEqual(obs[1]["finishedAt"], tp.token_usage.parse_ts(T1).isoformat())
+    IDX = {"alpha": 1}
 
-    def test_dispatch_result_pair(self):
-        idx = {"task 2": 2}
-        events = [
-            (tp.token_usage.parse_ts(T0), "dispatch", {"id": "tu-1", "description": "Task 2: task 2"}),
-            (tp.token_usage.parse_ts(T1), "result", {"tool_use_id": "tu-1"}),
-            (tp.token_usage.parse_ts(T2), "result", {"tool_use_id": "tu-unknown"}),
-        ]
-        obs = tp.observe(events, idx)
-        self.assertEqual(obs[2]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
-        self.assertEqual(obs[2]["finishedAt"], tp.token_usage.parse_ts(T1).isoformat())
+    def _ev(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
 
-    def test_ambiguous_name_never_matches(self):
-        obs = tp.observe(
-            [(tp.token_usage.parse_ts(T0), "todos", [{"content": "dup", "status": "completed"}])],
-            {"dup": None})
-        self.assertEqual(obs, {})
+    def test_todo_transitions_are_authoritative(self):
+        ev = self._ev([
+            todo_entry(T0, [item("Alpha", "in_progress")]),
+            dispatch_entry(T1, "tu-1", "Alpha", model="sonnet"),
+            result_entry(T2, "tu-1"),
+            todo_entry(T3, [item("Alpha", "completed")]),
+        ])
+        o = tp.observe(ev, self.IDX)[1]
+        self.assertEqual(o["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(o["todoFinishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        self.assertTrue(o["todoSeen"])
+        self.assertEqual(o["spans"], [(tp.token_usage.parse_ts(T1).isoformat(),
+                                       tp.token_usage.parse_ts(T2).isoformat())])
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(o["model"], "sonnet")
+
+    def test_result_does_not_set_todo_finish(self):
+        ev = self._ev([todo_entry(T0, [item("Alpha", "in_progress")]),
+                       dispatch_entry(T1, "tu-1", "Alpha"),
+                       result_entry(T2, "tu-1")])
+        o = tp.observe(ev, self.IDX)[1]
+        self.assertIsNone(o["todoFinishedAt"])   # the 2026-08-14 bug, inverted
+
+    def test_pending_snapshot_does_not_set_todo_seen(self):
+        ev = self._ev([todo_entry(T0, [item("Alpha", "pending")]),
+                       dispatch_entry(T1, "tu-1", "Alpha"),
+                       result_entry(T2, "tu-1")])
+        o = tp.observe(ev, self.IDX)[1]
+        self.assertFalse(o["todoSeen"])
+        self.assertEqual(o["startedAt"], tp.token_usage.parse_ts(T1).isoformat())
+
+    def test_multiple_spans_sum_and_open_counts(self):
+        ev = self._ev([dispatch_entry(T0, "tu-1", "Alpha"),
+                       result_entry(T1, "tu-1"),
+                       dispatch_entry(T2, "tu-2", "Alpha")])
+        o = tp.observe(ev, self.IDX)[1]
+        self.assertEqual(len(o["spans"]), 1)
+        self.assertEqual(o["open"], 1)
+
+    def test_unmatched_names_ignored(self):
+        ev = self._ev([dispatch_entry(T0, "tu-1", "Code quality review Alpha"),
+                       result_entry(T1, "tu-1")])
+        self.assertEqual(tp.observe(ev, self.IDX), {})
 
 
 class SourceCObserveUnitTest(unittest.TestCase):
