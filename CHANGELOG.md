@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.5.0] — 2026-08-14
+
+Time-attribution rework: a live job on 2026-08-14 lost 77 % of its wall-clock time and logged
+9 calibration rows with −26…−77 % false deviations, because the tailer treated a subagent's
+*result* as its task's finish — closing each task the moment its first implementer subagent
+returned, before the lead's own review pass, fix rounds, and commit. Schema changes are
+additive; pre-v0.5 state files stay valid.
+
+- **Todo-close authority:** the todo/TaskUpdate `completed` transition is now the ONLY thing
+  that closes a task. A subagent result never closes a task on its own; matching dispatches
+  now accrue to the task's *delegated span* (display metadata only) instead.
+- **Delegated-span display split:** the artifact now shows `delegated Xm · lead/review Ym`
+  per task, computed from a new optional numeric `delegatedMin` calibration-row field
+  (agent-minutes summed over matched dispatch→result spans; may exceed the task's own wall
+  span under parallel dispatch).
+- **Forgetful-model fallback:** a task whose todos are never touched still display-closes — on
+  its last matched subagent result, marked `unconfirmed` — and logs NO calibration row (no
+  data beats biased data). It upgrades to a confirmed close, and logs the row once, if todo
+  evidence arrives later.
+- **Between-subtask orchestration line:** the artifact now shows
+  `max(0, elapsed − union of task spans)`, so minutes belonging to no task are visible instead
+  of silently vanishing.
+- **Publish-lag backstop (Source A only):** the tailer now watches the model's own `Artifact`
+  publishes in the transcript and flags `publishLag: true` on a changed event emitted while
+  the previous one is still unpublished.
+- **`idle` event (Source A only):** job-level event, fires when no task is in flight while the
+  job is running; anchored on the last task boundary rather than transcript activity, so
+  active-but-off-plan drift fires too.
+- **Worktree-pinned state location (docs only):** "project root" is now defined as the main
+  working tree (parent of `git rev-parse --path-format=absolute --git-common-dir`), so
+  deleting a linked worktree can no longer kill the watcher. Trade-off, documented: one
+  WhenDone job per repo across all its worktrees.
+- **Dispatch-model capture:** calibration rows no longer log `model: "unknown"` — the model
+  field is now read from the dispatch tool's own input.
+
+**Calibration-data epoch:** every Source-A row logged before this release measured delegated
+spans only and is systematically fast against real wall-clock time. Recommended per-machine
+step — you run this yourself; it touches data outside the repo, on your own machines, and the
+release can't do it for you:
+
+```bash
+mv ~/.claude/whendone-data/calibration.jsonl ~/.claude/whendone-data/calibration.pre-v0.5.jsonl
+```
+
+then regenerate the summary so per-category factors restart at their 1.0 defaults.
+
+**Known limitation:** if a job's tasks ALL close on the forgetful (dispatch-only) path, the
+tailer still emits `all-done` and exits — a later `completed` todo is never observed, so that
+job logs zero calibration rows. Deliberate: the alternative (withholding `all-done`) would hang
+the job-end protocol, and the failure direction here is the safe one — no rows, never biased
+rows.
+
+Suite: 361 tests, warning-clean.
+
 ## [0.4.0] — 2026-08-14
 
 Post-v0.3.1 polish pass (Stage-2 findings + doc backlog; flip deferred). Script behavior
