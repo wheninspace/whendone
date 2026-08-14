@@ -338,13 +338,23 @@ def _delegated_min(spans):
     """D3: agent-minutes summed over matched dispatch->result spans — DISPLAY
     metadata only. Never the calibrated actual (that is the full task span);
     parallel spans deliberately double-count, since that is what 'agent
-    minutes spent' means. None when there is nothing observed to report."""
-    total = 0.0
-    for s, e in spans or []:
-        a, b = token_usage.parse_ts(s), token_usage.parse_ts(e)
-        if a and b and b >= a:
-            total += (b - a).total_seconds() / 60.0
-    return round(total, 1) if total > 0 else None
+    minutes spent' means. None when there is nothing observed to report.
+
+    Totally guarded: this runs INSIDE handle_completion's step (b), before the
+    durable done-marker write — the one step the crash-safety order depends on
+    and the only one that is not fail-soft. It cannot raise today (spans come
+    from observe(), parse_ts is total), but visibility must never block the
+    work, so a display-metadata computation degrades to None rather than
+    propagating into the marker write."""
+    try:
+        total = 0.0
+        for s, e in spans or []:
+            a, b = token_usage.parse_ts(s), token_usage.parse_ts(e)
+            if a and b and b >= a:
+                total += (b - a).total_seconds() / 60.0
+        return round(total, 1) if total > 0 else None
+    except Exception:
+        return None
 
 
 def plan_transitions(state, obs):
@@ -861,8 +871,12 @@ def handle_completion(state_path, state, t, started, finished, args, spans=None)
                        model=t.get("model") or "unknown")
             if t.get("effort") is not None:
                 row["effort"] = t["effort"]
-            if isinstance(t.get("delegatedMin"), (int, float)):
-                row["delegatedMin"] = t["delegatedMin"]   # D3: alongside, never instead
+            dmin = t.get("delegatedMin")                 # D3: alongside, never instead
+            if isinstance(dmin, (int, float)) and not isinstance(dmin, bool):
+                # bool is an int in Python: a corrupt/hand-edited state carrying
+                # `"delegatedMin": true` would otherwise reach Task 2's validator
+                # and sink the ENTIRE row (no row, actualMin null).
+                row["delegatedMin"] = dmin
     else:
         g = group_row(state, t.get("group"))
         if g is not None:

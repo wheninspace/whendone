@@ -785,6 +785,74 @@ class CompletionPipelineTest(unittest.TestCase):
         self.sync()                                       # third pass: exactly once
         self.assertEqual(len(self.rows()), 1)
 
+    def test_all_unconfirmed_job_still_terminates_all_done(self):
+        """ACCEPTED, RULED TRADE-OFF — do NOT "fix" this into a hang.
+
+        A job whose every task closes on the forgetful path (D2) still emits
+        all-done, and follow() treats all-done as terminal: the tailer exits,
+        so it can no longer observe a later `completed` todo and D2's
+        append-on-upgrade is unreachable for such a job. The alternative
+        (all_done_now ignoring `displays`) is strictly worse — a fully
+        forgetful job would then NEVER emit all-done and would wedge the whole
+        job-end protocol. The failure direction kept here is the one D2 picks
+        on purpose: zero rows, never biased rows. Display closes are therefore
+        revertible only while the watcher process lives, and that bound is
+        deliberate, not an oversight."""
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1")])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tp.main([self.env.state_path, "--follow", "--interval", "0",
+                          "--max-cycles", "3",        # hang guard, NOT the exit path
+                          "--projects-dir", self.env.projects])
+        lines = [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+        self.assertEqual(rc, 0)
+        self.assertEqual(lines[-1]["event"], "all-done")   # terminal: follow() returned
+        self.assertTrue(self.env.state()["tasks"][0]["unconfirmed"])
+        self.assertEqual(self.rows(), [])                  # and still never a row
+
+    def test_confirmed_close_is_never_reopened_by_a_late_dispatch(self):
+        """Safety invariant: once a task has logged a calibration row it is
+        frozen — no transcript evidence may reopen it, because a reopened task
+        could close a second time and append a SECOND row for the same work.
+        Enforced solely by the unconditional `continue` in plan_transitions'
+        done branch, so it is pinned here rather than left incidental. Only an
+        `unconfirmed` (row-less) close is ever revertible."""
+        self.write_transcript([todo_entry(T0, [item("Alpha", "in_progress")]),
+                               todo_entry(T2, [item("Alpha", "completed")], mid="m2")])
+        state, _ = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "done")
+        self.assertNotIn("unconfirmed", t)                 # confirmed: a row exists
+        self.assertEqual(len(self.rows()), 1)
+        finished = t["finishedAt"]
+        self.write_transcript([todo_entry(T0, [item("Alpha", "in_progress")]),
+                               todo_entry(T2, [item("Alpha", "completed")], mid="m2"),
+                               dispatch_entry(T3, "tu-9", "Alpha")])   # late dispatch
+        state, _ = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "done")              # never resurrected
+        self.assertEqual(t["finishedAt"], finished)
+        self.assertEqual(len(self.rows()), 1)              # and never a second row
+
+    def test_bool_delegated_min_in_state_never_sinks_the_row(self):
+        """`isinstance(True, int)` is True in Python, so a corrupt or
+        hand-edited state carrying `"delegatedMin": true` would otherwise be
+        copied into the row and rejected by append_calibration's validator —
+        taking the WHOLE row down (no row, actualMin null) over a display-only
+        field. The bool is dropped; the row still lands."""
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T2, [item("task 1", "completed")], mid="m2")],
+                      mkstate(tasks=[mktask(1, delegatedMin=True)]))
+        try:
+            env.run_one_shot()
+            rows = self.rows()
+            self.assertEqual(len(rows), 1)             # not sunk
+            self.assertNotIn("delegatedMin", rows[0])  # and not smuggled through
+            self.assertEqual(env.state()["tasks"][0]["actualMin"], rows[0]["actualMin"])
+        finally:
+            env.cleanup()
+
     def test_dispatch_model_alias_lands_on_task(self):
         self.write_transcript([todo_entry(T0, [item("Alpha", "in_progress")]),
                                dispatch_entry(T1, "tu-1", "Alpha", model="sonnet")])
@@ -1575,6 +1643,32 @@ class DebounceGateTest(unittest.TestCase):
                                        tp.token_usage.parse_ts(T2), args)
             prog = [e for e in ev2 if e.get("event") == "progress"][-1]
             self.assertEqual(prog["justDone"], ["task 1"])   # carried over
+        finally:
+            env.cleanup()
+
+    def test_display_close_all_done_bypasses_debounce(self):
+        """D2 + D11: an all-`unconfirmed` job's terminal cycle carries only
+        `displays`, no `completions` — so all_done_now must count displays too,
+        or the job's LAST transition gets swallowed by an open debounce window
+        and the all-done wake is delayed to whenever the next cycle happens to
+        land. Companion to CompletionPipelineTest's ruled trade-off test: that
+        one pins that a forgetful job terminates at all, this one pins that it
+        terminates on the cycle that finished it."""
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1"),
+                       result_entry(T1, "tu-1")],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            import argparse as ap
+            args = ap.Namespace(job_id=None, projects_dir=env.projects, now=None,
+                                stale_min=None, _render_ok=False)   # window OPEN
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                _, events = tp.sync_cycle(env.state_path,
+                                          tp.token_usage.parse_ts(T2), args)
+            self.assertEqual(len([e for e in events
+                                  if e.get("event") == "all-done"]), 1)
+            self.assertFalse(getattr(args, "_pending", False))   # not deferred
+            self.assertTrue(env.state()["tasks"][0]["unconfirmed"])
         finally:
             env.cleanup()
 
