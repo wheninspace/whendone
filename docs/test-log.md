@@ -1030,3 +1030,52 @@ bytes); as-read (421 on-path reference lines × 3.3–3.6 prefix allowance) **11
 vs the prefix-inclusive 14,000 budget — **1,915–2,042 to spare** (was 9,785 raw /
 ≈11.0–11.2k as-read, ≈2.8–3.0k to spare, movement 8). Standalone reference files
 (source-b.md, source-c.md, resume.md) untouched this pass, not re-measured.
+
+## Time-attribution rework — final whole-branch review fix wave — 2026-08-14
+
+Fixes applied from the final pre-merge review of the v0.5.0 branch. Code:
+
+- **Parallel-group double-log (critical).** `group_row()` keyed on the group but had no
+  already-logged guard, while `unconfirmed` tasks are deliberately revisitable — so a member
+  upgrading `unconfirmed` → confirmed re-entered `handle_completion`, found every member
+  `done` again, and appended a SECOND `parallel-group` row for the same work. Reproduced
+  exactly (2-member group): cycle 2 logged `actualMin` 12.0, cycle 3 logged 20.0. Fixed by
+  refusing the row while ANY member is `unconfirmed` (D2 at group level), which also removes
+  the milder form — an unconfirmed member's dispatch-derived span contributing to (and
+  sometimes setting the `finishedAt` of) the single row, with the outcome depending on whether
+  the watcher saw the evidence in one cycle or two. Three regression tests
+  (`GroupRowConfirmationTest`), each verified to FAIL with the guard removed: the two-cycle
+  duplicate sequence (rows 12.0 + 20.0 → one row of 20.0), the one-cycle vs split-cycle
+  equivalence (same transcript, byte-identical row set either way), and the reopen path
+  (display close → late dispatch reopens → confirm, one row spanning the whole group).
+- **`check_idle` counted pause time as idle.** The anchor treated `resumedAt` as a fallback
+  used only when no task was done, so a resumed job fired `idle` seconds after resume with the
+  whole pause as `idleMin` (reproduced: `idleMin` 235.5 thirty seconds after a 10:05→14:00
+  pause) — and under `--exit-on-event` that burns the L2 ladder's one permitted relaunch at
+  resume. `resumedAt` is now a co-equal anchor candidate (max of done `finishedAt` values and
+  `resumedAt`, `startedAt` only when neither exists). Ruled a deviation from the plan's D5
+  `else` chain: D0 puts pause in its own bucket, and the artifact's pause-adjusted
+  orchestration line and the event would otherwise report different numbers for the same gap.
+  Two tests added; the pre-existing resumedAt-precedence test still holds.
+
+Docs: D6 worktree pinning completed on the runtime path (SKILL.md job-start step 1, step 7's
+write-target precondition, Stop step 7; source-a.md's job-end `token_usage.py` command;
+`references/resume.md` throughout, which also gained the `<project-root>` definition it
+lacked); `references/file-formats.md`'s `lastChangedEventAt` label corrected (verified against
+`finish_cycle`: written on every source — only the `publishLag` comparison is Source-A gated);
+`references/formulas.md` gained the honest D0 caveat (a pause INSIDE a task's span is counted
+twice and rides into that task's calibration row — verified live against `render_artifact.py`:
+40-min wall clock, 30-min in-task pause → `orchestrationMin` 0.0, elapsed 10 m, task span 40 →
+70 attributed minutes) and its dispatch-matching sentence corrected to the matcher's real
+tolerance (`normalize`: case, whitespace, one leading ordinal). README status claim re-scoped:
+v0.5.0 has no recorded live run on either platform.
+
+**Suite: 366 tests OK, warning-clean** (361 + 5 new).
+
+**Re-measured (tiktoken cl100k_base, throwaway venv, 2026-08-14):** trigger path raw
+**10,602** (SKILL.md 3,333 + source-a.md 2,578 + file-formats.md 3,214 +
+artifact-template.md 651 + calibration-summary allowance 826, fixture unchanged at 2,417
+bytes); as-read (422 on-path reference lines × 3.3–3.6 prefix allowance) **11,995–12,121** vs
+the 14,000 budget — **1,879–2,005 to spare** (movement 9 was 10,569 raw / 11,958–12,085
+as-read). Off-path: `references/resume.md` 1,502 → 1,563 (README's per-resume row now says
+≈1.6k), `references/formulas.md` 2,735 — neither counts against the trigger path.

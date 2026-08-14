@@ -51,10 +51,11 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.5.0 (2026-08-14), single author. Every feature claim is backed by a recorded
-live run — macOS throughout, Windows verified 2026-08-13 — in
-[docs/test-log.md](docs/test-log.md); what remains untested is listed in
-[Maturity](#maturity) below.
+**Status:** v0.5.0 (2026-08-14), single author. Feature claims up to and including v0.4.0 are
+each backed by a recorded live run — macOS throughout, Windows verified 2026-08-13 — in
+[docs/test-log.md](docs/test-log.md). v0.5.0's time-attribution rework ships unit-verified
+only: 366 tests plus the Linux/macOS/Windows CI matrix, and no recorded live run yet on
+either platform. What remains untested is listed in [Maturity](#maturity) below.
 
 ## Three sources
 
@@ -112,11 +113,11 @@ declines smaller jobs — the trigger cost alone is hard to amortize below that.
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ≈10.6k cl100k tokens raw, ≈11.9–12.1k as read with Read-tool line prefixes — measured 2026-08-14 after the close-authority/worktree-pinning protocol update (was ≈9.8k/≈11.0–11.2k). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
+| When it triggers (incl. each resume session) | ≈10.6k cl100k tokens raw, ≈12.0–12.1k as read with Read-tool line prefixes — measured 2026-08-14 after the close-authority/worktree-pinning protocol update and its final-review corrections (was ≈9.8k/≈11.0–11.2k). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
 | Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,255 tokens) / `source-c.md` (1,008) are read only once that source is detected |
 | Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
-| Per resume (additionally) | + `references/resume.md` (≈1.5k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
+| Per resume (additionally) | + `references/resume.md` (≈1.6k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
 | After a compaction notice | One re-read of SKILL.md's Invariants section + the state file ≈ ~1–1.8k tokens; recurs only on a compaction notice, not on any fixed schedule |
 
 Rows marked measured are real `tiktoken` `cl100k_base` runs on this repo's actual files and
@@ -270,8 +271,15 @@ link. Delete it there yourself if you want it gone.
 v0.5.0 (2026-08-14), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
-runs in CI on Linux, macOS, and Windows on every push. All three job sources were dogfooded
-live end-to-end:
+runs in CI on Linux, macOS, and Windows on every push.
+
+**v0.5.0 has no live run behind it yet.** The time-attribution rework — todo-transition close
+authority, `unconfirmed` display closes, the delegated-span split, the `idle`/`publishLag`
+wakes — is covered by the unit suite and the CI matrix only, on macOS and Windows alike; the
+live evidence recorded below all predates it, and re-running those drills against v0.5.0 is
+the next verification step.
+
+All three job sources were dogfooded live end-to-end (v0.3.1/v0.4.0 code):
 
 - **Source A** — lead/subagent runs: live tailer/watcher run, render/publish/calibration
   end-to-end ([test-log](docs/test-log.md#stage-3--source-a-tailerwatcher-dogfood--monitoring-run--2026-07-18)).

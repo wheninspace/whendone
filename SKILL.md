@@ -56,7 +56,7 @@ two.
 `<project-root>` below = D6 (references/source-a.md's Declare-once section): the main working
 tree, never a linked worktree's.
 
-1. Does `.claude/whendone-state.json` exist? Read it FIRST, before touching `.claude/STOP` —
+1. Does `<project-root>/.claude/whendone-state.json` exist? Read it FIRST, before touching STOP —
    the STOP decision below depends on what it says. If the file exists but fails to parse as
    JSON, treat it as "no valid state": do NOT delete STOP, do NOT improvise a job from it —
    surface the parse failure to the user and stop for a decision (a user-flagged stop, not a
@@ -69,8 +69,8 @@ tree, never a linked worktree's.
    subtask), discard and start
    fresh, or abort. DIFFERENT job → warn another session may own it, let the user decide (abort,
    or discard after explicit confirmation). Never silently overwrite either way. Leave
-   `.claude/STOP` untouched in both cases — a legitimate pending stop request may already sit on
-   disk; mention both signals together if STOP also exists. On "discard and start fresh"
+   `<project-root>/.claude/STOP` untouched in both cases — a legitimate pending stop request
+   may already sit on disk; mention both signals together if STOP also exists. On "discard and start fresh"
    (either branch): before overwriting, if the OLD state file's `artifactUrl` is known, render
    it once with `render_artifact.py --superseded` to a scratchpad file and republish onto that
    URL — the SUPERSEDED banner shows watchers of the old link a dead job rather than RUNNING
@@ -106,10 +106,10 @@ tree, never a linked worktree's.
    `py -3` — shell-agnostic, UTF-8 regardless of invoking shell — never improvised `Out-File`/`>>`
    appends.
 7. Two hard preconditions gate the writes in step 8:
-   - **Write-target precondition:** for each of `.claude/whendone-state.json`, `.gitignore`,
-     and `.claude/whendone-tail.lock`, verify it either doesn't exist yet, or exists as a
-     REGULAR FILE whose canonical path (`realpath`) resolves INSIDE the project root — not a
-     symlink, not outside the root (docs/design.md's Safety decisions). Check fails → STOP,
+   - **Write-target precondition:** for each of `<project-root>/.claude/whendone-state.json`,
+     `.gitignore`, and `<project-root>/.claude/whendone-tail.lock`, verify it either doesn't
+     exist yet, or exists as a REGULAR FILE whose canonical path (`realpath`) resolves INSIDE
+     the project root — not a symlink, not outside the root (docs/design.md's Safety decisions). Check fails → STOP,
      don't write, flag the user. `.claude/STOP` is exempt (delete-only — step 4).
    - **Gitignore precondition:** ensure the state file and tail lock are ignored before the
      first write.
@@ -150,7 +150,7 @@ tasks (shared `group` value) are MAX-aggregated, never hand-tracked — see file
    step-4's timestamp, same file path) — renders the PAUSED banner and resume box — then
    publish (skip under the no-publish gate); include the full artifact URL in chat.
 6. Push notification: "Stopped after subtask N — state saved."
-7. Delete `.claude/STOP`.
+7. Delete `<project-root>/.claude/STOP`.
 
 ## Resume
 

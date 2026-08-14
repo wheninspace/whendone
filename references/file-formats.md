@@ -104,11 +104,12 @@ categories, never a calibration row (references/source-c.md).
 that task's one staleness event; presence suppresses repeats. Never cleared — a
 resumed/restarted task gets a fresh row in a rebuilt plan.
 
-`lastPublishedAt`/`lastChangedEventAt` = optional per-job ISO timestamps, tailer-written
-(Source A only): the last Source-A Artifact publish the tailer observed in the session
-transcript, and the last `progress`/`all-done` event it emitted — compared to drive the
-`publishLag` backstop below. `idleNotifiedAt` = optional per-job ISO timestamp, tailer-written
-(Source A only): set once per idle gap, re-arming only once the anchor moves past it.
+`lastPublishedAt` = optional per-job ISO timestamp, tailer-written (Source A only): the last
+Artifact publish the tailer observed in the session transcript. `lastChangedEventAt` = the
+last `progress`/`all-done` event it emitted — written on EVERY source; only the comparison of
+the two, the `publishLag` backstop below, is Source-A-gated. `idleNotifiedAt` = optional
+per-job ISO timestamp, tailer-written (Source A only): set once per idle gap, re-arming only
+once the anchor moves past it.
 
 `delegatedMin`/`unconfirmed` = optional per-task fields, tailer-written: agent-minutes summed
 over a task's matched dispatch spans, and a still-provisional display close — semantics in

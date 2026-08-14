@@ -106,6 +106,14 @@ D0's invariant is that every wall-clock minute between job start and job end is 
 somewhere visible: a task's span, the job-level orchestration line, or a user pause. This
 section is the ONE fixed rule for the two artifact elements that make that true.
 
+Honest caveat: the three buckets cover the wall clock but do not partition it. A pause taken
+INSIDE a task's span is counted twice — once inside that task's `startedAt`→`finishedAt`
+interval, once in `pausedTotalMin` (measured: a 40-min wall clock with a 30-min pause inside a
+task reads union 40 + orchestration 0 + paused 30 = 70 attributed minutes), and the pause
+minutes also ride into that task's `actualMin` calibration row. Nothing goes negative — the
+`max(0, …)` clamp holds — and SKILL.md's "never stop mid-subtask" rule keeps it rare, but the
+whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop can land.
+
 - **Between-subtask orchestration** = `max(0, elapsed − span-union)`, where `elapsed` is the
   existing pause-adjusted `elapsed_min` (job `startedAt` → now/`pausedAt`/latest `finishedAt`,
   minus `pausedTotalMin`) and `span-union` merges every task's own `startedAt`→`finishedAt`
@@ -117,7 +125,9 @@ section is the ONE fixed rule for the two artifact elements that make that true.
   calibrated elapsed baseline to subtract against).
 - **Delegated / lead-review split**: `delegatedMin` (Task 3's `tail_progress.py` field) is
   agent-minutes summed over the task's matched subagent dispatch→result spans — a dispatch
-  counts only when its `description` exactly matches the task's `name`. Because these are
+  counts only when its `description` matches the task's `name` under `tail_progress.py`'s
+  `normalize`, which tolerates case, surrounding/collapsed whitespace, and ONE leading ordinal
+  (`3.`, `3)`, `3:`, `Task 3:`) — and nothing looser. Because these are
   agent-minutes, not wall-clock minutes, a task with two or more matched dispatches running in
   parallel can legitimately show `delegatedMin` GREATER than the task's own wall span. Lead/
   review time = the task's `display_actual` minus `delegatedMin`, clamped at 0 — never

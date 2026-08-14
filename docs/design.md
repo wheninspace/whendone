@@ -501,10 +501,21 @@ Nine movements, each under an identical raw `tiktoken cl100k_base` sum unless no
    source-a.md 2,574 + file-formats.md 3,200 + artifact-template.md 651 + calibration-summary
    allowance 826, fixture unchanged at 2,417 bytes), 11,958–12,085 as-read (421 on-path
    reference lines × 3.3–3.6) — 1,915–2,042 still to spare under the 14,000 budget.
+10. The 2026-08-14 final whole-branch review then completed the D6 pinning the movement-9 pass
+    had left half-applied (SKILL.md job-start step 1, the step-7 write-target precondition, the
+    Stop procedure's STOP delete, and source-a.md's job-end `token_usage.py` command all still
+    used bare cwd-relative `.claude/…` paths, which resolve to a linked worktree's empty
+    `.claude/` in exactly the scenario D6 exists for) and corrected file-formats.md's
+    `lastChangedEventAt` label (written on every source; only the `publishLag` comparison is
+    Source-A-gated): +33 → 10,602 raw (SKILL.md 3,333 + source-a.md 2,578 + file-formats.md
+    3,214 + artifact-template.md 651 + calibration-summary allowance 826, fixture unchanged at
+    2,417 bytes), 11,995–12,121 as-read (422 on-path reference lines × 3.3–3.6, one line more
+    than movement 9) — 1,879–2,005 still to spare. The same pass edited `references/resume.md`
+    (1,502 → 1,563, off-path, resume-only) and `references/formulas.md` (off-path).
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with 1,915–2,042 to spare
-(10,569 raw); see the README Overhead table for the current breakdown.
+movements 1 and 2. The path stays under the 14,000 budget as-read, with 1,879–2,005 to spare
+(10,602 raw); see the README Overhead table for the current breakdown.

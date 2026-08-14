@@ -46,13 +46,30 @@ mv ~/.claude/whendone-data/calibration.jsonl ~/.claude/whendone-data/calibration
 
 then regenerate the summary so per-category factors restart at their 1.0 defaults.
 
+Final pre-merge review additions:
+
+- **Parallel-group rows wait for confirmation.** A `parallel-group` calibration row is now
+  written only once EVERY member has a todo-evidenced close. Previously a member that upgraded
+  from `unconfirmed` to confirmed made the group log a SECOND row for the same work, and an
+  unconfirmed member's dispatch-derived span could set the row's `finishedAt` — with the
+  outcome depending on whether the watcher happened to see the evidence in one cycle or two.
+- **`idle` no longer counts pause time.** `resumedAt` is a co-equal anchor candidate rather
+  than a fallback, so a resumed job no longer fires `idle` immediately with the whole pause
+  reported as idle minutes (which also burned the L2 watcher ladder's single relaunch).
+- **Docs:** the D6 project-root pinning is now applied to every runtime state/STOP path
+  (SKILL.md job start + stop, source-a.md's job-end token refresh, resume.md);
+  `lastChangedEventAt` is documented as written on every source; formulas.md gains the honest
+  D0 caveat (a pause taken inside a task's span is counted twice) and the real dispatch-matching
+  tolerance (case, whitespace, one leading ordinal).
+
 **Known limitation:** if a job's tasks ALL close on the forgetful (dispatch-only) path, the
 tailer still emits `all-done` and exits — a later `completed` todo is never observed, so that
 job logs zero calibration rows. Deliberate: the alternative (withholding `all-done`) would hang
 the job-end protocol, and the failure direction here is the safe one — no rows, never biased
 rows.
 
-Suite: 361 tests, warning-clean.
+Suite: 366 tests, warning-clean. No recorded live run behind this release yet — unit-verified
+plus the Linux/macOS/Windows CI matrix only (README Status, docs/test-log.md).
 
 ## [0.4.0] — 2026-08-14
 

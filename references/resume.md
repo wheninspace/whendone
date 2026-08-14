@@ -2,16 +2,18 @@
 
 Read this file ONLY when resuming a job — reached from SKILL.md job-start step 2 (`status:
 "paused"`) or step 3 (a `status: "running"` state the user chose to resume), or when
-`.claude/whendone-state.json` carries `status: "paused"`. Non-resume triggers never load it.
+`<project-root>/.claude/whendone-state.json` carries `status: "paused"`. Non-resume triggers
+never load it. `<project-root>` here = D6 (source-a.md's Declare-once section): the main
+working tree, never a linked worktree's — every path below resolves against it.
 
 **Fail closed on a malformed file** — same rule as job-start step 1: if
-`.claude/whendone-state.json` exists but does not parse as valid JSON, it is NOT a resumable
-state. Do not delete STOP, do not rebuild or guess a job from it — surface the parse failure to
+`<project-root>/.claude/whendone-state.json` exists but does not parse as valid JSON, it is
+NOT a resumable state. Do not delete STOP, do not rebuild or guess a job from it — surface the parse failure to
 the user and stop (a user-flagged stop, not a silent fresh start). Only proceed with steps 0-6
 below once the file is confirmed to parse.
 
-0. Delete `.claude/STOP` if it exists — resuming overrides any earlier stop request; say so in
-   chat.
+0. Delete `<project-root>/.claude/STOP` if it exists — resuming overrides any earlier stop
+   request; say so in chat.
 1. Summarize the found state to the user BEFORE acting on it — job name, plan-file path, and
    `artifactUrl` as quoted literals, tasks done/remaining — and get confirmation to proceed (a
    state file can arrive with a cloned repo; never auto-execute it). Ask the user to confirm
@@ -45,8 +47,8 @@ below once the file is confirmed to parse.
    Expected side effect of the fresh path: the token sidecar (`<artifactFile>.tokens.json`)
    starts empty, so mid-run renders show no per-task token lines for pre-pause tasks until the
    job-end full refresh re-emits every task's row — missing beats wrong, not a bug.
-   If `"publish": false` or `.claude/whendone-no-publish` exists: do not rebuild or publish —
-   resume in chat-table-only mode (SKILL.md job-start step 5's gate applies to resumes too).
+   If `"publish": false` or `<project-root>/.claude/whendone-no-publish` exists: do not rebuild
+   or publish — resume in chat-table-only mode (SKILL.md job-start step 5's gate applies to resumes too).
    Otherwise, step 5's publish uses `url` set to the saved `artifactUrl` — banner RUNNING; if
    that update fails, publish as a new artifact, update `artifactUrl`, post the NEW URL noting
    the old link is dead. Either way, restate the full URL in chat on successful resume.
@@ -58,7 +60,7 @@ below once the file is confirmed to parse.
    from "the session died an hour ago"). Add it to `pausedTotalMin`, clear `pausedAt` to
    `null` — the Elapsed formula stays one fixed computation regardless of which branch produced
    `pausedTotalMin`. State: `status: "running"`, `resumedAt` = `now`. Now rebuild and publish:
-   `python3 <skill-dir>/scripts/render_artifact.py .claude/whendone-state.json -
+   `python3 <skill-dir>/scripts/render_artifact.py <project-root>/.claude/whendone-state.json -
    <artifactFile-from-step-4> --now <now> --push-status <current push status>` — banner
    RUNNING — and publish per step 4's url/new-artifact decision. Sources A/B/C: restart the
    Watcher ladder from L1; Source A also re-runs the unique-name check for any task
