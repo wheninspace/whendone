@@ -1157,6 +1157,48 @@ def check_staleness(state_path, state, now, stale_min, args):
     return out
 
 
+def check_idle(state_path, state, now, stale_min, args):
+    """D5 (2026-08-14 rework): between-task dead zones -- transcript activity
+    can be busy while NO task is in flight (model working off-plan, between
+    subtasks) -- are invisible to check_staleness, which only watches running
+    tasks. Anchored on the last task BOUNDARY, not transcript activity, so a
+    session that's busy but drifting off-plan still fires. ONE event per gap,
+    persisted as idleNotifiedAt (additive job-level field; re-arms only when
+    the anchor moves past the last notification, i.e. a genuinely new gap).
+
+    Source A only (my ruling, not the original brief): Source B's between-
+    phase gaps are journal-driven and normal, with no todo to point the model
+    at, and Source C is mirror-only/never-calibrated -- both would misfire.
+    One-shot mode never calls this at all, matching its existing no-staleness
+    posture (see follow(), the only call site)."""
+    if state.get("source", "a") != "a":
+        return []
+    tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
+    if not tasks or any(t.get("status") == "running" for t in tasks) \
+            or not any(t.get("status") == "pending" for t in tasks):
+        return []
+    ends = [token_usage.parse_ts(t.get("finishedAt"))
+            for t in tasks if t.get("status") == "done"]
+    ends = [e for e in ends if e is not None]
+    anchor = max(ends) if ends else (token_usage.parse_ts(state.get("resumedAt"))
+                                     or token_usage.parse_ts(state.get("startedAt")))
+    if anchor is None:
+        return []
+    notified = token_usage.parse_ts(state.get("idleNotifiedAt"))
+    if notified is not None and notified >= anchor:
+        return []
+    idle = (now - anchor).total_seconds() / 60.0
+    if idle < stale_min:
+        return []
+    state["idleNotifiedAt"] = now.isoformat()
+    write_state(state_path, state)
+    ev = {"event": "idle", "idleMin": round(idle, 1),
+          "nextTask": next((t.get("name") for t in tasks
+                            if t.get("status") == "pending"), None)}
+    emit(ev)
+    return [ev]
+
+
 TERMINAL_RC = {"all-done": 0, "unsupported-source": 0, "no-op": 0,
                "ownership-lost": 3, "error": 2}
 
@@ -1198,6 +1240,7 @@ def follow(a):
             stale_evs = []
             if state is not None and state.get("status") == "running":
                 stale_evs = check_staleness(a.state, state, now, stale_min, a)
+                stale_evs += check_idle(a.state, state, now, stale_min, a)  # D5 (source gate lives inside)
             if (woke or stale_evs) and a.exit_on_event:
                 return 0
             cycles += 1

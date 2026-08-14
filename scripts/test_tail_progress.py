@@ -1375,6 +1375,146 @@ class FollowTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_idle_fires_through_follow_wiring(self):
+        # End-to-end proof that follow() actually calls check_idle -- anchor is
+        # a fixed past date (like test_stale_event_once_and_persisted) so the
+        # real datetime.now() the loop uses is always far enough past it.
+        env = SyncEnv([], mkstate(tasks=[
+            mktask(1, status="done", finishedAt="2026-01-01T00:00:00+00:00"),
+            mktask(2, status="pending"),
+        ]))
+        try:
+            rc, lines = self.run_follow(env, extra=("--max-cycles", "1",
+                                                    "--stale-min", "5"))
+            idles = [l for l in lines if l["event"] == "idle"]
+            self.assertEqual(len(idles), 1)
+            self.assertEqual(idles[0]["nextTask"], "task 2")
+            self.assertIsNotNone(env.state().get("idleNotifiedAt"))
+        finally:
+            env.cleanup()
+
+
+class IdleCheckTest(unittest.TestCase):
+    """D5 (2026-08-14 rework): job-level 'no task in flight' gap check. Direct
+    calls to check_idle (rather than through follow(), like check_staleness's
+    coverage above) so the anchor/notified timestamps are fully controlled --
+    the re-arm case (c) specifically needs a newer ANCHOR, not just a later
+    `now`, and only synthetic timestamps make that non-vacuous."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state_path = os.path.join(self.tmp.name, "whendone-state.json")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _now(self, iso):
+        return tp.token_usage.parse_ts(iso)
+
+    def test_a_fires_once_past_threshold_and_persists(self):
+        anchor = "2026-07-18T09:00:00+00:00"
+        now = self._now("2026-07-18T09:06:00+00:00")   # 6 min > stale_min=5
+        state = mkstate(tasks=[mktask(1, status="done", finishedAt=anchor),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(len(evs), 1)
+        ev = evs[0]
+        self.assertEqual(ev["event"], "idle")
+        self.assertEqual(ev["nextTask"], "task 2")
+        self.assertAlmostEqual(ev["idleMin"], 6.0, places=1)
+        self.assertEqual(state["idleNotifiedAt"], now.isoformat())
+        self.assertEqual(tp.load_state(self.state_path)["idleNotifiedAt"],
+                         now.isoformat())
+
+    def test_b_second_cycle_same_anchor_does_not_repeat(self):
+        anchor = "2026-07-18T09:00:00+00:00"
+        now1 = self._now("2026-07-18T09:06:00+00:00")
+        state = mkstate(tasks=[mktask(1, status="done", finishedAt=anchor),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        first = tp.check_idle(self.state_path, state, now1, 5, None)
+        self.assertEqual(len(first), 1)
+        now2 = self._now("2026-07-18T09:30:00+00:00")   # later `now`, same anchor
+        second = tp.check_idle(self.state_path, state, now2, 5, None)
+        self.assertEqual(second, [])
+
+    def test_c_newer_anchor_reopens_a_fresh_gap(self):
+        anchor1 = "2026-07-18T09:00:00+00:00"
+        now1 = self._now("2026-07-18T09:06:00+00:00")   # fires; idleNotifiedAt=09:06
+        state = mkstate(tasks=[mktask(1, status="done", finishedAt=anchor1),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        first = tp.check_idle(self.state_path, state, now1, 5, None)
+        self.assertEqual(len(first), 1)
+        # A LATER task finishes at 09:10 -- strictly after the 09:06 notified
+        # stamp, i.e. a genuinely newer anchor, not just a later `now`.
+        state["tasks"].append(mktask(3, status="done",
+                                      finishedAt="2026-07-18T09:10:00+00:00"))
+        now2 = self._now("2026-07-18T09:20:00+00:00")   # 10 min past the new anchor
+        second = tp.check_idle(self.state_path, state, now2, 5, None)
+        self.assertEqual(len(second), 1)
+        self.assertAlmostEqual(second[0]["idleMin"], 10.0, places=1)
+        self.assertEqual(state["idleNotifiedAt"], now2.isoformat())
+
+    def test_d_running_task_never_fires(self):
+        state = mkstate(tasks=[mktask(1, status="running",
+                                       startedAt="2026-01-01T00:00:00+00:00"),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        now = self._now("2026-07-18T09:06:00+00:00")
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(evs, [])
+
+    def test_e_all_done_never_fires(self):
+        state = mkstate(tasks=[mktask(1, status="done",
+                                       finishedAt="2026-01-01T00:00:00+00:00")])
+        tp.write_state(self.state_path, state)
+        now = self._now("2026-07-18T09:06:00+00:00")
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(evs, [])
+
+    def test_f_fresh_job_anchors_on_job_started_at(self):
+        state = mkstate(startedAt="2026-07-18T09:00:00+00:00",
+                        tasks=[mktask(1, status="pending")])
+        tp.write_state(self.state_path, state)
+        now = self._now("2026-07-18T09:06:00+00:00")   # 6 min > stale_min=5
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(len(evs), 1)
+        self.assertEqual(evs[0]["nextTask"], "task 1")
+
+    def test_anchor_prefers_resumed_at_over_started_at(self):
+        state = mkstate(startedAt="2026-01-01T00:00:00+00:00",
+                        resumedAt="2026-07-18T09:00:00+00:00",
+                        tasks=[mktask(1, status="pending")])
+        tp.write_state(self.state_path, state)
+        # If startedAt (way in the past) were used instead, this would fire
+        # with a huge idleMin instead of ~6.
+        now = self._now("2026-07-18T09:06:00+00:00")
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(len(evs), 1)
+        self.assertAlmostEqual(evs[0]["idleMin"], 6.0, places=1)
+
+    def test_source_b_running_job_never_emits_idle(self):
+        # My ruling (D5 gate): Source B's between-phase gaps are normal
+        # (journal-driven, no todo to point the model at) -- must never fire.
+        state = mkstate(source="b", tasks=[
+            mktask(1, status="done", finishedAt="2026-01-01T00:00:00+00:00"),
+            mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        now = self._now("2026-07-18T09:06:00+00:00")
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(evs, [])
+
+    def test_source_c_running_job_never_emits_idle(self):
+        state = mkstate(source="c", tasks=[
+            mktask(1, status="done", finishedAt="2026-01-01T00:00:00+00:00"),
+            mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        now = self._now("2026-07-18T09:06:00+00:00")
+        evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(evs, [])
+
 
 class SourceCFollowTest(unittest.TestCase):
     def _follow(self, env, extra=()):
