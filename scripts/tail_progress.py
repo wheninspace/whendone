@@ -334,20 +334,55 @@ def mirror_c(snapshot, first_started, first_finished):
     return tasks
 
 
+def _delegated_min(spans):
+    """D3: agent-minutes summed over matched dispatch->result spans — DISPLAY
+    metadata only. Never the calibrated actual (that is the full task span);
+    parallel spans deliberately double-count, since that is what 'agent
+    minutes spent' means. None when there is nothing observed to report."""
+    total = 0.0
+    for s, e in spans or []:
+        a, b = token_usage.parse_ts(s), token_usage.parse_ts(e)
+        if a and b and b >= a:
+            total += (b - a).total_seconds() / 60.0
+    return round(total, 1) if total > 0 else None
+
+
 def plan_transitions(state, obs):
-    starts, completions = [], []
+    """D1: the todo/TaskUpdate `completed` transition is the ONLY close
+    authority — a subagent result ends a delegated span, never the task (the
+    2026-08-14 bug: every task closed on its first implementer's result, and
+    the lead's own review/fix/verify/commit time vanished from the row).
+
+    D2: a task with NO observed todo transition at all still has to LOOK done
+    once its dispatches are all back, or a forgetful model's job never shows
+    progress — so it gets a revertible display close (`displays`), which
+    NEVER writes a calibration row. A later matching dispatch reverts it
+    (`reopens`, same B4 posture as Source B); later todo evidence upgrades it
+    to a confirmed close (`completions`), and the row is appended then, once.
+
+    Returns (starts, completions, displays, reopens)."""
+    starts, completions, displays, reopens = [], [], [], []
     for t in state.get("tasks", []):
-        if not isinstance(t, dict) or t.get("status") == "done":
+        if not isinstance(t, dict):
             continue
         o = obs.get(t.get("nr"))
+        if t.get("status") == "done":
+            if t.get("unconfirmed") and o:          # display close: still provisional
+                if o.get("todoFinishedAt"):
+                    completions.append((t, o.get("startedAt"), o["todoFinishedAt"], o))
+                elif o.get("open"):
+                    reopens.append(t)
+            continue                                # done-is-done for confirmed closes
         if not o:
             continue
-        if o.get("finishedAt"):
-            completions.append((t, o.get("startedAt"), o["finishedAt"]))
+        if o.get("todoFinishedAt"):
+            completions.append((t, o.get("startedAt"), o["todoFinishedAt"], o))
+        elif not o.get("todoSeen") and o.get("spans") and not o.get("open"):
+            displays.append((t, o))
         elif o.get("startedAt") and t.get("status") == "pending":
             starts.append((t, o["startedAt"]))
     completions.sort(key=lambda c: c[2])
-    return starts, completions
+    return starts, completions, displays, reopens
 
 
 def transcript_files(state, projects_dir):
@@ -395,23 +430,55 @@ def sync_cycle(state_path, now, args):
         emit(out[-1])
 
     idx = name_index(state.get("tasks"))
-    starts, completions = plan_transitions(state, observe(events, idx))
+    obs = observe(events, idx)
+    # D1: the dispatch's `model` alias is the only model evidence a subagent task
+    # ever gives us. The tailer is its single writer (declared model wins, done
+    # tasks are frozen), and it is never a wake by itself — it rides the next
+    # real transition's render.
+    model_changed = False
+    for t in state.get("tasks", []):
+        o = obs.get(t.get("nr")) if isinstance(t, dict) else None
+        if o and o.get("model") and isinstance(t, dict) \
+                and not t.get("model") and t.get("status") != "done":
+            t["model"] = o["model"]
+            model_changed = True
+    if model_changed:
+        write_state(state_path, state)
+
+    starts, completions, displays, reopens = plan_transitions(state, obs)
+    for t in reopens:                       # revertible display close (B4 posture)
+        t["status"] = "running"
+        t["finishedAt"] = None
+        t.pop("unconfirmed", None)
+        write_state(state_path, state)
     for t, started in starts:
         t["status"] = "running"
         t["startedAt"] = started
         write_state(state_path, state)
     just_done = []
-    for t, started, finished in completions:
-        handle_completion(state_path, state, t, started, finished, args)
+    for t, started, finished, o in completions:
+        handle_completion(state_path, state, t, started, finished, args,
+                          spans=o.get("spans"))
+        just_done.append(t.get("name"))
+    for t, o in displays:                   # D2: display state, NEVER a row
+        t["status"] = "done"
+        t["unconfirmed"] = True
+        if not t.get("startedAt") and o.get("startedAt"):
+            t["startedAt"] = o["startedAt"]
+        t["finishedAt"] = o["spans"][-1][1]
+        dm = _delegated_min(o.get("spans"))
+        if dm is not None:
+            t["delegatedMin"] = dm
+        write_state(state_path, state)
         just_done.append(t.get("name"))
 
-    changed = bool(starts or completions)
+    changed = bool(starts or completions or displays or reopens)
     args._last_ts = last_ts                      # Task 6's staleness input
     # D11: all-done bypasses the debounce gate outright (and finish_cycle's own
     # render call catches a same-cycle slipAlert too, since etaAlertSent gates
     # on job-level state.status, not on task-level done==total) — only a plain
     # progress completion stays subject to _render_ok.
-    all_done_now = bool(completions) and bool(state.get("tasks")) and all(
+    all_done_now = bool(completions or displays) and bool(state.get("tasks")) and all(
         isinstance(t, dict) and t.get("status") == "done" for t in state["tasks"])
     return _maybe_finish(state_path, state, now, args, out, changed, just_done, all_done_now)
 
@@ -736,14 +803,23 @@ def group_row(state, group_id):
             "startedAt": min(starts), "finishedAt": max(ends)}
 
 
-def handle_completion(state_path, state, t, started, finished, args):
-    """Today's checkpoint order, in code: (b) done-marker -> (b2) tokens+alias ->
+def handle_completion(state_path, state, t, started, finished, args, spans=None):
+    """A CONFIRMED (todo-evidenced) close, D1 — the only path that ever logs a
+    calibration row. `started`/`finished` are the full task span (D3: review
+    passes, fix rounds and the lead's own edit/test/commit are the task's real
+    cost); `spans` are the matched delegated spans, display metadata only.
+
+    Today's checkpoint order, in code: (b) done-marker -> (b2) tokens+alias ->
     (c) append -> (d) actualMin. Every step past (b) is fail-soft."""
     if state.get("source") == "c":
         return          # spec §5.1: Source C never logs calibration — hard guard
 
     # (b) durable done-marker FIRST
     t["status"] = "done"
+    t.pop("unconfirmed", None)              # a todo close is confirmed by definition
+    dm = _delegated_min(spans)
+    if dm is not None:
+        t["delegatedMin"] = dm
     if started and not t.get("startedAt"):
         t["startedAt"] = started
     t["finishedAt"] = finished
@@ -757,13 +833,20 @@ def handle_completion(state_path, state, t, started, finished, args):
     except Exception:
         tokens = None
     args._held_tokens = (t.get("nr"), tokens)          # Task 5's render reuses this
-    if tokens and tokens.get("available") and _is_alias(t.get("model")):
+    if tokens and tokens.get("available"):
         entries = tokens.get("tasks") or []
         models = (entries[0].get("models") or []) if entries else []
         top = models[0].get("id") if models else None
-        if isinstance(top, str) and t["model"] in top:
-            t["model"] = top
-            write_state(state_path, state)
+        if isinstance(top, str):
+            if _is_alias(t.get("model")) and t["model"] in top:
+                t["model"] = top
+                write_state(state_path, state)
+            elif t.get("model") is None and len(models) == 1:
+                # no declared/dispatch model at all: a task window that saw exactly
+                # ONE model is unambiguous evidence. Two or more -> stays null
+                # ("unknown" in the row) rather than guessing the busiest one.
+                t["model"] = top
+                write_state(state_path, state)
 
     # (c) append — individual row for sequential tasks; group members wait for
     # the synthetic row when the LAST member lands. Source-c jobs never log
@@ -778,6 +861,8 @@ def handle_completion(state_path, state, t, started, finished, args):
                        model=t.get("model") or "unknown")
             if t.get("effort") is not None:
                 row["effort"] = t["effort"]
+            if isinstance(t.get("delegatedMin"), (int, float)):
+                row["delegatedMin"] = t["delegatedMin"]   # D3: alongside, never instead
     else:
         g = group_row(state, t.get("group"))
         if g is not None:

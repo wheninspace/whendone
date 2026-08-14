@@ -248,7 +248,8 @@ class TaskToolsSynthesisTest(unittest.TestCase):
         ])
         obs = tp.observe(events, tp.name_index([{"nr": 1, "name": "build tailer"}]))
         self.assertEqual(obs[1]["startedAt"], tp.token_usage.parse_ts(T1).isoformat())
-        self.assertEqual(obs[1]["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+        self.assertEqual(obs[1]["todoFinishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+        self.assertTrue(obs[1]["todoSeen"])       # D1: TaskUpdate closes, same as TodoWrite
 
 
 def mkstate(**kw):
@@ -674,8 +675,11 @@ class CompletionPipelineTest(unittest.TestCase):
     def setUp(self):
         self.calib = tempfile.TemporaryDirectory()
         os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+        self.env = None                    # only the write_transcript/sync tests use it
 
     def tearDown(self):
+        if self.env is not None:
+            self.env.cleanup()
         os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name   # restore module default
         self.calib.cleanup()
 
@@ -685,6 +689,144 @@ class CompletionPipelineTest(unittest.TestCase):
             return []
         with open(p, encoding="utf-8") as f:
             return [json.loads(l) for l in f if l.strip()]
+
+    def write_transcript(self, entries):
+        """First call builds the env (ONE declared task, "Alpha"); later calls
+        rewrite the same transcript in place, so a test can drive several sync
+        passes over a growing transcript the way the live tailer sees it."""
+        if self.env is None:
+            self.env = SyncEnv(entries, mkstate(tasks=[mktask(1, name="Alpha")]))
+        else:
+            write_jsonl(os.path.join(self.env.projects, "proj", "sidA.jsonl"), entries)
+
+    def sync(self):
+        rc, lines = self.env.run_one_shot()
+        self.assertEqual(rc, 0)
+        return self.env.state(), lines
+
+    # --- D1/D2/D3: close authority (the 2026-08-14 attribution rework) ---
+
+    def test_result_alone_does_not_close_todo_evidenced_task(self):
+        # in_progress todo + matched dispatch + result, NO completed todo
+        self.write_transcript([
+            todo_entry(T0, [item("Alpha", "in_progress")]),
+            dispatch_entry(T1, "tu-1", "Alpha"),
+            result_entry(T2, "tu-1")])
+        state, events = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "running")          # NOT done
+        self.assertIsNone(t.get("actualMin"))
+        self.assertEqual(self.rows(), [])                 # no row — the 2026-08-14 bug
+
+    def test_todo_completed_closes_and_appends_full_span(self):
+        self.write_transcript([
+            todo_entry(T0, [item("Alpha", "in_progress")]),
+            dispatch_entry(T1, "tu-1", "Alpha"),
+            result_entry(T2, "tu-1"),
+            todo_entry(T3, [item("Alpha", "completed")], mid="m2")])
+        state, events = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "done")
+        self.assertNotIn("unconfirmed", t)
+        self.assertEqual(t["delegatedMin"], 7.0)          # T1->T2, display metadata
+        rows = self.rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        self.assertEqual(rows[0]["actualMin"], 20.0)      # D3: FULL span, not the 7
+        self.assertEqual(rows[0]["delegatedMin"], t["delegatedMin"])
+
+    def test_dispatch_only_task_display_closes_without_row(self):
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1")])
+        state, events = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "done")
+        self.assertTrue(t["unconfirmed"])
+        self.assertIsNone(t.get("actualMin"))
+        self.assertEqual(t["delegatedMin"], 5.0)
+        self.assertEqual(self.rows(), [])                 # D2: no data beats biased data
+        self.assertEqual(events[-1]["event"], "all-done")  # still LOOKS done
+
+    def test_late_matching_dispatch_reopens_unconfirmed_close(self):
+        # first cycle: display close; second cycle: new matching dispatch in flight
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1")])
+        state, _ = self.sync()
+        self.assertEqual(state["tasks"][0]["status"], "done")
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1"),
+                               dispatch_entry(T2, "tu-2", "Alpha")])
+        state, _ = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "running")
+        self.assertIsNone(t["finishedAt"])
+        self.assertNotIn("unconfirmed", t)
+        self.assertEqual(self.rows(), [])                 # never any row on this path
+
+    def test_todo_close_upgrades_unconfirmed_and_appends_once(self):
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1")])
+        state, _ = self.sync()
+        self.assertTrue(state["tasks"][0]["unconfirmed"])
+        self.assertEqual(self.rows(), [])
+        self.write_transcript([dispatch_entry(T0, "tu-1", "Alpha"),
+                               result_entry(T1, "tu-1"),
+                               todo_entry(T2, [item("Alpha", "completed")])])
+        state, _ = self.sync()
+        t = state["tasks"][0]
+        self.assertEqual(t["status"], "done")
+        self.assertNotIn("unconfirmed", t)                # upgraded to a confirmed close
+        rows = self.rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+        self.assertEqual(rows[0]["delegatedMin"], 5.0)
+        self.sync()                                       # third pass: exactly once
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_dispatch_model_alias_lands_on_task(self):
+        self.write_transcript([todo_entry(T0, [item("Alpha", "in_progress")]),
+                               dispatch_entry(T1, "tu-1", "Alpha", model="sonnet")])
+        state, events = self.sync()
+        self.assertEqual(state["tasks"][0]["model"], "sonnet")
+        self.assertEqual(state["tasks"][0]["status"], "running")
+
+    def test_declared_model_is_never_overwritten_by_dispatch_alias(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       dispatch_entry(T1, "tu-1", "task 1", model="sonnet")],
+                      mkstate(tasks=[mktask(1, model="haiku")]))
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["model"], "haiku")
+        finally:
+            env.cleanup()
+
+    def test_null_model_adopts_a_unique_task_window_model(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       usage_entry(T1, "claude-sonnet-4-5-20250929", 80, "m-u3"),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1, model=None)]))
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["model"],
+                             "claude-sonnet-4-5-20250929")
+            self.assertEqual(self.rows()[0]["model"], "claude-sonnet-4-5-20250929")
+        finally:
+            env.cleanup()
+
+    def test_null_model_stays_unknown_when_window_is_ambiguous(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       usage_entry(T1, "claude-sonnet-4-5-20250929", 80, "m-u3"),
+                       usage_entry(T1, "claude-haiku-4-5-20251001", 40, "m-u4"),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1, model=None)]))
+        try:
+            env.run_one_shot()
+            self.assertIsNone(env.state()["tasks"][0]["model"])   # two models -> no guess
+            self.assertEqual(self.rows()[0]["model"], "unknown")
+        finally:
+            env.cleanup()
 
     def test_row_appended_with_transcript_times_and_resolved_alias(self):
         env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
@@ -729,12 +871,21 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
     def test_group_members_log_one_synthetic_row(self):
+        # D1: the results end the delegated spans; the todo transitions are what
+        # actually close the two members (the dispatch/result pairs stay in the
+        # fixture so the group row is exercised with delegated spans present).
         tasks = [mktask(1, name="member a", group="g1", estimateMin=10, rawEstimateMin=8),
                  mktask(2, name="member b", group="g1", estimateMin=20, rawEstimateMin=25)]
-        env = SyncEnv([dispatch_entry(T0, "tu-a", "member a"),
+        env = SyncEnv([todo_entry(T0, [item("member a", "in_progress"),
+                                       item("member b", "in_progress")], mid="m1"),
+                       dispatch_entry(T0, "tu-a", "member a"),
                        dispatch_entry(T0, "tu-b", "member b"),
                        result_entry(T1, "tu-a"),
-                       result_entry(T2, "tu-b")],
+                       todo_entry(T1, [item("member a", "completed"),
+                                       item("member b", "in_progress")], mid="m2"),
+                       result_entry(T2, "tu-b"),
+                       todo_entry(T2, [item("member a", "completed"),
+                                       item("member b", "completed")], mid="m3")],
                       mkstate(tasks=tasks))
         try:
             env.run_one_shot()
