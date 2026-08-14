@@ -102,7 +102,7 @@ def build_row(obj):
     # wall/max-adjusted and wall/sum-adjusted medians. Optional (omitted for ordinary
     # category rows and pre-M22 callers) but must be numeric/finite when present —
     # rejected loudly, same as rawEstimateMin, rather than silently dropped or coerced.
-    for key in ("maxAdjusted", "sumAdjusted"):
+    for key in ("maxAdjusted", "sumAdjusted", "delegatedMin"):
         value = obj.get(key)
         if value is not None:
             if (not isinstance(value, (int, float)) or isinstance(value, bool)

@@ -214,6 +214,35 @@ class TestHardening(unittest.TestCase):
         self.assertNotIn("wall-clock / max-adjusted", out)
         self.assertNotIn("wall-clock / sum-adjusted", out)
 
+    def test_delegated_min_field_ignored_by_parser(self):
+        # delegatedMin is an optional additive field for future use; parse_row must
+        # tolerate it and ignore it (not use it in factor calculations).
+        # Two identical rows except one carries delegatedMin should produce the same
+        # factor contribution.
+        with_delegated = row(delegatedMin=4.4)
+        without_delegated = row()
+        status1, r1 = cs.parse_row(with_delegated)
+        status2, r2 = cs.parse_row(without_delegated)
+        self.assertEqual(status1, "ok")
+        self.assertEqual(status2, "ok")
+        # Same category, same estimate, same actual -> same ratio
+        self.assertEqual(r1["category"], r2["category"])
+        self.assertEqual(r1["est"], r2["est"])
+        self.assertEqual(r1["act"], r2["act"])
+        # Run both through the summary and verify they contribute identically
+        out1 = run_main([with_delegated])
+        out2 = run_main([without_delegated])
+        # Extract the factor value for "testing" category from both
+        for line in out1.splitlines():
+            if line.startswith("| testing |"):
+                factor1 = float(line.split("|")[2].strip())
+                break
+        for line in out2.splitlines():
+            if line.startswith("| testing |"):
+                factor2 = float(line.split("|")[2].strip())
+                break
+        self.assertAlmostEqual(factor1, factor2, places=5)
+
     def test_writer_to_reader_round_trip_reports_wall_over_max_and_sum_adjusted(self):
         # M22 (round 2 review fix): the reader-level test above passed even when
         # append_calibration.py's build_row() dropped maxAdjusted/sumAdjusted entirely

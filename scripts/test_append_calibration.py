@@ -326,6 +326,20 @@ class TestOptionalFields(unittest.TestCase):
             self.assertIn("maxAdjusted", err)
             self.assertFalse(os.path.exists(os.path.join(data_dir, "calibration.jsonl")))
 
+    def test_delegated_min_copied_when_numeric(self):
+        row, err = ac.build_row(dict(obj(), delegatedMin=4.4))
+        self.assertIsNone(err)
+        self.assertEqual(row["delegatedMin"], 4.4)
+
+    def test_delegated_min_rejected_when_bad(self):
+        for bad in ("4", True, float("nan")):
+            row, err = ac.build_row(dict(obj(), delegatedMin=bad))
+            self.assertIsNone(row, bad)
+
+    def test_absent_delegated_min_omitted(self):
+        row, err = ac.build_row(dict(obj()))
+        self.assertNotIn("delegatedMin", row)
+
 
 class AppendObjTest(unittest.TestCase):
     def test_appends_valid_dict(self):
