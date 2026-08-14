@@ -181,6 +181,23 @@ def task_rows(tasks, tmap, now, job_status=None):
             if t.get("effort"):
                 line = "%s · %s effort" % (line, t["effort"])
             name += '<br><span class="dim">%s</span>' % esc(line)
+        if t.get("unconfirmed"):
+            # D9: a display-close with no todo transition ever observed — no
+            # calibration row was logged for this task (see formulas.md). Mark it
+            # dim rather than hide it: the artifact must stay honest about which
+            # closes are provisional.
+            name += '<br><span class="dim">unconfirmed — closed on subagent result</span>'
+        dm = t.get("delegatedMin")
+        if status == "done" and isinstance(dm, (int, float)) \
+                and not isinstance(dm, bool):
+            # D9: delegated = agent-minutes over matched dispatch->result spans
+            # (Task 3); with parallel matched dispatches this can exceed the
+            # task's own wall span, so lead/review clamps at 0 rather than going
+            # negative (formulas.md's "Orchestration line & delegated split").
+            a0 = display_actual(t)
+            if a0 is not None:
+                name += ('<br><span class="dim">delegated %s · lead/review %s</span>'
+                         % (esc(fmt_min_s(dm)), esc(fmt_min_s(max(a0 - dm, 0)))))
         if isinstance(t.get("agentsDone"), int) and (
                 isinstance(t.get("agentsExpected"), int)
                 or isinstance(t.get("agentsStarted"), int)):
@@ -363,16 +380,30 @@ def render(state, tokens, summary, now, push_status, superseded):
         wf_line = '<p class="dim">%s</p>\n' % esc(
             "Workflow agents: %s/%s finished" % (d, state["wfAgentsStarted"]))
 
+    # D9 (invariant D0): every elapsed minute not inside a task's own span belongs
+    # to no task at all — between-subtask orchestration (dispatching, reading
+    # results, deciding next steps). Source C has no calibrated elapsed baseline
+    # to subtract against (references/source-c.md), so it never gets this line.
+    orch = 0.0
+    if el is not None and state.get("source") != "c":
+        orch = max(0.0, el - _span_union_min(tasks, now))
+    orch_line = ""
+    if orch >= 1:
+        orch_line = ('<p class="dim">%s</p>\n'
+                     % esc("Between-subtask orchestration: %s" % fmt_min_s(orch)))
+
     page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
-            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s"
+            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s%s"
             % (esc("WhenDone: " + job), CSS, banner, eta_block,
-               task_rows(tasks, tmap, now, status), wf_line, pause_box, footer))
+               task_rows(tasks, tmap, now, status), wf_line, orch_line,
+               pause_box, footer))
 
     stat = {"ok": True, "status": "superseded" if superseded else status,
             "etaText": etxt, "slipAlert": bool(slip_alert),
             "estimateTotalMin": round(total_estimate(us), 1),
-            "done": done_count, "total": total}
+            "done": done_count, "total": total,
+            "orchestrationMin": round(orch, 1)}
     if slip_total is not None:
         stat["slipTotalMin"] = round(slip_total, 1)
     return page, stat
@@ -534,6 +565,36 @@ def elapsed_min(state, now):
         ends = [e for e in ends if e]
         end = max(ends) if ends else now
     return max(0.0, minutes(start, end) - paused_total)
+
+
+def _span_union_min(tasks, now):
+    """D9: merged-interval minutes over every task with a parseable startedAt —
+    the span-union half of "orchestration = elapsed - span-union" (formulas.md).
+    Union, not sum, so a parallel group's overlapping wall-clock spans are never
+    double-counted. end = finishedAt if parseable, else `now` for a still-running
+    task (so orchestration keeps accruing live); a task with no startedAt (never
+    began) is skipped entirely — it contributes no occupied time either way."""
+    ivals = []
+    for t in tasks:
+        s = parse_ts(t.get("startedAt"))
+        if s is None:
+            continue
+        e = parse_ts(t.get("finishedAt")) or (now if t.get("status") == "running" else None)
+        if e is None or e < s:
+            continue
+        ivals.append((s, e))
+    ivals.sort()
+    total, cur_s, cur_e = 0.0, None, None
+    for s, e in ivals:
+        if cur_e is None or s > cur_e:
+            if cur_e is not None:
+                total += minutes(cur_s, cur_e)
+            cur_s, cur_e = s, e
+        elif e > cur_e:
+            cur_e = e
+    if cur_e is not None:
+        total += minutes(cur_s, cur_e)
+    return total
 
 
 def task_band(t, summary):

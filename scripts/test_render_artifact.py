@@ -758,5 +758,68 @@ class AgentCounterDisplayTest(unittest.TestCase):
         self.assertIn("Workflow agents: 0/12 finished", page)
 
 
+class DelegatedSplitAndOrchestrationTest(unittest.TestCase):
+    """Task 6 (D9 — artifact honesty): per-task delegated/lead split, the
+    `unconfirmed` marker, and the job-level between-subtask orchestration line.
+    Lettered per the task-6 brief's test plan."""
+
+    def test_a_delegated_and_lead_review_split(self):
+        # done task, 30-min wall span, 4.4 agent-minutes delegated.
+        s = state(tasks=[task(1, status="done", actualMin=30.0, delegatedMin=4.4)])
+        _, page, _ = run_cli(s)
+        self.assertIn("delegated 4 m 24 s", page)
+        self.assertIn("lead/review 25 m 36 s", page)
+
+    def test_b_unconfirmed_marker_in_name_cell(self):
+        s = state(tasks=[task(1, status="done", actualMin=10.0, unconfirmed=True)])
+        _, page, _ = run_cli(s)
+        self.assertIn("unconfirmed", page)
+
+    def test_c_orchestration_line_between_sequential_tasks(self):
+        # job spans 35 elapsed min; two 10-min sequential (non-overlapping) task
+        # spans occupy 20 min union -> orchestration ~= 15.
+        s = state(status="running", startedAt="2026-07-18T09:00:00+02:00",
+                  tasks=[task(1, status="done",
+                              startedAt="2026-07-18T09:05:00+02:00",
+                              finishedAt="2026-07-18T09:15:00+02:00"),
+                         task(2, status="done",
+                              startedAt="2026-07-18T09:20:00+02:00",
+                              finishedAt="2026-07-18T09:30:00+02:00")])
+        _, page, out = run_cli(s, now="2026-07-18T09:35:00+02:00")
+        self.assertIn("Between-subtask orchestration:", page)
+        self.assertAlmostEqual(json.loads(out)["orchestrationMin"], 15.0, places=1)
+
+    def test_d_overlapping_spans_unioned_not_summed(self):
+        # two overlapping 20-min spans (9:00-9:20, 9:10-9:30) union to 30 min,
+        # NOT the 40-min sum a naive sum-of-durations would give. elapsed 40 min
+        # -> orchestration 10 if unioned correctly, 0 if wrongly summed.
+        s = state(status="running", startedAt="2026-07-18T09:00:00+02:00",
+                  tasks=[task(1, status="done", group=1,
+                              startedAt="2026-07-18T09:00:00+02:00",
+                              finishedAt="2026-07-18T09:20:00+02:00"),
+                         task(2, status="done", group=1,
+                              startedAt="2026-07-18T09:10:00+02:00",
+                              finishedAt="2026-07-18T09:30:00+02:00")])
+        _, page, out = run_cli(s, now="2026-07-18T09:40:00+02:00")
+        self.assertAlmostEqual(json.loads(out)["orchestrationMin"], 10.0, places=1)
+
+    def test_e_no_started_tasks_no_orchestration_line(self):
+        # job just started (elapsed 0), no task has ever started -> nothing to
+        # attribute, no line, orchestrationMin 0 (never a phantom positive value).
+        s = state(status="running", startedAt=NOW, tasks=[task(1)])
+        _, page, out = run_cli(s, now=NOW)
+        self.assertNotIn("Between-subtask orchestration", page)
+        self.assertIn(json.loads(out).get("orchestrationMin", 0), (0, 0.0))
+
+    def test_f_lead_review_clamped_at_zero_never_negative(self):
+        # delegatedMin (10) exceeds the task's own actual wall span (5) — this is
+        # legitimate under parallel matched dispatches; lead/review must clamp at
+        # 0, never go negative.
+        s = state(tasks=[task(1, status="done", actualMin=5.0, delegatedMin=10.0)])
+        _, page, _ = run_cli(s)
+        self.assertIn("delegated 10 m", page)
+        self.assertIn("lead/review 0 s", page)
+
+
 if __name__ == "__main__":
     unittest.main()
