@@ -53,9 +53,10 @@ task done, after its review/fix cycle. Subagent results never close a task: disp
 the artifact) — name every dispatch that's part of task N's work (implementer, review, fix
 round) with task N's exact `name`; differently-named dispatches are merely invisible to the
 split. A task whose todos you never touch falls back to closing on its last matched subagent
-result, marked `unconfirmed`, and logs NO calibration row — but a later matching dispatch still
-in flight reopens it back to `running` regardless of whether todo evidence has since arrived,
-ending the provisional close and routing the task toward a proper confirmed close. Renaming
+result, marked `unconfirmed`, and logs NO calibration row — converted to a confirmed close (row
+appended, once) the moment todo `completed` evidence appears; absent that, a later matched
+dispatch still in flight reopens it to `running` instead, even past an `in_progress` sighting.
+Renaming
 mid-job breaks matching — update the state file and todo list together, with the watcher
 stopped, if a rename is needed.
 

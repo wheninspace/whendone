@@ -1002,8 +1002,10 @@ to the todo/TaskUpdate `completed` transition; delegated/lead-review split; `unc
 display closes; the `idle`/`publishLag` wake events; D6 project-root pinning). Updated
 `references/source-a.md` (rawEstimateMin's full-lifecycle scope; the todo-transition close
 authority replacing the old dispatch-naming-decides-closure text; the shipped reopen
-contract — any in-flight matched dispatch reopens an `unconfirmed` task, not only the plan's
-draft "no todo evidence yet" condition; the `idle`/`publishLag` wake-table rows; the D6
+contract — an `unconfirmed` task converts to a confirmed close the moment todo `completed`
+evidence appears, and only absent that does a later matched dispatch still in flight reopen
+it, narrower than the plan's draft "no todo evidence at all" condition; the `idle`/
+`publishLag` wake-table rows; the D6
 project-root definition at state-file-write time; one line on worktree removal ordering at
 job end), `references/file-formats.md` (additive job fields `lastPublishedAt`/
 `lastChangedEventAt`/`idleNotifiedAt` and per-task `delegatedMin`/`unconfirmed`, both pointed

@@ -491,8 +491,10 @@ Nine movements, each under an identical raw `tiktoken cl100k_base` sum unless no
    authority (todo/TaskUpdate `completed` transition only, never a subagent result;
    dispatch-naming scope now feeds a *delegated span* rather than deciding closure; the
    forgetful-fallback → `unconfirmed`/no-calibration-row rule; the shipped reopen contract —
-   any in-flight matched dispatch reopens an `unconfirmed` task, not only the plan's draft
-   "no todo evidence yet" condition), `rawEstimateMin`'s full-lifecycle scope, the two new
+   an `unconfirmed` task converts to a confirmed close the moment todo `completed` evidence
+   appears, and only absent that does a later matched dispatch still in flight reopen it,
+   narrower than the plan's draft "no todo evidence at all" condition since it also covers an
+   observed `in_progress` with no `completed` yet), `rawEstimateMin`'s full-lifecycle scope, the two new
    Source-A-only wake rows (`idle`, `publishLag`), and D6 project-root pinning under
    worktrees (one statement in source-a.md's Declare-once section, pointed at from SKILL.md
    and file-formats.md rather than restated): +773 → 10,558 raw (SKILL.md 3,318 +
