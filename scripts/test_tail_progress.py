@@ -37,6 +37,16 @@ def result_entry(ts, tool_id):
                                      "content": "done"}]}}
 
 
+def artifact_entry(ts, file_path, description="WhenDone progress monitor"):
+    """D4: the model's OWN Artifact tool_use — the publish backstop's evidence."""
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"id": "m-art-" + ts, "usage": {},
+                        "content": [{"type": "tool_use", "id": "tu-art-" + ts,
+                                     "name": "Artifact",
+                                     "input": {"file_path": file_path,
+                                               "description": description}}]}}
+
+
 def item(content, status):
     return {"content": content, "status": status, "activeForm": content}
 
@@ -131,6 +141,17 @@ class ExtractEventsTest(unittest.TestCase):
         events, last_ts = tp.extract_events(["/nonexistent/x.jsonl"])
         self.assertEqual(events, [])
         self.assertIsNone(last_ts)
+
+    def test_extracts_artifact_tool_use(self):
+        # D4: the model's own Artifact publish is now observable evidence, not
+        # just an instruction the model follows silently.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, [artifact_entry(T0, "/tmp/out/artifact.html", "WhenDone progress monitor")])
+            events, _ = tp.extract_events([p])
+            self.assertEqual(events[0][1], "artifact")
+            self.assertEqual(events[0][2], {"file_path": "/tmp/out/artifact.html",
+                                            "description": "WhenDone progress monitor"})
 
 
 def taskcreate_entry(ts, tool_id, subject):
@@ -1991,6 +2012,240 @@ class StopRequestedTest(unittest.TestCase):
         try:
             rc, lines = env.run_one_shot()
             self.assertNotIn("stop-requested", [e["event"] for e in lines])
+        finally:
+            env.cleanup()
+
+
+class MatchPublishTest(unittest.TestCase):
+    """_match_publish: file_path equality is normcase/normpath-insensitive;
+    falls back to the description sentinel when the path doesn't line up
+    (or artifactFile isn't known yet)."""
+
+    def test_matches_on_normalized_file_path(self):
+        state = {"artifactFile": "/a/b/x.html"}
+        # macOS/posix os.path.normcase is a no-op, so the two spellings below
+        # differ in a way only os.path.normpath resolves -- this is the half
+        # of the contract that's actually exercisable on this platform.
+        payload = {"file_path": "/a/b/../b/x.html", "description": "something else"}
+        self.assertTrue(tp._match_publish(state, payload))
+
+    def test_mismatched_path_falls_back_to_description_sentinel(self):
+        state = {"artifactFile": "/a/b/x.html"}
+        payload = {"file_path": "/somewhere/else.html",
+                   "description": "WhenDone progress monitor"}
+        self.assertTrue(tp._match_publish(state, payload))
+
+    def test_neither_path_nor_description_match_fails(self):
+        state = {"artifactFile": "/a/b/x.html"}
+        payload = {"file_path": "/somewhere/else.html", "description": "unrelated"}
+        self.assertFalse(tp._match_publish(state, payload))
+
+    def test_no_artifact_file_in_state_falls_back_to_description(self):
+        state = {"artifactFile": None}
+        payload = {"file_path": "/a/b/x.html", "description": "WhenDone progress monitor"}
+        self.assertTrue(tp._match_publish(state, payload))
+
+
+class PublishObservationTest(unittest.TestCase):
+    """sync_cycle's Source-A publish scan: records lastPublishedAt from the
+    model's own Artifact tool_use entries in the transcript."""
+
+    def test_sync_cycle_records_last_published_at_from_matching_artifact(self):
+        env = SyncEnv([artifact_entry(T0, "/tmp/whendone/artifact.html")],
+                      mkstate(artifactFile="/tmp/whendone/artifact.html",
+                              artifactUrl="https://example.com/a", tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(env.state()["lastPublishedAt"],
+                             tp.token_usage.parse_ts(T0).isoformat())
+        finally:
+            env.cleanup()
+
+    def test_no_matching_artifact_leaves_last_published_at_unset(self):
+        env = SyncEnv([artifact_entry(T0, "/other/path.html", description="not it")],
+                      mkstate(artifactFile="/tmp/whendone/artifact.html", tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertIsNone(env.state().get("lastPublishedAt"))
+        finally:
+            env.cleanup()
+
+
+class PublishLagTest(unittest.TestCase):
+    """D4: the tailer's backstop against the model finishing a wake without
+    publishing -- flags publishLag on a changed event emitted while the
+    PREVIOUS changed event's artifact is still unpublished. Gated to Source A
+    only (D4 ruling): lastPublishedAt is only ever written on Source A's
+    publish scan, so an ungated flag would false-positive on every changed
+    event after the first for Source B/C, whose lastPublishedAt never leaves
+    None."""
+
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name
+        self.calib.cleanup()
+
+    def test_first_changed_event_never_flagged(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2)],
+                              artifactUrl="https://example.com/a"))
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:07:00+00:00")
+            ev = [l for l in lines if l["event"] == "progress"][-1]
+            self.assertNotIn("publishLag", ev)
+        finally:
+            env.cleanup()
+
+    def test_second_changed_event_with_no_publish_ever_flags_without_since(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2), mktask(3)],
+                              artifactUrl="https://example.com/a"))
+        try:
+            rc1, lines1 = env.run_one_shot(now="2026-07-18T10:07:00+00:00")
+            ev1 = [l for l in lines1 if l["event"] == "progress"][-1]
+            self.assertNotIn("publishLag", ev1)
+            self.assertIsNone(env.state().get("lastPublishedAt"))
+
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                todo_entry(T1, [item("task 2", "in_progress")]),
+                todo_entry(T2, [item("task 2", "completed")]),
+            ])
+            rc2, lines2 = env.run_one_shot(now="2026-07-18T10:15:00+00:00")
+            ev2 = [l for l in lines2 if l["event"] == "progress"][-1]
+            self.assertTrue(ev2.get("publishLag"))
+            self.assertNotIn("sincePublishMin", ev2)
+        finally:
+            env.cleanup()
+
+    def test_second_changed_event_with_stale_publish_flags_with_since(self):
+        env = SyncEnv([artifact_entry(T0, None),                # T0=10:00, stale by wake 2
+                       todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2), mktask(3)],
+                              artifactUrl="https://example.com/a"))
+        try:
+            rc1, lines1 = env.run_one_shot(now="2026-07-18T10:06:00+00:00")
+            self.assertEqual(env.state()["lastPublishedAt"],
+                             tp.token_usage.parse_ts(T0).isoformat())
+            ev1 = [l for l in lines1 if l["event"] == "progress"][-1]
+            self.assertNotIn("publishLag", ev1)               # first changed event never flagged
+
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                artifact_entry(T0, None),
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                todo_entry(T1, [item("task 2", "in_progress")]),
+                todo_entry(T2, [item("task 2", "completed")]),
+            ])
+            rc2, lines2 = env.run_one_shot(now="2026-07-18T10:15:00+00:00")
+            ev2 = [l for l in lines2 if l["event"] == "progress"][-1]
+            self.assertTrue(ev2.get("publishLag"))
+            self.assertEqual(ev2.get("sincePublishMin"), 15.0)   # 10:15 - 10:00
+        finally:
+            env.cleanup()
+
+    def test_publish_between_two_changed_events_clears_flag(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2), mktask(3)],
+                              artifactUrl="https://example.com/a"))
+        try:
+            env.run_one_shot(now="2026-07-18T10:07:00+00:00")
+            self.assertIsNone(env.state().get("lastPublishedAt"))
+
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                artifact_entry(T2, None),                    # 10:12, after wake 1's "now" (10:07)
+                todo_entry(T2, [item("task 2", "in_progress")]),
+                todo_entry(T3, [item("task 2", "completed")]),
+            ])
+            rc2, lines2 = env.run_one_shot(now="2026-07-18T10:25:00+00:00")
+            ev2 = [l for l in lines2 if l["event"] == "progress"][-1]
+            self.assertEqual(env.state()["lastPublishedAt"],
+                             tp.token_usage.parse_ts(T2).isoformat())
+            self.assertNotIn("publishLag", ev2)
+        finally:
+            env.cleanup()
+
+    def test_publish_false_never_flags(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2), mktask(3)],
+                              artifactUrl="https://example.com/a", publish=False))
+        try:
+            env.run_one_shot(now="2026-07-18T10:07:00+00:00")
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                todo_entry(T1, [item("task 2", "in_progress")]),
+                todo_entry(T2, [item("task 2", "completed")]),
+            ])
+            rc2, lines2 = env.run_one_shot(now="2026-07-18T10:15:00+00:00")
+            ev2 = [l for l in lines2 if l["event"] == "progress"][-1]
+            self.assertNotIn("publishLag", ev2)
+        finally:
+            env.cleanup()
+
+    def test_no_artifact_url_never_flags(self):
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       todo_entry(T1, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1), mktask(2), mktask(3)]))  # artifactUrl stays None
+        try:
+            env.run_one_shot(now="2026-07-18T10:07:00+00:00")
+            write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), [
+                todo_entry(T0, [item("task 1", "in_progress")]),
+                todo_entry(T1, [item("task 1", "completed")]),
+                todo_entry(T1, [item("task 2", "in_progress")]),
+                todo_entry(T2, [item("task 2", "completed")]),
+            ])
+            rc2, lines2 = env.run_one_shot(now="2026-07-18T10:15:00+00:00")
+            ev2 = [l for l in lines2 if l["event"] == "progress"][-1]
+            self.assertNotIn("publishLag", ev2)
+        finally:
+            env.cleanup()
+
+    def test_source_b_never_flagged_even_with_stale_prior_changed_event(self):
+        # D4 ruling: Source B shares finish_cycle but never runs the publish
+        # scan, so lastPublishedAt would stay None forever. Prove the gate
+        # actually suppresses the flag rather than the scenario being
+        # vacuously unflagged (lastChangedEventAt is pre-seeded here so
+        # `prev is not None` is true going in -- without the source gate this
+        # would trip on "lastpub is None").
+        env = WfEnv(mkstate_b(artifactUrl="https://example.com/a.html"),
+                    journal=[wf_started(B_A1), wf_result(B_A1),
+                             wf_started(B_A2), wf_result(B_A2),
+                             wf_started(B_A3), wf_result(B_A3)],
+                    agents=[(B_A1, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A2, [agent_entry(BT0, "[wd:scan] go"),
+                                    agent_entry(BT1, "x")]),
+                            (B_A3, [agent_entry(BT1, "[wd:fix] go"),
+                                    agent_entry(BT2, "x")])])
+        env.finish_run()
+        st = env.state()
+        st["lastChangedEventAt"] = "2026-07-18T08:00:00+00:00"
+        with open(env.state_path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        try:
+            with unittest.mock.patch.object(
+                    tp.append_calibration, "append_obj",
+                    side_effect=lambda row, data_dir=None:
+                        (True, dict(row, actualMin=15.0))):
+                rc, lines = env.run_one_shot()
+            self.assertEqual(rc, 0)
+            self.assertEqual(lines[-1]["event"], "all-done")
+            self.assertNotIn("publishLag", lines[-1])
+            self.assertIsNone(env.state().get("lastPublishedAt"))
         finally:
             env.cleanup()
 

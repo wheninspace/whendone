@@ -67,7 +67,7 @@ def name_index(tasks):
 
 def extract_events(paths):
     """(events, newest_entry_ts) across all transcript files. events are
-    (ts, kind, payload), ts-sorted; kind in {'todos','dispatch','result'}.
+    (ts, kind, payload), ts-sorted; kind in {'todos','dispatch','result','artifact'}.
     Malformed lines are skipped. TranscriptTooLarge propagates (N3 posture:
     the caller degrades the whole tail, never parses a pathological file)."""
     events, last_ts = [], None
@@ -119,6 +119,13 @@ def extract_events(paths):
                                         "id": b.get("id"),
                                         "description": inp.get("description"),
                                         "model": inp.get("model") if isinstance(inp.get("model"), str) else None}))
+                                elif b.get("name") == "Artifact":
+                                    # D4: the model's OWN publish action -- evidence for the
+                                    # publishLag backstop, never acted on as an instruction.
+                                    inp = b.get("input") or {}
+                                    events.append((ts, "artifact", {
+                                        "file_path": inp.get("file_path"),
+                                        "description": inp.get("description")}))
                         elif etype == "user":
                             for b in content:
                                 if isinstance(b, dict) and b.get("type") == "tool_result":
@@ -405,6 +412,21 @@ def transcript_files(state, projects_dir):
     return flat
 
 
+def _match_publish(state, payload):
+    """D4: does this observed Artifact tool_use correspond to THIS job's
+    published page? file_path is compared normcase/normpath-insensitive
+    against the declared artifactFile (Windows-safe: separators/case can
+    differ between what the model typed and what state recorded); when the
+    path doesn't line up (or artifactFile isn't known yet), fall back to the
+    fixed description sentinel every whendone publish call carries."""
+    af = state.get("artifactFile")
+    fp = payload.get("file_path")
+    if isinstance(af, str) and isinstance(fp, str) and af and fp:
+        if os.path.normcase(os.path.normpath(af)) == os.path.normcase(os.path.normpath(fp)):
+            return True
+    return payload.get("description") == "WhenDone progress monitor"
+
+
 def sync_cycle(state_path, now, args):
     """One observation pass. Returns (state_or_None, [events emitted])."""
     out = []
@@ -438,6 +460,16 @@ def sync_cycle(state_path, now, args):
         events, last_ts = [], None
         out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})
         emit(out[-1])
+
+    # D4: observe the model's OWN Artifact publishes (Source A only -- see
+    # finish_cycle's publishLag gate for why B/C never get this scan).
+    pub = None
+    for ts, kind, payload in events:
+        if kind == "artifact" and _match_publish(state, payload):
+            pub = ts.isoformat()                       # ts-sorted: last match wins
+    if pub and pub != state.get("lastPublishedAt"):
+        state["lastPublishedAt"] = pub
+        write_state(state_path, state)
 
     idx = name_index(state.get("tasks"))
     obs = observe(events, idx)
@@ -999,6 +1031,27 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
             state["etaAlertSent"] = True
             write_state(state_path, state)
             ev["slipAlert"] = True
+    # D4: the model's whole wake job on a changed event is publishing the
+    # artifact this render just wrote -- but the 2026-08-14 run showed the
+    # model can simply keep working instead. Flag it back when the PREVIOUS
+    # changed event is still unpublished, riding an event the model already
+    # reads (zero extra per-boundary protocol). Source A only: lastPublishedAt
+    # is only ever written by sync_cycle's Source-A publish scan -- Source B
+    # never reads the session transcript at all, and Source C's mirror path
+    # doesn't run that scan either, so both would show a permanently-None
+    # lastPublishedAt and false-positive on EVERY changed event after the
+    # first if this weren't gated.
+    if state.get("source", "a") == "a" and (changed or all_done) \
+            and state.get("publish") is not False and state.get("artifactUrl"):
+        prev = token_usage.parse_ts(state.get("lastChangedEventAt"))
+        lastpub = token_usage.parse_ts(state.get("lastPublishedAt"))
+        if prev is not None and (lastpub is None or lastpub < prev):
+            ev["publishLag"] = True
+            if lastpub is not None:
+                ev["sincePublishMin"] = round((now - lastpub).total_seconds() / 60.0, 1)
+    if changed or all_done:
+        state["lastChangedEventAt"] = now.isoformat()
+        write_state(state_path, state)
     emit(ev)
     return [ev]
 
