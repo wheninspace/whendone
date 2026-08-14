@@ -1024,9 +1024,9 @@ the same table.
 **Suite: 361 tests OK, warning-clean** — unchanged (no scripts touched).
 
 **Re-measured (tiktoken cl100k_base, throwaway venv, 2026-08-14):** trigger path raw
-**10,558** (SKILL.md 3,318 + source-a.md 2,563 + file-formats.md 3,200 +
+**10,569** (SKILL.md 3,318 + source-a.md 2,574 + file-formats.md 3,200 +
 artifact-template.md 651 + calibration-summary allowance 826, fixture unchanged at 2,417
-bytes); as-read (420 on-path reference lines × 3.3–3.6 prefix allowance) **11,944–12,070**
-vs the prefix-inclusive 14,000 budget — **1,930–2,056 to spare** (was 9,785 raw /
+bytes); as-read (421 on-path reference lines × 3.3–3.6 prefix allowance) **11,958–12,085**
+vs the prefix-inclusive 14,000 budget — **1,915–2,042 to spare** (was 9,785 raw /
 ≈11.0–11.2k as-read, ≈2.8–3.0k to spare, movement 8). Standalone reference files
 (source-b.md, source-c.md, resume.md) untouched this pass, not re-measured.
