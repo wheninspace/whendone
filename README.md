@@ -51,7 +51,7 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.3.1 (2026-07-19), single author. Every feature claim is backed by a recorded
+**Status:** v0.4.0 (2026-08-14), single author. Every feature claim is backed by a recorded
 live run — macOS throughout, Windows verified 2026-08-13 — in
 [docs/test-log.md](docs/test-log.md); what remains untested is listed in
 [Maturity](#maturity) below.
@@ -209,13 +209,13 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 ## Install
 
 ```bash
-git clone --branch v0.3.1 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.4.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.3.1 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.4.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 **Windows:** verified live end-to-end on 2026-08-13 (Windows 11, Python 3.13, fresh-clone
@@ -267,7 +267,7 @@ link. Delete it there yourself if you want it gone.
 
 ## Maturity
 
-v0.3.1 (2026-07-19), single author, tested against Claude Code CLI 2.1.209 (the exact
+v0.4.0 (2026-08-14), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
 runs in CI on Linux, macOS, and Windows on every push. All three job sources were dogfooded
