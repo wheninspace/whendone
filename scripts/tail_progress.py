@@ -233,13 +233,23 @@ def observe(events, idx):
     """Tiered evidence per declared task nr, transcript timestamps only.
     Todo transitions are the close authority (v0.5 attribution rework);
     matched dispatch/result pairs are delegated-span display evidence and
-    the start fallback. dispatch/result correlate via tool_use id."""
+    the start fallback. dispatch/result correlate via tool_use id.
+
+    D1: startedAt authority is the todo `in_progress` transition; a
+    name-matching dispatch is start-EVIDENCE FALLBACK only, and must lose to
+    a todo transition regardless of which arrives first in ts order (a batch
+    of parallel dispatches followed by one todo update is the common case
+    that a first-write-wins guard would get backwards). So the two
+    candidates are tracked separately per slot (`_todoStart`/`_dispatchStart`,
+    scratch — never returned) and `startedAt` is resolved from them only
+    after the full pass, once no earlier todo transition can still appear."""
     obs, dispatch_open = {}, {}
 
     def slot(nr):
         return obs.setdefault(nr, {"startedAt": None, "todoFinishedAt": None,
                                    "todoSeen": False, "spans": [], "open": 0,
-                                   "model": None})
+                                   "model": None, "_todoStart": None,
+                                   "_dispatchStart": None})
 
     for ts, kind, payload in events:
         if kind == "todos":
@@ -252,8 +262,8 @@ def observe(events, idx):
                     continue
                 s = slot(nr)
                 s["todoSeen"] = True
-                if st == "in_progress" and s["startedAt"] is None:
-                    s["startedAt"] = ts.isoformat()
+                if st == "in_progress" and s["_todoStart"] is None:
+                    s["_todoStart"] = ts.isoformat()
                 elif st == "completed" and s["todoFinishedAt"] is None:
                     s["todoFinishedAt"] = ts.isoformat()
         elif kind == "dispatch":
@@ -262,8 +272,8 @@ def observe(events, idx):
                 s = slot(nr)
                 dispatch_open[payload["id"]] = (nr, ts)
                 s["open"] += 1
-                if s["startedAt"] is None:
-                    s["startedAt"] = ts.isoformat()
+                if s["_dispatchStart"] is None:
+                    s["_dispatchStart"] = ts.isoformat()
                 if s["model"] is None and payload.get("model"):
                     s["model"] = payload["model"]
         elif kind == "result":
@@ -273,6 +283,10 @@ def observe(events, idx):
                 s = slot(nr)
                 s["open"] -= 1
                 s["spans"].append((dts.isoformat(), ts.isoformat()))
+
+    for s in obs.values():
+        todo_start, dispatch_start = s.pop("_todoStart"), s.pop("_dispatchStart")
+        s["startedAt"] = todo_start if todo_start is not None else dispatch_start
     return obs
 
 

@@ -116,6 +116,17 @@ class ExtractEventsTest(unittest.TestCase):
             events, _ = tp.extract_events([p])
             self.assertEqual(events[0][1], "dispatch")
 
+    def test_dispatch_model_passthrough_and_non_string_guard(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, [
+                dispatch_entry(T0, "tu-1", "X", model="sonnet"),
+                dispatch_entry(T1, "tu-2", "Y", model=True),   # non-string -> None
+            ])
+            events, _ = tp.extract_events([p])
+            self.assertEqual(events[0][2]["model"], "sonnet")
+            self.assertIsNone(events[1][2]["model"])
+
     def test_missing_file_yields_nothing(self):
         events, last_ts = tp.extract_events(["/nonexistent/x.jsonl"])
         self.assertEqual(events, [])
@@ -360,6 +371,21 @@ class ObserveTest(unittest.TestCase):
                                        tp.token_usage.parse_ts(T2).isoformat())])
         self.assertEqual(o["open"], 0)
         self.assertEqual(o["model"], "sonnet")
+
+    def test_todo_start_wins_over_earlier_dispatch(self):
+        """D1: dispatch is start-fallback ONLY — a batch of parallel dispatches
+        followed by one todo update must not let the dispatch's earlier
+        timestamp win, even though it was seen first in ts order."""
+        ev = self._ev([
+            dispatch_entry(T0, "tu-1", "Alpha"),
+            todo_entry(T1, [item("Alpha", "in_progress")]),
+            result_entry(T2, "tu-1"),
+            todo_entry(T3, [item("Alpha", "completed")]),
+        ])
+        o = tp.observe(ev, self.IDX)[1]
+        self.assertEqual(o["startedAt"], tp.token_usage.parse_ts(T1).isoformat())
+        self.assertEqual(set(o), {"startedAt", "todoFinishedAt", "todoSeen",
+                                  "spans", "open", "model"})
 
     def test_result_does_not_set_todo_finish(self):
         ev = self._ev([todo_entry(T0, [item("Alpha", "in_progress")]),
