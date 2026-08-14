@@ -1022,6 +1022,133 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
 
+T4 = "2026-07-18T10:25:00.000Z"
+T5 = "2026-07-18T10:28:00.000Z"
+
+
+class GroupRowConfirmationTest(unittest.TestCase):
+    """D2 at group level (2026-08-14 final review): the synthetic
+    parallel-group row waits for EVERY member to be confirmed (todo-evidenced).
+
+    Individual tasks can never log twice because plan_transitions skips a task
+    once status == "done"; `unconfirmed` display closes deliberately break that
+    for the upgrade path, and group_row keys on the GROUP, so without its own
+    guard the upgrade appends a second row for the same work."""
+
+    #  member a: dispatched at T0, never results, todo-completed at T2
+    #  member b: dispatched at T0, results at T1 (display close), todo later
+    C1 = [dispatch_entry(T0, "tu-a", "member a"),
+          dispatch_entry(T0, "tu-b", "member b"),
+          result_entry(T1, "tu-b")]
+    C2 = C1 + [todo_entry(T2, [item("member a", "completed")], mid="m2")]
+    C3 = C2 + [todo_entry(T3, [item("member a", "completed"),
+                               item("member b", "completed")], mid="m3")]
+
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+        self.envs = []
+
+    def tearDown(self):
+        for e in self.envs:
+            e.cleanup()
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name
+        self.calib.cleanup()
+
+    def rows(self, calib_dir=None):
+        p = os.path.join(calib_dir or self.calib.name, "calibration.jsonl")
+        if not os.path.exists(p):
+            return []
+        with open(p, encoding="utf-8") as f:
+            return [json.loads(l) for l in f if l.strip()]
+
+    def group_env(self, entries):
+        env = SyncEnv(entries, mkstate(tasks=[
+            mktask(1, name="member a", group="g1", estimateMin=10, rawEstimateMin=8),
+            mktask(2, name="member b", group="g1", estimateMin=20, rawEstimateMin=25)]))
+        self.envs.append(env)
+        return env
+
+    def feed(self, env, entries):
+        write_jsonl(os.path.join(env.projects, "proj", "sidA.jsonl"), entries)
+        rc, _ = env.run_one_shot()
+        self.assertEqual(rc, 0)
+        return env.state()
+
+    def test_upgraded_member_never_appends_a_second_group_row(self):
+        """The reviewer's repro: b display-closes, a confirms, then the model
+        catches up on b. Pre-guard that wrote TWO parallel-group rows (12.0 and
+        20.0 actualMin) for one group, both feeding the shared factor."""
+        env = self.group_env(self.C1)
+        state = self.feed(env, self.C1)                  # cycle 1
+        a, b = state["tasks"]
+        self.assertEqual(a["status"], "running")
+        self.assertTrue(b["unconfirmed"])                # display close, no row
+        self.assertEqual(self.rows(), [])
+
+        state = self.feed(env, self.C2)                  # cycle 2: a confirm-closes
+        a, b = state["tasks"]
+        self.assertEqual(a["status"], "done")
+        self.assertNotIn("unconfirmed", a)
+        self.assertTrue(b["unconfirmed"])
+        self.assertEqual(self.rows(), [])                # D2: b is still provisional
+
+        state = self.feed(env, self.C3)                  # cycle 3: b upgrades
+        self.assertNotIn("unconfirmed", state["tasks"][1])
+        rows = self.rows()
+        self.assertEqual(len(rows), 1)                   # exactly one, not two
+        self.assertEqual(rows[0]["category"], "parallel-group")
+        self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        self.assertEqual(rows[0]["actualMin"], 20.0)     # full group span
+        self.assertEqual(rows[0]["maxAdjusted"], 20)
+        self.assertEqual(rows[0]["sumAdjusted"], 30)
+
+        self.feed(env, self.C3)                          # and stays at one forever
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_same_evidence_logs_the_same_row_in_one_cycle_or_three(self):
+        """Calibration data must not depend on watcher cadence. Displays are
+        applied after completions, so pre-guard the one-cycle reading of this
+        transcript produced ONE row and the split reading produced TWO."""
+        one_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(one_dir.cleanup)
+        os.environ["WHENDONE_DATA_DIR"] = one_dir.name
+        self.feed(self.group_env(self.C3), self.C3)      # every event in ONE cycle
+        one_cycle = self.rows(one_dir.name)
+
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+        env = self.group_env(self.C1)
+        for entries in (self.C1, self.C2, self.C3):      # the same events, split
+            self.feed(env, entries)
+        self.assertEqual(len(one_cycle), 1)
+        self.assertEqual(self.rows(), one_cycle)         # byte-identical row sets
+
+    def test_reopened_member_holds_the_row_until_it_confirms(self):
+        """Hardest ordering: b display-closes, a confirms, then a LATE dispatch
+        reopens b (B4 posture) and b only confirms after that. The single row
+        must land at b's real close and carry the extended group span."""
+        env = self.group_env(self.C1)
+        self.feed(env, self.C1)
+        self.feed(env, self.C2)                          # a confirmed, b provisional
+        self.assertEqual(self.rows(), [])
+
+        reopened = self.C2 + [dispatch_entry(T3, "tu-b2", "member b")]
+        state = self.feed(env, reopened)
+        b = state["tasks"][1]
+        self.assertEqual(b["status"], "running")         # reverted, still row-less
+        self.assertEqual(self.rows(), [])
+
+        state = self.feed(env, reopened + [
+            result_entry(T4, "tu-b2"),
+            todo_entry(T5, [item("member b", "completed")], mid="m5")])
+        self.assertEqual(state["tasks"][1]["status"], "done")
+        rows = self.rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T5).isoformat())
+        self.assertEqual(rows[0]["actualMin"], 28.0)     # T0 -> T5, the whole group
+
+
 class SourceCNeverCalibratesTest(unittest.TestCase):
     """Spec §5.1: no calibration rows are ever written from Source C jobs."""
 
@@ -1492,6 +1619,40 @@ class IdleCheckTest(unittest.TestCase):
         # with a huge idleMin instead of ~6.
         now = self._now("2026-07-18T09:06:00+00:00")
         evs = tp.check_idle(self.state_path, state, now, 5, None)
+        self.assertEqual(len(evs), 1)
+        self.assertAlmostEqual(evs[0]["idleMin"], 6.0, places=1)
+
+    def test_resume_does_not_count_the_pause_as_idle(self):
+        """D0: pause time is its OWN bucket. resumedAt is a co-equal anchor
+        candidate, not a fallback -- a resumed job whose earlier tasks are
+        already done otherwise anchors on the pre-pause finish and fires
+        `idle` seconds after resume with the entire pause as idleMin (and
+        under --exit-on-event burns the L2 ladder's single relaunch)."""
+        state = mkstate(startedAt="2026-07-18T09:00:00+00:00",
+                        pausedAt="2026-07-18T10:05:00+00:00", pausedTotalMin=235,
+                        resumedAt="2026-07-18T14:00:00+00:00",
+                        tasks=[mktask(1, status="done",
+                                      finishedAt="2026-07-18T10:05:00+00:00"),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        self.assertEqual(                                  # 30s after resume
+            tp.check_idle(self.state_path, state,
+                          self._now("2026-07-18T14:00:30+00:00"), 5, None), [])
+        evs = tp.check_idle(self.state_path, state,        # 6 min after resume
+                            self._now("2026-07-18T14:06:00+00:00"), 5, None)
+        self.assertEqual(len(evs), 1)                      # a REAL post-resume gap
+        self.assertAlmostEqual(evs[0]["idleMin"], 6.0, places=1)
+
+    def test_done_task_after_resume_still_wins_the_anchor(self):
+        """Co-equal, not a swap: the newest of (done finishes, resumedAt)."""
+        state = mkstate(startedAt="2026-07-18T09:00:00+00:00",
+                        resumedAt="2026-07-18T14:00:00+00:00",
+                        tasks=[mktask(1, status="done",
+                                      finishedAt="2026-07-18T14:10:00+00:00"),
+                               mktask(2, status="pending")])
+        tp.write_state(self.state_path, state)
+        evs = tp.check_idle(self.state_path, state,
+                            self._now("2026-07-18T14:16:00+00:00"), 5, None)
         self.assertEqual(len(evs), 1)
         self.assertAlmostEqual(evs[0]["idleMin"], 6.0, places=1)
 

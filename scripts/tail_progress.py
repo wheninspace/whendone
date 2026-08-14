@@ -828,9 +828,31 @@ def _base_row(state, state_path, started, finished):
 
 
 def group_row(state, group_id):
+    """The synthetic parallel-group row, or None while the group is not yet
+    fully and CONFIRMEDLY closed.
+
+    D2 at group level: an `unconfirmed` member is a display close — its span is
+    dispatch-derived, it logged no individual row, and it stays revisitable. It
+    must not contribute to the group row either, for two reasons:
+      1. no double log. Individual tasks are protected implicitly (once
+         status == "done" plan_transitions skips them forever), but this row
+         keys on the GROUP, not the task: without this guard a member that
+         later upgrades unconfirmed -> confirmed re-enters handle_completion,
+         finds every member `done` again, and appends a SECOND parallel-group
+         row for the same work (reproduced 2026-08-14: rows of 12.0 and 20.0
+         actualMin for one 2-member group).
+      2. no timing-dependent data. Displays are applied AFTER completions in
+         sync_cycle, so identical transcript evidence seen in one cycle
+         produced no row while the same evidence split across two produced
+         one. The row now lands at exactly one point in the group's life --
+         the moment its last member confirms -- whatever the watcher's cadence.
+    "No data beats biased data": the group simply logs nothing unless every
+    member's close is todo-evidenced."""
     members = [t for t in state.get("tasks", [])
                if isinstance(t, dict) and t.get("group") == group_id]
     if not members or any(t.get("status") != "done" for t in members):
+        return None
+    if any(t.get("unconfirmed") for t in members):
         return None
     starts = [t.get("startedAt") for t in members if t.get("startedAt")]
     ends = [t.get("finishedAt") for t in members if t.get("finishedAt")]
@@ -1177,11 +1199,21 @@ def check_idle(state_path, state, now, stale_min, args):
     if not tasks or any(t.get("status") == "running" for t in tasks) \
             or not any(t.get("status") == "pending" for t in tasks):
         return []
-    ends = [token_usage.parse_ts(t.get("finishedAt"))
-            for t in tasks if t.get("status") == "done"]
-    ends = [e for e in ends if e is not None]
-    anchor = max(ends) if ends else (token_usage.parse_ts(state.get("resumedAt"))
-                                     or token_usage.parse_ts(state.get("startedAt")))
+    # D0/D5: `resumedAt` is a CO-EQUAL anchor candidate, not a fallback. A
+    # resumed job's last done task finished BEFORE the pause, so treating
+    # resumedAt as an else-branch made a resume fire `idle` seconds later with
+    # the whole pause counted as idle time (10:05 -> 14:00 pause reproduced as
+    # idleMin 240.5 half a minute after resume) -- and under --exit-on-event
+    # that burns the L2 ladder's single permitted relaunch on cycle 1. Pause
+    # time is its own bucket (references/resume.md, and the artifact's own
+    # pause-adjusted orchestration line); the event must not double-count it as
+    # dead time. parse_ts is total and always returns aware datetimes, so the
+    # max() is safe; startedAt still covers the never-resumed, nothing-done job.
+    cands = [token_usage.parse_ts(t.get("finishedAt"))
+             for t in tasks if t.get("status") == "done"]
+    cands.append(token_usage.parse_ts(state.get("resumedAt")))
+    cands = [c for c in cands if c is not None]
+    anchor = max(cands) if cands else token_usage.parse_ts(state.get("startedAt"))
     if anchor is None:
         return []
     notified = token_usage.parse_ts(state.get("idleNotifiedAt"))
