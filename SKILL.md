@@ -53,6 +53,9 @@ two.
 
 ## Job start
 
+`<project-root>` below = D6 (references/source-a.md's Declare-once section): the main working
+tree, never a linked worktree's.
+
 1. Does `.claude/whendone-state.json` exist? Read it FIRST, before touching `.claude/STOP` —
    the STOP decision below depends on what it says. If the file exists but fails to parse as
    JSON, treat it as "no valid state": do NOT delete STOP, do NOT improvise a job from it —

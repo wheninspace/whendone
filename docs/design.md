@@ -442,11 +442,11 @@ exist yet or would add complexity out of proportion to the current scope:
 ## Appendix: trigger-figure measurement history
 
 The README's Overhead table reports the trigger-path token figure as a single current number
-(≈9,785 raw / ≈11.0–11.2k as-read, 2026-08-13). This appendix records how that number moved
+(≈10,558 raw / ≈11.9–12.1k as-read, 2026-08-14). This appendix records how that number moved
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Eight movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Nine movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -487,10 +487,22 @@ Eight movements, each under an identical raw `tiktoken cl100k_base` sum unless n
    (SKILL.md 3,285 + source-a.md 2,115 + file-formats.md 2,908 + artifact-template.md 651 +
    calibration-summary allowance 826, fixture unchanged at 2,417 bytes), ≈11.0–11.2k as-read
    (383 on-path reference lines × 3.3–3.6).
+9. The 2026-08-14 time-attribution-rework protocol pass (Task 7) documented the new close
+   authority (todo/TaskUpdate `completed` transition only, never a subagent result;
+   dispatch-naming scope now feeds a *delegated span* rather than deciding closure; the
+   forgetful-fallback → `unconfirmed`/no-calibration-row rule; the shipped reopen contract —
+   any in-flight matched dispatch reopens an `unconfirmed` task, not only the plan's draft
+   "no todo evidence yet" condition), `rawEstimateMin`'s full-lifecycle scope, the two new
+   Source-A-only wake rows (`idle`, `publishLag`), and D6 project-root pinning under
+   worktrees (one statement in source-a.md's Declare-once section, pointed at from SKILL.md
+   and file-formats.md rather than restated): +773 → 10,558 raw (SKILL.md 3,318 +
+   source-a.md 2,563 + file-formats.md 3,200 + artifact-template.md 651 + calibration-summary
+   allowance 826, fixture unchanged at 2,417 bytes), ≈11.9–12.1k as-read (420 on-path
+   reference lines × 3.3–3.6) — ≈1.9–2.1k still to spare under the 14,000 budget.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈2.8–3.0k to spare
-(9,785 raw); see the README Overhead table for the current breakdown.
+movements 1 and 2. The path stays under the 14,000 budget as-read, with ≈1.9–2.1k to spare
+(10,558 raw); see the README Overhead table for the current breakdown.

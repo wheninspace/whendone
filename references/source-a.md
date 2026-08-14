@@ -18,6 +18,10 @@ the subtask's scope:
 | testing | 8 min | review | 10 min |
 | debugging | 20 min | deploy-infra | 15 min |
 
+`rawEstimateMin` covers the task's FULL lifecycle — implementation, review passes, fix rounds,
+and your own verification/commit — never just a first subagent's return: closure is the todo
+transition below, not a subagent result.
+
 Only THEN read `~/.claude/whendone-data/calibration-summary.md` for the category factors, and
 set `estimateMin` = rawEstimateMin × factor. File missing (first
 run) or factor shown as "— (prior 1.0)" → use 1.0. Always state an uncertainty interval with
@@ -26,8 +30,13 @@ any ETA — never compute one yourself: ETA, interval, deviation, and slip all c
 also reads q1/q3 itself); quote its `etaText`.
 Never mention factor values in chat or artifact (anchoring pollutes future raw estimates).
 
-Write the state file next: same hard write-target + gitignore preconditions as SKILL.md's
-core (cross-ref there; both checks already name
+Write the state file next, at the project root (D6): the main working tree — the parent of
+`git rev-parse --path-format=absolute --git-common-dir` (worktrees resolve to the main root;
+non-git: the working directory). State file, `whendone-tail.lock`, and `.claude/STOP` all live
+there even when the session works inside a linked worktree, so deleting that worktree can't kill
+the watcher — trade-off: one WhenDone job per repo across all its worktrees (the concurrency
+guard already assumes a single state file). Same hard write-target + gitignore preconditions as
+SKILL.md's core (cross-ref there; both checks already name
 `.claude/whendone-tail.lock`). Include the stage-3 fields (references/file-formats.md): `client`
 (the environment), `pushStatus` (real notification status), `staleAfterMin` (10 unless the
 user asks otherwise), and `group` on parallel-group members.
@@ -38,9 +47,17 @@ TaskCreate per task, its `subject` — the tailer observes both). Declared names
 duplicates are unmatchable by
 design, since the tailer matches todo/dispatch text back to task names verbatim (the
 tailer's matcher additionally tolerates case/whitespace/leading-ordinal differences — never
-looser). Subagent
-dispatch `description`s must equal the task name too. Renaming mid-job breaks matching — update
-the state file and todo list together, with the watcher stopped, if a rename is needed.
+looser). A task closes ONLY on its todo/TaskUpdate `completed` transition — make it when YOU consider the
+task done, after its review/fix cycle. Subagent results never close a task: dispatches whose
+`description` exactly matches a task's `name` accrue to that task's *delegated span* (shown in
+the artifact) — name every dispatch that's part of task N's work (implementer, review, fix
+round) with task N's exact `name`; differently-named dispatches are merely invisible to the
+split. A task whose todos you never touch falls back to closing on its last matched subagent
+result, marked `unconfirmed`, and logs NO calibration row — but a later matching dispatch still
+in flight reopens it back to `running` regardless of whether todo evidence has since arrived,
+ending the provisional close and routing the task toward a proper confirmed close. Renaming
+mid-job breaks matching — update the state file and todo list together, with the watcher
+stopped, if a rename is needed.
 
 Persist `artifactFile` (the minted path) into the state before starting the watcher, and
 `artifactUrl` right after the first publish returns — the wake moves and any future resume
@@ -78,7 +95,11 @@ only the model's three moves here:
   tool (fixed description constant, favicon `⏱️`, same file path → same URL). Quote `etaText`
   if speaking; never recompute ETA, interval, or slip yourself.
 - `slipAlert: true` → one push notification (the tailer already set `etaAlertSent`).
+- `publishLag: true` (on a `progress` event) → publish immediately — the backstop for a wake
+  whose publish got skipped.
 - `stale` → one push naming the task.
+- `idle` → mark the next todo item `in_progress`, or explain the gap in chat — the event names
+  the next task itself.
 - `stop-requested` → the user created `.claude/STOP`: finish the current subtask, then run
   SKILL.md's Stop procedure (it deletes the file at its end).
 
@@ -106,6 +127,9 @@ line):
    NEVER compute the statistics yourself. Skip entirely if this job logged zero new valid data
    points.
 4. State: `status: "done"` (the file may remain; the next job overwrites it).
+
+If this job ran inside a linked worktree, remove/delete that worktree only AFTER the watcher
+above has already stopped — defense in depth on top of the pinned project-root location (D6).
 
 ## Stop / pause / resume deltas
 

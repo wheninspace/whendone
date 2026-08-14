@@ -105,14 +105,14 @@ calibrated:
 ## Overhead — read this first if you pay per token or watch your quota
 
 The mechanism IS context spend, so here is the short version: ~140 tokens every session,
-~11k as read when it fires, ~0.1–2k per subtask boundary, ~1k at job end. Worth it for jobs
+~12k as read when it fires, ~0.1–2k per subtask boundary, ~1k at job end. Worth it for jobs
 of **~6+ subtasks or ~30 minutes-plus** that you actually walk away from; the skill itself
 declines smaller jobs — the trigger cost alone is hard to amortize below that.
 
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ≈9.8k cl100k tokens raw, ≈11.0–11.2k as read with Read-tool line prefixes — measured 2026-08-13 after a trigger-path dedup pass (was ≈10.5k/≈11.9–12.0k). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
+| When it triggers (incl. each resume session) | ≈10.6k cl100k tokens raw, ≈11.9–12.1k as read with Read-tool line prefixes — measured 2026-08-14 after the close-authority/worktree-pinning protocol update (was ≈9.8k/≈11.0–11.2k). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
 | Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,255 tokens) / `source-c.md` (1,008) are read only once that source is detected |
 | Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |

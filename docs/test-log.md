@@ -994,3 +994,37 @@ clean install on any platform.
 any Windows machine (need Developer Mode or elevation; the containment behavior they guard
 is POSIX-verified). Sources B and C remain macOS-only verified. Suite at this entry:
 **310 tests, warning-clean on all three CI OSes.**
+
+## Time-attribution rework — protocol docs (Task 7) — 2026-08-14
+
+Docs-only task following code Tasks 1–6 of the time-attribution rework (close authority moved
+to the todo/TaskUpdate `completed` transition; delegated/lead-review split; `unconfirmed`
+display closes; the `idle`/`publishLag` wake events; D6 project-root pinning). Updated
+`references/source-a.md` (rawEstimateMin's full-lifecycle scope; the todo-transition close
+authority replacing the old dispatch-naming-decides-closure text; the shipped reopen
+contract — any in-flight matched dispatch reopens an `unconfirmed` task, not only the plan's
+draft "no todo evidence yet" condition; the `idle`/`publishLag` wake-table rows; the D6
+project-root definition at state-file-write time; one line on worktree removal ordering at
+job end), `references/file-formats.md` (additive job fields `lastPublishedAt`/
+`lastChangedEventAt`/`idleNotifiedAt` and per-task `delegatedMin`/`unconfirmed`, both pointed
+at `references/formulas.md` for semantics; the `progress`/`all-done` event row gains
+`publishLag?`/`sincePublishMin?`; new `idle` event row; a `delegatedMin` mention in the
+calibration.jsonl section; the state-file Location line now points its "project root"
+definition at SKILL.md/source-a.md instead of restating it), and `SKILL.md` (one pointer
+sentence at the top of Job start resolving every `<project-root>` use in that section to the
+D6 definition in source-a.md). `references/formulas.md` untouched — it already carries the
+delegated-split/orchestration-line/unconfirmed semantics from the prior task; this pass only
+points at it. The `idle`/`publishLag` events are Source A only (Source B never reads the
+session transcript; Source C is mirror-only, never calibrated) — both new event-table rows
+say so explicitly, matching the existing `journal-format-drift` (Source B only) precedent in
+the same table.
+
+**Suite: 361 tests OK, warning-clean** — unchanged (no scripts touched).
+
+**Re-measured (tiktoken cl100k_base, throwaway venv, 2026-08-14):** trigger path raw
+**10,558** (SKILL.md 3,318 + source-a.md 2,563 + file-formats.md 3,200 +
+artifact-template.md 651 + calibration-summary allowance 826, fixture unchanged at 2,417
+bytes); as-read (420 on-path reference lines × 3.3–3.6 prefix allowance) **11,944–12,070**
+vs the prefix-inclusive 14,000 budget — **1,930–2,056 to spare** (was 9,785 raw /
+≈11.0–11.2k as-read, ≈2.8–3.0k to spare, movement 8). Standalone reference files
+(source-b.md, source-c.md, resume.md) untouched this pass, not re-measured.
