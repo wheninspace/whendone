@@ -1079,3 +1079,52 @@ bytes); as-read (422 on-path reference lines × 3.3–3.6 prefix allowance) **11
 the 14,000 budget — **1,879–2,005 to spare** (movement 9 was 10,569 raw / 11,958–12,085
 as-read). Off-path: `references/resume.md` 1,502 → 1,563 (README's per-resume row now says
 ≈1.6k), `references/formulas.md` 2,735 — neither counts against the trigger path.
+
+## Windows verification of the v0.5.0 time-attribution rework — 2026-08-15
+
+First run of the rework on real Windows hardware (Windows 11 Pro build 26200, Python
+3.13.15) — the machine where the original close-on-first-subagent bug was observed. Repo at
+main cbfa364 merged into the local `windows-verification` branch (merge 5301886); tests run
+against the repo tree, live job driven with the repo's scripts directly (the installed skill
+copy predates v0.5.0).
+
+**Suite: 366 OK, skipped=6, warning-clean** (`py -3 -W error::ResourceWarning`) — count
+matches the macOS reference at the same commit. Skips are the known environment set: 3
+POSIX-permission tests (`skipUnless(os.name == "posix")`) + 3 symlink tests (unelevated
+Windows, no Developer Mode). This was the first Windows execution of two v0.5.0 code paths:
+`_match_publish`'s `os.path.normcase` artifact-path matching (case-insensitive here, a no-op
+on macOS) and `_pid_alive`'s `OpenProcess` branch — both also exercised live below (real
+publish detection against a mixed-case scratchpad path; lock liveness against real PIDs).
+
+**Live 2-task Source-A job in a scratch repo with a linked worktree** (TaskCreate/TaskUpdate
+harness, L1 Monitor watcher, job started from inside the linked worktree):
+
+- **D6 root pinning:** `whendone-state.json` and `whendone-tail.lock` created at the MAIN
+  working-tree root (parent of `--git-common-dir`); no `.claude/` in the worktree at all.
+- **The regression check — subagent result does NOT close the task:** subtask 1's
+  implementer dispatched with `description` exactly the task name (Haiku, ~12 s span);
+  after its return the task stayed `running`, `actualMin` null, and no calibration file
+  existed. Under v0.4.x this exact sequence closed the task on the spot.
+- **Todo `completed` is the close authority:** marking subtask 1's todo completed closed it
+  with `actualMin` 2.7 covering the full todo `in_progress` → `completed` span
+  (15:14:15 → 15:16:54), and the appended calibration row carried both `actualMin: 2.7`
+  and `delegatedMin: 0.2` — full-lifecycle attribution, not the subagent's 12 s.
+- **Worktree deletion survival:** the linked worktree was removed mid-job
+  (`git worktree remove --force`) — the watcher process survived (same PID in the lock,
+  alive) and went on to process subtask 2's transitions and emit `all-done`. This is the
+  exact failure that killed the watcher on 2026-08-14 when state lived in the worktree.
+- **Artifact attribution rendering:** per-task split rendered as
+  "delegated 12 s · lead/review 2 m 27 s" under subtask 1, and the job-level
+  "Between-subtask orchestration: 15 m 30 s" line was present from the first render through
+  the DONE page. One `idle` event fired during the declare-time setup gap, correctly naming
+  the next task.
+- **Job end:** full sequence clean — final token table (per-task rows + job total), DONE
+  banner "took 18 m 29 s (estimated 10 m)", push notification honestly degraded (Remote
+  Control inactive), calibration summary regenerated. Watcher exited on its own at
+  `all-done` (exit 0).
+
+**Note:** the run left 2 synthetic calibration rows on this machine (−47 %/−93 %
+deviations, `~/.claude/whendone-data/` was empty before); wipe the directory before real
+use so the factors start unskewed. Sources B and C remain macOS-only verified; the three
+symlink-containment tests have still never executed on Windows. Suite at this entry:
+**366 tests, warning-clean.**
