@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.5.0] — 2026-08-14
+## [0.5.0] — 2026-08-15
 
 Time-attribution rework: a live job on 2026-08-14 lost 77 % of its wall-clock time and logged
 9 calibration rows with −26…−77 % false deviations, because the tailer treated a subagent's
@@ -68,8 +68,12 @@ job logs zero calibration rows. Deliberate: the alternative (withholding `all-do
 the job-end protocol, and the failure direction here is the safe one — no rows, never biased
 rows.
 
-Suite: 366 tests, warning-clean. No recorded live run behind this release yet — unit-verified
-plus the Linux/macOS/Windows CI matrix only (README Status, docs/test-log.md).
+Suite: 366 tests, warning-clean. Verified live on Windows 11 / Python 3.13 on 2026-08-15 — the
+machine where the original bug was observed — covering the regression itself (a subagent result
+no longer closes its task), full-lifecycle `actualMin` with `delegatedMin` alongside it, watcher
+survival across deletion of the linked worktree it was started from, and the artifact's
+delegated/lead split and orchestration line. Sources B and C were not re-dogfooded against this
+release; their live evidence predates it (docs/test-log.md).
 
 ## [0.4.0] — 2026-08-14
 

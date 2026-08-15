@@ -51,11 +51,12 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.5.0 (2026-08-14), single author. Feature claims up to and including v0.4.0 are
-each backed by a recorded live run — macOS throughout, Windows verified 2026-08-13 — in
-[docs/test-log.md](docs/test-log.md). v0.5.0's time-attribution rework ships unit-verified
-only: 366 tests plus the Linux/macOS/Windows CI matrix, and no recorded live run yet on
-either platform. What remains untested is listed in [Maturity](#maturity) below.
+**Status:** v0.5.0 (2026-08-15), single author. Every feature claim is backed by a recorded
+live run in [docs/test-log.md](docs/test-log.md) — macOS throughout, Windows verified
+2026-08-13, and v0.5.0's time-attribution rework verified live on Windows 2026-08-15, on the
+machine where the bug it fixes was observed. The rework has no recorded live run on macOS
+(366 tests plus the Linux/macOS/Windows CI matrix there), and Sources B and C were not
+re-dogfooded against it. What remains untested is listed in [Maturity](#maturity) below.
 
 ## Three sources
 
@@ -219,11 +220,14 @@ Windows PowerShell:
 git clone --branch v0.5.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
-**Windows:** verified live end-to-end on 2026-08-13 (Windows 11, Python 3.13, fresh-clone
-install): declare-once watcher, artifact publish with live updates, per-task token
-accounting, calibration logging, full job-end sequence, and stale-lock recovery after a
-hard process kill — see the
+**Windows:** verified live end-to-end twice. On 2026-08-13 (Windows 11, Python 3.13,
+fresh-clone install): declare-once watcher, artifact publish with live updates, per-task
+token accounting, calibration logging, full job-end sequence, and stale-lock recovery after
+a hard process kill — see the
 [test log](docs/test-log.md#windows-verification-pass--ci-matrix--live-dogfood--2026-08-13).
+Then on 2026-08-15, v0.5.0's time-attribution rework specifically, including watcher survival
+across deletion of the linked worktree the job was started from — see the
+[v0.5.0 entry](docs/test-log.md#windows-verification-of-the-v050-time-attribution-rework--2026-08-15).
 The full suite also runs on Linux/macOS/Windows in CI on every push. One known gap: the
 three symlink-containment tests skip on Windows without Developer Mode (the behavior they
 guard is POSIX-verified).
@@ -273,13 +277,18 @@ environment recorded for every test run in [docs/test-log.md](docs/test-log.md))
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
 runs in CI on Linux, macOS, and Windows on every push.
 
-**v0.5.0 has no live run behind it yet.** The time-attribution rework — todo-transition close
-authority, `unconfirmed` display closes, the delegated-span split, the `idle`/`publishLag`
-wakes — is covered by the unit suite and the CI matrix only, on macOS and Windows alike; the
-live evidence recorded below all predates it, and re-running those drills against v0.5.0 is
-the next verification step.
+**v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
+todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the
+`idle`/`publishLag` wakes — was dogfooded end-to-end on Windows on 2026-08-15
+([test-log](docs/test-log.md#windows-verification-of-the-v050-time-attribution-rework--2026-08-15)),
+which is also the first Windows execution of two of its code paths (`os.path.normcase`
+artifact matching, the `OpenProcess` liveness probe — both no-ops or unused on macOS). On
+macOS it has the unit suite and the CI matrix only. The Source B and Source C runs recorded
+below predate it; both were deliberately excluded from the new `idle`/`publishLag` behavior,
+but neither has been re-dogfooded against this release.
 
-All three job sources were dogfooded live end-to-end (v0.3.1/v0.4.0 code):
+All three job sources were dogfooded live end-to-end (v0.3.1/v0.4.0 code; Source A again
+under v0.5.0, per the Windows entry above):
 
 - **Source A** — lead/subagent runs: live tailer/watcher run, render/publish/calibration
   end-to-end ([test-log](docs/test-log.md#stage-3--source-a-tailerwatcher-dogfood--monitoring-run--2026-07-18)).
