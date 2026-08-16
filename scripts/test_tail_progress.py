@@ -11,6 +11,7 @@ T0 = "2026-07-18T10:00:00.000Z"
 T1 = "2026-07-18T10:05:00.000Z"
 T2 = "2026-07-18T10:12:00.000Z"
 T3 = "2026-07-18T10:20:00.000Z"
+T4 = "2026-07-18T10:30:00.000Z"
 
 
 def todo_entry(ts, todos, mid="m-todo"):
@@ -21,10 +22,12 @@ def todo_entry(ts, todos, mid="m-todo"):
                                      "name": "TodoWrite", "input": {"todos": todos}}]}}
 
 
-def dispatch_entry(ts, tool_id, description, name="Agent", model=None):
+def dispatch_entry(ts, tool_id, description, name="Agent", model=None, background=None):
     inp = {"description": description, "prompt": "..."}
     if model is not None:
         inp["model"] = model
+    if background is not None:
+        inp["run_in_background"] = background
     return {"type": "assistant", "timestamp": ts,
             "message": {"id": "m-" + tool_id, "usage": {},
                         "content": [{"type": "tool_use", "id": tool_id, "name": name,
@@ -35,6 +38,25 @@ def result_entry(ts, tool_id):
     return {"type": "user", "timestamp": ts,
             "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
                                      "content": "done"}]}}
+
+
+def ack_result_entry(ts, tool_id):
+    """Background-dispatch launch acknowledgment (shape verified live 2026-08-15,
+    docs/reviews/2026-08-16-macos-run-forensics.md): means 'launched', never 'finished'."""
+    return {"type": "user", "timestamp": ts,
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "content": "Async agent launched successfully. "
+                                                "(internal metadata) agentId: a38211c56e7a"}]}}
+
+
+def notification_entry(ts, tool_id, status="completed"):
+    """Background agent completion: plain-user entry, message.content is a STRING."""
+    return {"type": "user", "timestamp": ts,
+            "message": {"role": "user", "content":
+                        "<task-notification>\n<task-id>t-x</task-id>\n"
+                        "<tool-use-id>%s</tool-use-id>\n<status>%s</status>\n"
+                        "<summary>Agent finished</summary>\n</task-notification>"
+                        % (tool_id, status)}}
 
 
 def artifact_entry(ts, file_path, description="WhenDone progress monitor"):
@@ -438,6 +460,77 @@ class ObserveTest(unittest.TestCase):
         self.assertEqual(tp.observe(ev, self.IDX), {})
 
 
+class BackgroundDispatchObserveTest(unittest.TestCase):
+    IDX = {"alpha": 1}
+
+    def _ev(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
+
+    def test_flagged_background_ack_keeps_span_open(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", model="sonnet", background=True),
+            ack_result_entry(T2, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+        self.assertEqual(o["spans"], [])
+
+    def test_flagless_ack_text_keeps_span_open(self):
+        """Harness that backgrounds by default without the explicit param (N2)."""
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha"),
+            ack_result_entry(T2, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+        self.assertEqual(o["spans"], [])
+
+    def test_agent_done_closes_span_at_notification_ts(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            ack_result_entry(T2, "tu-1"),
+            notification_entry(T3, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(o["spans"], [(tp.token_usage.parse_ts(T1).isoformat(),
+                                       tp.token_usage.parse_ts(T3).isoformat())])
+
+    def test_repeat_notification_extends_span_end(self):
+        """The harness note says the same task-id may notify more than once (resume)."""
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            notification_entry(T2, "tu-1"),
+            notification_entry(T4, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"][-1][1], tp.token_usage.parse_ts(T4).isoformat())
+        self.assertEqual(o["open"], 0)
+
+    def test_non_completed_status_still_closes(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            notification_entry(T2, "tu-1", status="failed"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+
+    def test_unmatched_notification_is_ignored(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            notification_entry(T2, "tu-UNKNOWN"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+
+    def test_foreground_result_still_closes(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha"),
+            result_entry(T2, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(o["spans"], [(tp.token_usage.parse_ts(T1).isoformat(),
+                                       tp.token_usage.parse_ts(T2).isoformat())])
+
+
 class SourceCObserveUnitTest(unittest.TestCase):
     """Spec §4.3: Source C has no declared plan — the TodoWrite list IS the plan."""
 
@@ -682,6 +775,39 @@ class OneShotTest(unittest.TestCase):
             self.assertEqual(kinds.index("stop-requested"), 0)   # before source events
             self.assertEqual(rc, 0)
             self.assertTrue(os.path.exists(stop_path))  # tailer never deletes
+        finally:
+            env.cleanup()
+
+
+class BackgroundDisplayCloseTest(unittest.TestCase):
+    """R9 regression (forensics §Consequence 3): a background dispatch's ack must
+    not display-close the task; the agent-done notification does."""
+
+    def test_ack_alone_never_display_closes(self):
+        env = SyncEnv([dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                       ack_result_entry(T2, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            rc, lines = env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertNotEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)
+        finally:
+            env.cleanup()
+
+    def test_notification_display_closes_with_real_span(self):
+        env = SyncEnv([dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                       ack_result_entry(T2, "tu-1"),
+                       notification_entry(T3, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            rc, lines = env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertTrue(t.get("unconfirmed"))
+            self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+            # T1 10:05 -> T3 10:20 = 15.0 agent-minutes, not the 2-second ack span
+            self.assertEqual(t["delegatedMin"], 15.0)
         finally:
             env.cleanup()
 

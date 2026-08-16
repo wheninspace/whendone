@@ -44,6 +44,8 @@ DEFAULT_INTERVAL_S = 5
 DEFAULT_DEBOUNCE_S = 30
 
 _ORDINAL = re.compile(r"^\s*(?:task\s+)?\d+\s*[.):]\s*", re.IGNORECASE)
+_NOTIF_ID_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
+_ACK_RE = re.compile(r"\bAsync agent launched\b")
 
 
 def normalize(name):
@@ -67,9 +69,9 @@ def name_index(tasks):
 
 def extract_events(paths):
     """(events, newest_entry_ts) across all transcript files. events are
-    (ts, kind, payload), ts-sorted; kind in {'todos','dispatch','result','artifact'}.
-    Malformed lines are skipped. TranscriptTooLarge propagates (N3 posture:
-    the caller degrades the whole tail, never parses a pathological file)."""
+    (ts, kind, payload), ts-sorted; kind in {'todos','dispatch','result','artifact',
+    'agent-done'}. Malformed lines are skipped. TranscriptTooLarge propagates (N3
+    posture: the caller degrades the whole tail, never parses a pathological file)."""
     events, last_ts = [], None
     for path in paths:
         try:
@@ -92,6 +94,13 @@ def extract_events(paths):
                             last_ts = ts
                         etype = e.get("type")
                         content = (e.get("message") or {}).get("content")
+                        if etype == "user" and isinstance(content, str):
+                            if "<task-notification>" in content:
+                                m = _NOTIF_ID_RE.search(content)
+                                if m:
+                                    events.append((ts, "agent-done",
+                                                   {"tool_use_id": m.group(1)}))
+                            continue
                         if not isinstance(content, list):
                             continue
                         if etype == "assistant":
@@ -118,7 +127,8 @@ def extract_events(paths):
                                     events.append((ts, "dispatch", {
                                         "id": b.get("id"),
                                         "description": inp.get("description"),
-                                        "model": inp.get("model") if isinstance(inp.get("model"), str) else None}))
+                                        "model": inp.get("model") if isinstance(inp.get("model"), str) else None,
+                                        "background": bool(inp.get("run_in_background"))}))
                                 elif b.get("name") == "Artifact":
                                     # D4: the model's OWN publish action -- evidence for the
                                     # publishLag backstop, never acted on as an instruction.
@@ -249,8 +259,17 @@ def observe(events, idx):
     that a first-write-wins guard would get backwards). So the two
     candidates are tracked separately per slot (`_todoStart`/`_dispatchStart`,
     scratch — never returned) and `startedAt` is resolved from them only
-    after the full pass, once no earlier todo transition can still appear."""
-    obs, dispatch_open = {}, {}
+    after the full pass, once no earlier todo transition can still appear.
+
+    N1/N2: a background dispatch's `result` is a launch acknowledgment, not
+    the agent's finish — recognized either by the dispatch's own
+    `run_in_background` flag or, flag-less, by the ack text itself
+    (`_ACK_RE`). Such a result never closes the span; only a later
+    `agent-done` event (parsed from a `<task-notification>` transcript
+    entry, same tool_use id) does. `closed` remembers which slot/span index
+    a tool_use id closed so a repeat notification (resume) can extend that
+    span's end instead of opening a new one."""
+    obs, dispatch_open, closed = {}, {}, {}
 
     def slot(nr):
         return obs.setdefault(nr, {"startedAt": None, "todoFinishedAt": None,
@@ -277,19 +296,39 @@ def observe(events, idx):
             nr = idx.get(normalize(payload.get("description")))
             if nr is not None and payload.get("id"):
                 s = slot(nr)
-                dispatch_open[payload["id"]] = (nr, ts)
+                dispatch_open[payload["id"]] = (nr, ts, bool(payload.get("background")))
                 s["open"] += 1
                 if s["_dispatchStart"] is None:
                     s["_dispatchStart"] = ts.isoformat()
                 if s["model"] is None and payload.get("model"):
                     s["model"] = payload["model"]
         elif kind == "result":
-            pair = dispatch_open.pop(payload.get("tool_use_id"), None)
+            tid = payload.get("tool_use_id")
+            pair = dispatch_open.get(tid)
             if pair is not None:
-                nr, dts = pair
+                nr, dts, background = pair
+                # N2: a background dispatch's tool_result is the launch ack, never
+                # the agent's result -- the span stays open until agent-done.
+                if not (background or _ACK_RE.search(payload.get("text") or "")):
+                    del dispatch_open[tid]
+                    s = slot(nr)
+                    s["open"] -= 1
+                    s["spans"].append((dts.isoformat(), ts.isoformat()))
+                    closed[tid] = (nr, len(s["spans"]) - 1)
+        elif kind == "agent-done":
+            tid = payload.get("tool_use_id")
+            pair = dispatch_open.pop(tid, None)
+            if pair is not None:
+                nr, dts, _bg = pair
                 s = slot(nr)
                 s["open"] -= 1
                 s["spans"].append((dts.isoformat(), ts.isoformat()))
+                closed[tid] = (nr, len(s["spans"]) - 1)
+            elif tid in closed:                     # repeat notification: extend, last wins
+                nr, i = closed[tid]
+                start, end = obs[nr]["spans"][i]
+                if ts > token_usage.parse_ts(end):
+                    obs[nr]["spans"][i] = (start, ts.isoformat())
 
     for s in obs.values():
         todo_start, dispatch_start = s.pop("_todoStart"), s.pop("_dispatchStart")
