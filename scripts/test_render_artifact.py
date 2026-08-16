@@ -839,5 +839,57 @@ class HoursRolloverTest(unittest.TestCase):
         self.assertEqual(ra.fmt_min_s(0.5), "30 s")
 
 
+class EndedLineTest(unittest.TestCase):
+    def test_done_job_shows_ended_anchored_to_finished_at(self):
+        st = state(status="done",
+                   tasks=[task(status="done", actualMin=72.0,
+                               startedAt="2026-07-18T09:00:00+02:00",
+                               finishedAt="2026-07-18T10:12:00+02:00")])
+        rc, page, _ = run_cli(st, now="2026-07-18T11:00:00+02:00")
+        self.assertEqual(rc, 0)
+        self.assertIn("Started 09:00", page)
+        self.assertIn("Ended 10:12", page)      # latest finishedAt, NOT now (N8)
+
+    def test_running_job_shows_no_ended(self):
+        rc, page, _ = run_cli(state(tasks=[task(status="running",
+                                                startedAt="2026-07-18T09:00:00+02:00")]))
+        self.assertNotIn("Ended", page)
+
+    def test_paused_job_shows_no_ended(self):
+        rc, page, _ = run_cli(state(status="paused",
+                                    pausedAt="2026-07-18T09:30:00+02:00",
+                                    tasks=[task(status="running",
+                                                startedAt="2026-07-18T09:00:00+02:00")]))
+        self.assertNotIn("Ended", page)
+
+
+class DelegatedSplitPlacementTest(unittest.TestCase):
+    def _st(self):
+        return state(status="done",
+                     tasks=[task(name="Alpha", status="done", actualMin=60.0,
+                                 estimateMin=45, rawEstimateMin=45, delegatedMin=15.0,
+                                 startedAt="2026-07-18T09:00:00+02:00",
+                                 finishedAt="2026-07-18T10:00:00+02:00")])
+
+    def _row_cells(self, page):
+        row = next(l for l in page.splitlines() if "Alpha" in l and "<tr>" in l)
+        return row.split("</td>")   # cells[1]=name, cells[4]=Actual
+
+    def test_split_renders_in_actual_cell_not_name_cell(self):
+        rc, page, _ = run_cli(self._st(), now="2026-07-18T11:00:00+02:00")
+        cells = self._row_cells(page)
+        self.assertIn("delegated 15 m · lead/review 45 m", cells[4])
+        self.assertNotIn("delegated", cells[1])
+
+    def test_split_precedes_token_line_in_actual_cell(self):
+        tok = {"available": True,
+               "job": {"output": 1000, "freshInput": 0, "cacheRead": 0},
+               "tasks": [{"nr": 1, "output": 5000, "freshInput": 0}]}
+        rc, page, _ = run_cli(self._st(), tokens_obj=tok,
+                              now="2026-07-18T11:00:00+02:00")
+        cells = self._row_cells(page)
+        self.assertLess(cells[4].index("delegated"), cells[4].index("tok"))
+
+
 if __name__ == "__main__":
     unittest.main()

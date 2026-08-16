@@ -198,17 +198,6 @@ def task_rows(tasks, tmap, now, job_status=None):
             # dim rather than hide it: the artifact must stay honest about which
             # closes are provisional.
             name += '<br><span class="dim">unconfirmed — closed on subagent result</span>'
-        dm = t.get("delegatedMin")
-        if status == "done" and isinstance(dm, (int, float)) \
-                and not isinstance(dm, bool):
-            # D9: delegated = agent-minutes over matched dispatch->result spans
-            # (Task 3); with parallel matched dispatches this can exceed the
-            # task's own wall span, so lead/review clamps at 0 rather than going
-            # negative (formulas.md's "Orchestration line & delegated split").
-            a0 = display_actual(t)
-            if a0 is not None:
-                name += ('<br><span class="dim">delegated %s · lead/review %s</span>'
-                         % (esc(fmt_min_s(dm)), esc(fmt_min_s(max(a0 - dm, 0)))))
         if isinstance(t.get("agentsDone"), int) and (
                 isinstance(t.get("agentsExpected"), int)
                 or isinstance(t.get("agentsStarted"), int)):
@@ -230,6 +219,15 @@ def task_rows(tasks, tmap, now, job_status=None):
                 actual = '<span class="dev">%s</span>' % esc(fmt_min_s(a))
             else:
                 actual = "—"
+            dm = t.get("delegatedMin")
+            if isinstance(dm, (int, float)) and not isinstance(dm, bool):
+                # D9/N6: delegated = agent-minutes over matched dispatch->agent-done
+                # spans; parallel matched dispatches can exceed the task's wall span,
+                # so lead/review clamps at 0 rather than going negative.
+                a0 = display_actual(t)
+                if a0 is not None:
+                    actual += ('<br><span class="dim">delegated %s · lead/review %s</span>'
+                               % (esc(fmt_min_s(dm)), esc(fmt_min_s(max(a0 - dm, 0)))))
         elif status == "running":
             s = parse_ts(t.get("startedAt"))
             el = minutes(s, now) if s else 0.0
@@ -347,6 +345,10 @@ def render(state, tokens, summary, now, push_status, superseded):
     meta = []
     if start:
         meta.append("Started %s" % hhmm(start, now))
+    if status == "done":
+        ended = _done_end(state)
+        if ended:
+            meta.append("Ended %s" % hhmm(ended, now))
     if el is not None:
         meta.append("%s elapsed" % fmt_min(el))
     meta.append("%d of %d subtasks done" % (done_count, total))
@@ -556,6 +558,15 @@ def total_estimate(us):
     return sum(max(task_est(t) for t in u) for u in us if u)
 
 
+def _done_end(state):
+    """Latest task finishedAt — the single job-end anchor shared by elapsed_min's
+    done branch and the Ended meta line (N8: 'took' and 'Ended' can never disagree)."""
+    ends = [parse_ts(t.get("finishedAt")) for t in state.get("tasks") or []
+            if isinstance(t, dict)]
+    ends = [e for e in ends if e]
+    return max(ends) if ends else None
+
+
 def elapsed_min(state, now):
     """Elapsed = endpoint − job startedAt − pausedTotalMin, floored at 0. Endpoint by
     status: running → now; paused → pausedAt (fallback now); done → latest task
@@ -571,10 +582,7 @@ def elapsed_min(state, now):
     if status == "paused":
         end = parse_ts(state.get("pausedAt")) or now
     elif status == "done":
-        ends = [parse_ts(t.get("finishedAt")) for t in state.get("tasks") or []
-                if isinstance(t, dict)]
-        ends = [e for e in ends if e]
-        end = max(ends) if ends else now
+        end = _done_end(state) or now
     return max(0.0, minutes(start, end) - paused_total)
 
 
