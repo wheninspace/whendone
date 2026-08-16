@@ -52,11 +52,13 @@ task done, after its review/fix cycle. Subagent results never close a task: disp
 `description` exactly matches a task's `name` accrue to that task's *delegated span* (shown in
 the artifact) — name every dispatch that's part of task N's work (implementer, review, fix
 round) with task N's exact `name`; differently-named dispatches are merely invisible to the
-split. A task whose todos you never touch falls back to closing on its last matched subagent
-result, marked `unconfirmed`, and logs NO calibration row — converted to a confirmed close (row
-appended, once) the moment todo `completed` evidence appears; absent that, a later matched
-dispatch still in flight reopens it to `running` instead, even past an `in_progress` sighting.
-Renaming
+split. A BACKGROUND dispatch's tool result is only a launch acknowledgment, never the agent's
+finish — it doesn't end the delegated span either; only the agent's own completion notification
+does (references/formulas.md). A task whose todos you never touch falls back to closing on its
+last agent completion, marked `unconfirmed`, and logs NO calibration row — converted to a
+confirmed close (row appended, once) the moment todo `completed` evidence appears; absent that,
+an `in_progress` sighting or a later matched dispatch still in flight now REOPENS it to
+`running` instead of being ignored. Renaming
 mid-job breaks matching — update the state file and todo list together, with the watcher
 stopped, if a rename is needed.
 

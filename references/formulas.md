@@ -88,12 +88,30 @@ later; the summary script ignores both for factor computation.
   calibration log's 0.5-min floor never shows here — it's a logging rule, not a clock fact),
   `overrunning by X min` for a running task past its estimate, `—` when unstarted; never a
   status word.
+- **Hours rollover (`fmt_min`/`fmt_min_s`):** both formatters roll to h+m (`fmt_min`) or
+  h+m+s (`fmt_min_s`) once the displayed duration reaches 60 minutes — below that, whole
+  minutes (`fmt_min`) or m+s (`fmt_min_s`) as before. Pinned examples: `fmt_min(275)="4 h 35
+  m"`, `fmt_min(240)="4 h"`, `fmt_min_s(403 + 52/60)="6 h 43 m 52 s"`, `fmt_min_s(60)="1 h"`,
+  `fmt_min_s(60.05)="1 h 0 m 3 s"`, `fmt_min_s(90)="1 h 30 m"`. This rollover applies to every
+  duration rendered through these two functions — the Actual column, the delegated/lead-review
+  split, the Total row, elapsed, and the job-end "took" line — but NOT to the ETA interval
+  bounds (`(−A/+B min)`, `± N min`) or any numeric JSON status field (`idleMin`, `stalledMin`,
+  `sincePublishMin`, `orchestrationMin`), which stay plain minutes. The elapsed-meta line and
+  the "overrunning by X min" line render through `fmt_min` too, so below the hour they now show
+  "m" rather than the literal word "min" — an accepted, intended side effect of sharing the
+  formatter, not a separate rule.
 - A bold Total row (dim-labeled "sum of subtasks") closes the table: plain column sums — all
   estimates (whole minutes); done tasks' actuals in m+s precision (`8 m 30 s`), deviation only
   once every task is done. Sums are work minutes, not group-aware walltime: the job-end "took"
   line shows walltime, also in m+s (`took 7 m 55 s`) — facts get seconds, estimates stay
   whole-minute, and the two totals are visibly different labeled quantities rather than one
   number rounded two ways.
+- **Job-end `Ended HH:MM` line:** once `status == "done"`, a second meta line appears
+  immediately under `Started HH:MM`: `Ended HH:MM`, computed from the latest task
+  `finishedAt` across every declared task. This is the SAME anchor `elapsed_min`'s done branch
+  uses for the "took" figure (`_done_end`) — "took" and "Ended" are derived from one shared
+  timestamp and can never disagree with each other. Done status only; a running or paused job
+  shows no `Ended` line.
 - Token lines when token JSON is available (omitted entirely otherwise): job-level
   "Tokens: Nk spent · NM cache reads" (cache reads never summed into the headline), per-task
   dim lines, and ONE combined `≈Nk tok (group)` figure for parallel dispatch groups whose
@@ -123,8 +141,28 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   X ≥ 1 min, plus always exported on the JSON status line as `orchestrationMin` (0 when
   nothing to attribute, or for source C — see references/source-c.md — which has no
   calibrated elapsed baseline to subtract against).
+- **A dispatch's span end depends on whether it runs in the background.** A dispatch counts as
+  background when its input carries a truthy `run_in_background`, or, flag-less, when its
+  `tool_result` text matches the launch-acknowledgment shape ("Async agent launched"). For a
+  foreground dispatch the span ends on that `tool_result`, same as before. For a background
+  dispatch the `tool_result` is only the launch ack — it never ends the span; the span ends on
+  the agent's own completion notification (a `<task-notification>` transcript entry),
+  correlated back to the dispatch by `tool_use` id. A repeat notification for the same id (a
+  resumed/relaunched agent) extends that span's end rather than opening a new one, and only
+  forward in time — last wins, monotonically. There is no fallback if a notification is lost:
+  the span simply stays open and only that task's `delegatedMin` goes missing; nothing else
+  about the task's own close is affected.
+- **Only main-session transcripts carry event authority.** A job's declared `sessionIds` name
+  main transcripts; each also has a discoverable sibling directory of subagent transcript
+  files (`token_usage.py`'s `transcript_paths`). Of the two, only the MAIN files are parsed for
+  `todos`/`dispatch`/`result`/`artifact`/`agent-done` events — subagent transcripts feed
+  nothing but the staleness/grace clock
+  (the newest entry timestamp across every file, main or subagent) and token counts. An
+  oversized subagent file is skipped silently (fail-soft: fewer timestamps, never a raised
+  error); an oversized MAIN file still raises `TranscriptTooLarge` and degrades the whole tail,
+  same as before this rework.
 - **Delegated / lead-review split**: `delegatedMin` (Task 3's `tail_progress.py` field) is
-  agent-minutes summed over the task's matched subagent dispatch→result spans — a dispatch
+  agent-minutes summed over the task's matched subagent dispatch→completion spans — a dispatch
   counts only when its `description` matches the task's `name` under `tail_progress.py`'s
   `normalize`, which tolerates case, surrounding/collapsed whitespace, and ONE leading ordinal
   (`3.`, `3)`, `3:`, `Task 3:`) — and nothing looser. Because these are
@@ -132,9 +170,11 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   parallel can legitimately show `delegatedMin` GREATER than the task's own wall span. Lead/
   review time = the task's `display_actual` minus `delegatedMin`, clamped at 0 — never
   negative, even when parallel delegation pushed `delegatedMin` past the wall span. Rendered
-  as a dim line under a done task's name: "delegated Xm · lead/review Ym" (both via
-  `fmt_min_s`), shown only when the task is done, `delegatedMin` is a known number, and the
-  task has a non-null actual.
+  as a dim line under a done task's Actual-column cell, immediately after the time+deviation
+  line and before the token line (Task 7's fixed order: time+deviation, then "delegated Xm ·
+  lead/review Ym" via `fmt_min_s`, then the token line) — shown only when the task is done,
+  `delegatedMin` is a known number, and the task has a non-null actual. The `unconfirmed`
+  marker (below) stays in the name cell, not the Actual column.
 - **`unconfirmed` closes never produce calibration rows.** A task display-closed on subagent
   evidence alone — no todo/TaskUpdate `completed` transition was ever observed for it
   (references/source-a.md) — is marked `t["unconfirmed"] = true`. Such a task IS `status ==
@@ -142,7 +182,20 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   calibration.jsonl, so its `actualMin` is null and the Actual column falls back to
   `display_actual`'s timestamp-derived span. The renderer marks it with a dim
   "unconfirmed — closed on subagent result" line under the task name so the artifact never
-  implies a confirmed close it doesn't have.
+  implies a confirmed close it doesn't have. Two things can happen to it next: todo `completed`
+  evidence upgrades it to a confirmed close (row appended, once); or, before that, a todo
+  `in_progress` sighting for it OR a new matched dispatch still in flight REOPENS it back to
+  `running` and clears the marker — the lead is still working the task, so the provisional
+  close was premature either way.
+- **`all-done` is held under a quiet-transcript grace while any close is `unconfirmed`.**
+  Whenever every declared task is `status == "done"` but at least one carries `unconfirmed`,
+  the tailer withholds the `all-done` event until the newest transcript entry seen (across
+  every main and subagent transcript) is at least `staleAfterMin` minutes old — the same
+  threshold `check_staleness`/`check_idle` use, defaulting to 10. No transcript timestamp at
+  all never holds (fail-soft: `all-done` fires rather than hanging forever). A confirmed close
+  on every task fires `all-done` immediately, with no grace. `all-done` no longer requires the
+  completing transition to have happened in the SAME cycle that detects completeness — a
+  quiet job that was already all-done when the tailer next looks still fires it.
 
 Implemented in `scripts/render_artifact.py` (`_span_union_min`, the per-task delegated/lead
 dim line in `task_rows`, the `orch`/`orch_line` block and `orchestrationMin` in `render`) and

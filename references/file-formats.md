@@ -112,8 +112,8 @@ per-job ISO timestamp, tailer-written (Source A only): set once per idle gap, re
 once the anchor moves past it.
 
 `delegatedMin`/`unconfirmed` = optional per-task fields, tailer-written: agent-minutes summed
-over a task's matched dispatch spans, and a still-provisional display close — semantics in
-`references/formulas.md`.
+over a task's matched dispatch→completion spans, and a still-provisional display close —
+semantics in `references/formulas.md`.
 
 All are additive: pre-upgrade state files without them stay valid.
 
@@ -147,7 +147,7 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | event | fields | model's move |
 |---|---|---|
 | `progress` | `done`, `total`, `changed`, `justDone[]`, `rendered`, `etaText?`, `slipAlert?`, `publishLag?` (Source A only), `sincePublishMin?` (Source A only) | Publish the artifact file (same path → same URL); quote `etaText` if speaking. `slipAlert: true` ⇒ push once (tailer already set `etaAlertSent`). `publishLag: true` ⇒ publish immediately — backstop for a missed publish. |
-| `all-done` | same as `progress` | Run the job-end procedure (source-a.md). |
+| `all-done` | same as `progress` | Held under a quiet-transcript grace while any close is `unconfirmed` (rule in references/formulas.md). Once it fires, run the job-end procedure (source-a.md). |
 | `stale` | `task`, `name`, `stalledMin` | Push once: liveness alert (F13). |
 | `idle` (Source A only) | `idleMin`, `nextTask` | Mark the next todo `in_progress`, or explain the gap in chat — the orchestration line is accruing. |
 | `stop-requested` | — | `.claude/STOP` exists: finish the current subtask, then run SKILL.md's Stop procedure (its last step deletes the file). Emitted once per watcher run. |
