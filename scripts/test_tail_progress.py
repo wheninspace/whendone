@@ -1108,6 +1108,20 @@ class CompletionPipelineTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_alias_upgrades_from_second_model_in_window(self):
+        """R1 regression: window models [claude-opus-5, claude-sonnet-5] (lead
+        busiest) must still upgrade alias 'sonnet' to claude-sonnet-5 (N9)."""
+        env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
+                       usage_entry(T1, "claude-opus-5", 500, "m-u5"),
+                       usage_entry(T1, "claude-sonnet-5", 80, "m-u6"),
+                       todo_entry(T2, [item("task 1", "completed")])],
+                      mkstate(tasks=[mktask(1, model="sonnet")]))
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["model"], "claude-sonnet-5")
+        finally:
+            env.cleanup()
+
     def test_cross_family_top_model_never_upgrades_alias(self):
         env = SyncEnv([todo_entry(T0, [item("task 1", "in_progress")]),
                        usage_entry(T1, "claude-opus-4-8", 500, "m-u2"),

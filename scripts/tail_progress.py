@@ -970,17 +970,20 @@ def handle_completion(state_path, state, t, started, finished, args, spans=None)
     if tokens and tokens.get("available"):
         entries = tokens.get("tasks") or []
         models = (entries[0].get("models") or []) if entries else []
-        top = models[0].get("id") if models else None
-        if isinstance(top, str):
-            if _is_alias(t.get("model")) and t["model"] in top:
+        ids = [m.get("id") for m in models if isinstance(m.get("id"), str)]
+        if _is_alias(t.get("model")):
+            # N9: same-family match anywhere in the window, not just the busiest
+            # model — the lead's own usage is usually models[0] on delegated tasks.
+            top = next((mid for mid in ids if t["model"] in mid), None)
+            if top:
                 t["model"] = top
                 write_state(state_path, state)
-            elif t.get("model") is None and len(models) == 1:
-                # no declared/dispatch model at all: a task window that saw exactly
-                # ONE model is unambiguous evidence. Two or more -> stays null
-                # ("unknown" in the row) rather than guessing the busiest one.
-                t["model"] = top
-                write_state(state_path, state)
+        elif t.get("model") is None and len(ids) == 1:
+            # no declared/dispatch model at all: a task window that saw exactly
+            # ONE model is unambiguous evidence. Two or more -> stays null
+            # ("unknown" in the row) rather than guessing the busiest one.
+            t["model"] = ids[0]
+            write_state(state_path, state)
 
     # (c) append — individual row for sequential tasks; group members wait for
     # the synthetic row when the LAST member lands. Source-c jobs never log
