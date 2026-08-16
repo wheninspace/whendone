@@ -446,7 +446,9 @@ def plan_transitions(state, obs):
             if t.get("unconfirmed") and o:          # display close: still provisional
                 if o.get("todoFinishedAt"):
                     completions.append((t, o.get("startedAt"), o["todoFinishedAt"], o))
-                elif o.get("open"):
+                elif o.get("open") or o.get("todoSeen"):
+                    # N4: in_progress evidence (or a new matched dispatch) means the
+                    # lead is still working this task — revert the provisional close.
                     reopens.append(t)
             continue                                # done-is-done for confirmed closes
         if not o:

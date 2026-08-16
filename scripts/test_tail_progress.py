@@ -2724,5 +2724,47 @@ class PublishLagTest(unittest.TestCase):
             env.cleanup()
 
 
+class InProgressReopensDisplayCloseTest(unittest.TestCase):
+    """N4 / R7 regression (forensics §Consequence 2): in_progress evidence must
+    revert a provisional display-close, not leave the task falsely done."""
+
+    def test_in_progress_after_display_close_reopens(self):
+        done_task = mktask(1, name="Alpha", status="done",
+                           startedAt=tp.token_usage.parse_ts(T0).isoformat(),
+                           finishedAt=tp.token_usage.parse_ts(T1).isoformat())
+        done_task["unconfirmed"] = True
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "Alpha", background=True),
+                       notification_entry(T1, "tu-1"),
+                       todo_entry(T2, [item("Alpha", "in_progress")])],
+                      mkstate(tasks=[done_task]))
+        try:
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "running")
+            self.assertIsNone(t["finishedAt"])
+            self.assertNotIn("unconfirmed", t)
+        finally:
+            env.cleanup()
+
+    def test_completed_todo_still_upgrades_not_reopens(self):
+        done_task = mktask(1, name="Alpha", status="done",
+                           startedAt=tp.token_usage.parse_ts(T0).isoformat(),
+                           finishedAt=tp.token_usage.parse_ts(T1).isoformat())
+        done_task["unconfirmed"] = True
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "Alpha", background=True),
+                       notification_entry(T1, "tu-1"),
+                       todo_entry(T2, [item("Alpha", "in_progress")]),
+                       todo_entry(T3, [item("Alpha", "completed")])],
+                      mkstate(tasks=[done_task]))
+        try:
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)
+            self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        finally:
+            env.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()
