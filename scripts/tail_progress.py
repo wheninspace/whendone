@@ -579,12 +579,18 @@ def sync_cycle(state_path, now, args):
 
     changed = bool(starts or completions or displays or reopens)
     args._last_ts = last_ts                      # Task 6's staleness input
-    # D11: all-done bypasses the debounce gate outright (and finish_cycle's own
-    # render call catches a same-cycle slipAlert too, since etaAlertSent gates
-    # on job-level state.status, not on task-level done==total) — only a plain
-    # progress completion stays subject to _render_ok.
-    all_done_now = bool(completions or displays) and bool(state.get("tasks")) and all(
-        isinstance(t, dict) and t.get("status") == "done" for t in state["tasks"])
+    # N3/N10: all-done fires whenever the job is complete and not held — no longer
+    # gated on a same-cycle transition (follow() exits on all-done, so no repeats).
+    # An unconfirmed final close holds it until the transcript has been quiet for
+    # staleAfterMin; no transcript timestamp at all never holds (fail-soft).
+    tasks_now = [t for t in state.get("tasks", []) if isinstance(t, dict)]
+    complete = bool(tasks_now) and all(t.get("status") == "done" for t in tasks_now)
+    held = False
+    if complete and any(t.get("unconfirmed") for t in tasks_now):
+        if last_ts is not None:
+            held = (now - last_ts).total_seconds() / 60.0 < _stale_threshold(args, state)
+    args._hold_all_done = held
+    all_done_now = complete and not held
     return _maybe_finish(state_path, state, now, args, out, changed, just_done, all_done_now)
 
 
@@ -1064,7 +1070,8 @@ def finish_cycle(state_path, state, now, last_ts, changed, just_done, args):
     event. The model's whole wake job is publishing the file this wrote."""
     tasks = [t for t in state.get("tasks", []) if isinstance(t, dict)]
     done = sum(1 for t in tasks if t.get("status") == "done")
-    all_done = bool(tasks) and done == len(tasks)
+    all_done = bool(tasks) and done == len(tasks) \
+        and not getattr(args, "_hold_all_done", False)
     out_path = _render_out_path(state)
 
     held_nr, held = getattr(args, "_held_tokens", (None, None))
@@ -1218,6 +1225,17 @@ def acquire_lock(state_path):
     return None
 
 
+def _stale_threshold(args, state):
+    """The staleAfterMin used both by check_staleness/check_idle (via follow's
+    resolution) and N3's quiet-transcript grace: an explicit --stale-min wins,
+    else the state's own staleAfterMin, else DEFAULT_STALE_MIN."""
+    v = getattr(args, "stale_min", None)
+    if v is None:
+        sv = state.get("staleAfterMin")
+        v = sv if isinstance(sv, (int, float)) and sv > 0 else DEFAULT_STALE_MIN
+    return v
+
+
 def check_staleness(state_path, state, now, stale_min, args):
     """F13: no new transcript entry for stale_min minutes while a task is in
     flight -> ONE stale event per task, persisted as staleNotifiedAt."""
@@ -1311,10 +1329,7 @@ def follow(a):
         emit({"event": "already-running",
               "reason": "another tailer holds whendone-tail.lock"})
         return 4
-    stale_min = a.stale_min
-    if stale_min is None:
-        v = first.get("staleAfterMin")
-        stale_min = v if isinstance(v, (int, float)) and v > 0 else DEFAULT_STALE_MIN
+    stale_min = _stale_threshold(a, first)
     last_emit = float("-inf")
     cycles = 0
     try:

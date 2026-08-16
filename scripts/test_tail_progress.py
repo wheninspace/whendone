@@ -2148,7 +2148,11 @@ class DebounceGateTest(unittest.TestCase):
         and the all-done wake is delayed to whenever the next cycle happens to
         land. Companion to CompletionPipelineTest's ruled trade-off test: that
         one pins that a forgetful job terminates at all, this one pins that it
-        terminates on the cycle that finished it."""
+        terminates on the cycle that finished it. `now` is pushed to T3 (15 min
+        past the transcript's last entry T1) rather than T2's 7 min so N3's
+        quiet-transcript grace (unconfirmed close held under staleAfterMin,
+        default 10) isn't itself what's gating all-done here — this test is
+        about the debounce gate, not the grace."""
         env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1"),
                        result_entry(T1, "tu-1")],
                       mkstate(tasks=[mktask(1)]))
@@ -2159,7 +2163,7 @@ class DebounceGateTest(unittest.TestCase):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 _, events = tp.sync_cycle(env.state_path,
-                                          tp.token_usage.parse_ts(T2), args)
+                                          tp.token_usage.parse_ts(T3), args)
             self.assertEqual(len([e for e in events
                                   if e.get("event") == "all-done"]), 1)
             self.assertFalse(getattr(args, "_pending", False))   # not deferred
@@ -2762,6 +2766,64 @@ class InProgressReopensDisplayCloseTest(unittest.TestCase):
             self.assertEqual(t["status"], "done")
             self.assertNotIn("unconfirmed", t)
             self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        finally:
+            env.cleanup()
+
+
+class AllDoneGraceTest(unittest.TestCase):
+    """N3: an unconfirmed final close holds all-done until the transcript has been
+    quiet for staleAfterMin (default 10)."""
+
+    def _state(self):
+        t1 = mktask(1, name="Alpha", status="done",
+                    startedAt=tp.token_usage.parse_ts(T0).isoformat(),
+                    finishedAt=tp.token_usage.parse_ts(T1).isoformat(),
+                    actualMin=5.0)
+        t2 = mktask(2, name="Beta", status="done",
+                    startedAt=tp.token_usage.parse_ts(T1).isoformat(),
+                    finishedAt=tp.token_usage.parse_ts(T2).isoformat())
+        t2["unconfirmed"] = True
+        return mkstate(tasks=[t1, t2])
+
+    def _events(self, ev_lines):
+        return [e.get("event") for e in ev_lines]
+
+    def test_active_transcript_holds_all_done(self):
+        # newest transcript entry T3 = 10:20Z; now 10:25Z -> 5 min quiet < 10 -> held
+        env = SyncEnv([todo_entry(T3, [item("off-plan work", "in_progress")])],
+                      self._state())
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:25:00+00:00")
+            evs = self._events(lines)
+            self.assertNotIn("all-done", evs)
+            self.assertIn("progress", evs)          # one-shot forces a render
+        finally:
+            env.cleanup()
+
+    def test_quiet_transcript_fires_all_done(self):
+        env = SyncEnv([todo_entry(T3, [item("off-plan work", "in_progress")])],
+                      self._state())
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:31:00+00:00")  # 11 min quiet
+            self.assertIn("all-done", self._events(lines))
+        finally:
+            env.cleanup()
+
+    def test_no_transcript_timestamp_never_holds(self):
+        env = SyncEnv([], self._state())
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:25:00+00:00")
+            self.assertIn("all-done", self._events(lines))
+        finally:
+            env.cleanup()
+
+    def test_confirmed_closes_fire_immediately(self):
+        st = self._state()
+        st["tasks"][1].pop("unconfirmed")
+        env = SyncEnv([todo_entry(T3, [item("off-plan work", "in_progress")])], st)
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:25:00+00:00")
+            self.assertIn("all-done", self._events(lines))
         finally:
             env.cleanup()
 
