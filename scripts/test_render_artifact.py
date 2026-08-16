@@ -441,7 +441,7 @@ class TestFullPage(unittest.TestCase):
         self.assertIn("When done: ~", page)
         self.assertIn("(default band — little history)", page)          # no summary -> flat bands
         self.assertIn("Started 09:00", page)
-        self.assertIn("60 min elapsed", page)
+        self.assertIn("1 h elapsed", page)
         self.assertIn("1 of 3 subtasks done", page)
         st = json.loads(out)
         self.assertEqual((st["done"], st["total"]), (1, 3))
@@ -549,7 +549,7 @@ class TestFullPage(unittest.TestCase):
         s = state(tasks=[task(1, status="running", estimateMin=10,
                               startedAt="2026-07-18T09:48:00+02:00")])  # elapsed 12
         _, page, _ = run_cli(s)
-        self.assertIn("overrunning by 2 min", page)
+        self.assertIn("overrunning by 2 m", page)
 
     def test_executor_line_display_name_and_effort(self):
         s = state(tasks=[task(1, model="claude-haiku-4-5-20251001", effort="low"),
@@ -599,7 +599,7 @@ class TestFullPage(unittest.TestCase):
         self.assertIn("resume the whendone job", page)
         self.assertIn("task 2", page)                  # next subtask named
         self.assertIn(".claude/whendone-state.json", page)
-        self.assertIn("40 min elapsed", page)
+        self.assertIn("40 m elapsed", page)
         self.assertEqual(json.loads(out)["status"], "paused")
 
     def test_done_page_totals_and_final_footer(self):
@@ -608,7 +608,7 @@ class TestFullPage(unittest.TestCase):
                               finishedAt="2026-07-18T09:55:00+02:00")])
         rc, page, out = run_cli(s)
         self.assertIn("DONE", page)
-        self.assertIn("took 55 m (estimated 60 m)", page)   # zero seconds omitted
+        self.assertIn("took 55 m (estimated 1 h)", page)   # zero seconds omitted
         self.assertIn("this page is final", page)
         self.assertNotIn(".claude/STOP", page)
 
@@ -617,13 +617,13 @@ class TestFullPage(unittest.TestCase):
                   tasks=[task(1, status="done", actualMin=25.0,
                               finishedAt="2026-07-18T09:56:30+02:00")])
         _, page, _ = run_cli(s)
-        self.assertIn("took 56 m 30 s (estimated 60 m)", page)
+        self.assertIn("took 56 m 30 s (estimated 1 h)", page)
 
     def test_done_subminute_elapsed_shows_seconds(self):
         s = state(status="done", startedAt="2026-07-18T09:59:12+02:00",
                   tasks=[task(1, status="done", actualMin=0.5)])
         _, page, _ = run_cli(s)
-        self.assertIn("took 48 s (estimated 60 m)", page)
+        self.assertIn("took 48 s (estimated 1 h)", page)
 
     def test_footer_stop_line_and_push_status_variants(self):
         _, page, _ = run_cli(state(tasks=[task(1)]))
@@ -819,6 +819,24 @@ class DelegatedSplitAndOrchestrationTest(unittest.TestCase):
         _, page, _ = run_cli(s)
         self.assertIn("delegated 10 m", page)
         self.assertIn("lead/review 0 s", page)
+
+
+class HoursRolloverTest(unittest.TestCase):
+    def test_fmt_min_rolls_at_60(self):
+        self.assertEqual(ra.fmt_min(275), "4 h 35 m")
+        self.assertEqual(ra.fmt_min(240), "4 h")
+        self.assertEqual(ra.fmt_min(59), "59 m")
+        self.assertEqual(ra.fmt_min(59.6), "1 h")      # displayed minutes round to 60
+        self.assertEqual(ra.fmt_min(0.4), "24 s")
+
+    def test_fmt_min_s_rolls_at_60(self):
+        self.assertEqual(ra.fmt_min_s(403 + 52 / 60), "6 h 43 m 52 s")
+        self.assertEqual(ra.fmt_min_s(60), "1 h")
+        self.assertEqual(ra.fmt_min_s(60.05), "1 h 0 m 3 s")
+        self.assertEqual(ra.fmt_min_s(90.5), "1 h 30 m 30 s")
+        self.assertEqual(ra.fmt_min_s(90), "1 h 30 m")
+        self.assertEqual(ra.fmt_min_s(8.5), "8 m 30 s")
+        self.assertEqual(ra.fmt_min_s(0.5), "30 s")
 
 
 if __name__ == "__main__":

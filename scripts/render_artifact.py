@@ -120,24 +120,35 @@ def fmt_tok(n):
     return "%.1fM" % (n / 1_000_000)
 
 
+def _fmt_hm(mm):
+    h, m = divmod(mm, 60)
+    return "%d h" % h if m == 0 else "%d h %d m" % (h, m)
+
+
 def fmt_min(m):
-    """Hybrid human display: >= 1 min -> whole minutes (half-up), < 1 min ->
-    whole seconds. Display-only rounding — ETA/interval/sum math stays on the
-    raw values."""
+    """Hybrid human display: < 1 min -> whole seconds, < 60 min -> whole minutes,
+    >= 60 displayed minutes -> h+m (N7). Display-only rounding — ETA/interval/sum
+    math stays on the raw values."""
     m = float(m)
     seconds = int(m * 60 + 0.5)
     if seconds < 60:
         return "%d s" % seconds
-    return "%d m" % int(m + 0.5)
+    mm = int(m + 0.5)
+    return _fmt_hm(mm) if mm >= 60 else "%d m" % mm
 
 
 def fmt_min_s(m):
-    """m+s precision for STATEMENTS OF FACT — the job-end "took" and the
-    Total row's actual sum. Estimates stay on fmt_min's hybrid whole-minute
-    display: two precise numbers that differ read as different quantities,
-    two rounded ones read as a contradiction."""
+    """m+s (h+m+s from one hour, N7) precision for STATEMENTS OF FACT — the job-end
+    "took", Actual column, delegated split, orchestration line. Estimates stay on
+    fmt_min's whole-minute display: two precise numbers that differ read as
+    different quantities, two rounded ones read as a contradiction."""
     seconds = int(float(m) * 60 + 0.5)
     mm, ss = divmod(seconds, 60)
+    if mm >= 60:
+        h, m2 = divmod(mm, 60)
+        if ss == 0:
+            return _fmt_hm(mm)
+        return "%d h %d m %d s" % (h, m2, ss)
     if mm == 0:
         return "%d s" % ss
     if ss == 0:
@@ -222,7 +233,7 @@ def task_rows(tasks, tmap, now, job_status=None):
         elif status == "running":
             s = parse_ts(t.get("startedAt"))
             el = minutes(s, now) if s else 0.0
-            actual = (esc("overrunning by %d min" % round(el - est))
+            actual = (esc("overrunning by %s" % fmt_min(el - est))
                       if est and el > est else "—")
         else:
             actual = "—"
@@ -337,7 +348,7 @@ def render(state, tokens, summary, now, push_status, superseded):
     if start:
         meta.append("Started %s" % hhmm(start, now))
     if el is not None:
-        meta.append("%d min elapsed" % round(el))
+        meta.append("%s elapsed" % fmt_min(el))
     meta.append("%d of %d subtasks done" % (done_count, total))
     lines.append('<span class="dim">%s</span>' % esc(" · ".join(meta)))
     if isinstance(tokens, dict) and tokens.get("available"):
