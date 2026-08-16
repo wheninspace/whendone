@@ -67,11 +67,15 @@ def name_index(tasks):
     return idx
 
 
-def extract_events(paths):
+def extract_events(paths, aux_paths=()):
     """(events, newest_entry_ts) across all transcript files. events are
     (ts, kind, payload), ts-sorted; kind in {'todos','dispatch','result','artifact',
     'agent-done'}. Malformed lines are skipped. TranscriptTooLarge propagates (N3
-    posture: the caller degrades the whole tail, never parses a pathological file)."""
+    posture: the caller degrades the whole tail, never parses a pathological file).
+
+    N5: `aux_paths` (subagent transcripts) never produce events -- they only
+    advance `last_ts`, the staleness/grace clock, and are fail-soft: an
+    oversized or unreadable aux file is skipped silently rather than raising."""
     events, last_ts = [], None
     for path in paths:
         try:
@@ -144,6 +148,22 @@ def extract_events(paths):
                                                     "text": _result_text(b.get("content"))}))
                     except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
                         continue
+        except OSError:
+            continue
+    for path in aux_paths:
+        try:
+            if os.path.getsize(path) > token_usage.MAX_TRANSCRIPT_BYTES:
+                continue
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f):
+                    if i >= token_usage.MAX_TRANSCRIPT_LINES:
+                        break
+                    try:
+                        ts = token_usage.parse_ts(json.loads(line).get("timestamp"))
+                    except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+                        continue
+                    if ts is not None and (last_ts is None or ts > last_ts):
+                        last_ts = ts
         except OSError:
             continue
     events.sort(key=lambda ev: ev[0])
@@ -442,13 +462,14 @@ def plan_transitions(state, obs):
 
 
 def transcript_files(state, projects_dir):
-    flat = []
-    for main_t, subs in token_usage.transcript_paths(
+    """(mains, subs): only mains carry event authority (N5); subs feed last_ts only."""
+    mains, subs = [], []
+    for main_t, sub_list in token_usage.transcript_paths(
             state.get("sessionIds", []),
             projects_dir or os.path.expanduser("~/.claude/projects")):
-        flat.append(main_t)
-        flat.extend(subs)
-    return flat
+        mains.append(main_t)
+        subs.extend(sub_list)
+    return mains, subs
 
 
 def _match_publish(state, payload):
@@ -494,7 +515,8 @@ def sync_cycle(state_path, now, args):
         emit(out[-1]); return state, out
 
     try:
-        events, last_ts = extract_events(transcript_files(state, args.projects_dir))
+        mains, subs = transcript_files(state, args.projects_dir)
+        events, last_ts = extract_events(mains, subs)
     except token_usage.TranscriptTooLarge:
         events, last_ts = [], None
         out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})
@@ -762,7 +784,8 @@ def sync_cycle_c(state_path, state, now, args, out):
         out.append({"event": "no-op", "reason": "status %s" % state.get("status")})
         emit(out[-1]); return state, out
     try:
-        events, last_ts = extract_events(transcript_files(state, args.projects_dir))
+        mains, subs = transcript_files(state, args.projects_dir)
+        events, last_ts = extract_events(mains, subs)
     except token_usage.TranscriptTooLarge:
         events, last_ts = [], None
         out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})

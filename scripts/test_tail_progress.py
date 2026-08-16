@@ -344,6 +344,53 @@ class SyncEnv:
         self.dir.cleanup()
 
 
+class MainOnlyAuthorityTest(unittest.TestCase):
+    """N5: a subagent's own TodoWrite/dispatch must never drive the lead's tasks;
+    subagent files still advance the staleness clock."""
+
+    def _env(self, main_entries, sub_entries):
+        env = SyncEnv(main_entries, mkstate(tasks=[mktask(1, name="Alpha")]))
+        subdir = os.path.join(env.projects, "proj", "sidA", "subagents")
+        os.makedirs(subdir)
+        write_jsonl(os.path.join(subdir, "agent-a1.jsonl"), sub_entries)
+        return env
+
+    def test_subagent_todo_never_closes_lead_task(self):
+        env = self._env([], [todo_entry(T1, [item("Alpha", "in_progress")]),
+                             todo_entry(T2, [item("Alpha", "completed")])])
+        try:
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["status"], "pending")
+        finally:
+            env.cleanup()
+
+    def test_subagent_entries_still_feed_last_ts(self):
+        mains, subs = None, None
+        env = self._env([todo_entry(T0, [item("Alpha", "in_progress")])],
+                        [todo_entry(T2, [item("other work", "in_progress")])])
+        try:
+            mains, subs = tp.transcript_files(env.state(), env.projects)
+            self.assertTrue(subs)
+            events, last_ts = tp.extract_events(mains, subs)
+            self.assertEqual(last_ts, tp.token_usage.parse_ts(T2))
+        finally:
+            env.cleanup()
+
+    def test_oversized_subagent_file_is_skipped_not_fatal(self):
+        env = self._env([todo_entry(T0, [item("Alpha", "in_progress")])], [])
+        try:
+            big = os.path.join(env.projects, "proj", "sidA", "subagents", "agent-big.jsonl")
+            with open(big, "wb") as f:          # sparse: the cap is 50 MB — never
+                f.seek(tp.token_usage.MAX_TRANSCRIPT_BYTES)   # write that for real
+                f.write(b"x")
+            mains, subs = tp.transcript_files(env.state(), env.projects)
+            self.assertTrue(subs)
+            events, last_ts = tp.extract_events(mains, subs)   # must not raise
+            self.assertTrue(events)
+        finally:
+            env.cleanup()
+
+
 class LocalTimePolicyTest(unittest.TestCase):
     """Local-time policy: when no --now is given (L1 --follow and bare
     one-shot), the tailer's internal `now` must be local-tz aware — the
