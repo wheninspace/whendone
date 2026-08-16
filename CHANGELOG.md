@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.6.0] — 2026-08-16
+
+Background-dispatch evidence rework: a live macOS job on 2026-08-16 exposed a second
+close-authority bug in the same family v0.5.0 fixed. A background subagent dispatch's
+`tool_result` is only a launch acknowledgement — it fires the instant the dispatch is
+accepted, long before the subagent has done any work — but the tailer was treating it as
+that task's finish, exactly the mistake v0.5.0 fixed for foreground dispatches. On the
+observed run this closed a task's display two seconds after dispatch and ended the whole
+job 85 minutes early, with a `delegatedMin` value that measured nothing but the launch
+handshake. Schema changes are additive; pre-v0.6 state files stay valid.
+
+- **Ack vs. completion, for background dispatches:** a background dispatch is now detected by
+  a truthy `run_in_background` argument OR ack-shaped `tool_result` text, and its `tool_result`
+  never ends the delegated span. The span now ends only on the subagent's `agent-done`
+  completion notification, correlated back to its dispatch by `tool_use` id. A task that
+  receives repeat completion notifications keeps extending its span — last notification wins.
+- **Main-transcript-only event authority:** only the MAIN session's transcript file produces
+  progress events; a subagent's own transcript file is read only to feed the staleness clock
+  and per-task token counts, never to decide that anything closed.
+- **`in_progress` reopens an unconfirmed close:** todo/TaskUpdate evidence of `in_progress` on
+  a task already display-closed (but not yet todo-confirmed) reopens it, the same way a late
+  dispatch already could.
+- **All-done quiet-transcript grace:** the job's all-done state is now held while ANY task's
+  close is still unconfirmed and the transcript has gone quiet, rather than requiring the
+  confirming transition to land in the same watcher cycle as the last task's completion.
+- **Alias→versioned model upgrade searches the whole window:** a bare dispatch alias now
+  resolves against every model id observed in the task's token-usage window for a same-family
+  match, not only the busiest one — previously the lead's own (usually busiest) usage on a
+  delegated task could mask the subagent's actual model.
+- **Hours rollover:** both duration formatters now roll a displayed 60+ minutes over to
+  `Hh Mm` instead of showing three-digit minutes.
+- **`Ended HH:MM` line** now prints at job end, alongside the existing "took" duration.
+- **Delegated/lead split moved into the Actual column** of the task table, next to the actual
+  duration it annotates, instead of a separate line.
+
+**Calibration-data caveat (no reset needed):** calibration rows logged before this release
+carry `delegatedMin` values that measured the background-dispatch launch handshake (0.0–0.2
+min), not real delegated work — **ignore that field on pre-v0.6 rows.** This does not affect
+accuracy: `delegatedMin` is display metadata only and is never read by any factor, ETA, or
+interval computation, so no `factor`/`q1`/`q3` value was ever wrong because of it, and no
+calibration file needs to be reset for this release (contrast v0.5.0, whose bug WAS in the
+data the factors learn from).
+
 ## [0.5.0] — 2026-08-15
 
 Time-attribution rework: a live job on 2026-08-14 lost 77 % of its wall-clock time and logged

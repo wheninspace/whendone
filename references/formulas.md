@@ -57,6 +57,16 @@ rows; `tail_progress.py`/`append_calibration.py` do):
 `date` = local date. `client` from the environment; unsure → `unknown`. `rawEstimateMin` = the
 raw estimate before the category factor. `model` = the full versioned id that executed THE
 SUBTASK (not necessarily the lead's); dispatch alias never resolved → log the alias.
+
+**Alias→versioned upgrade (N9).** Before a row is built, `handle_completion` tries once to
+resolve a bare dispatch alias (e.g. `"haiku"`) to the full versioned id that actually ran: it
+reads the task's token-usage window (the distinct models observed in it, ordered busiest
+first) and searches EVERY id in that list for a same-family substring match against the
+alias — not only the busiest model, since on a delegated task the lead's own usage is usually
+that first, busiest entry and would otherwise mask the subagent's model. First match in that
+order wins and replaces the alias; no match anywhere in the window → the alias stands and is
+logged as-is (previous paragraph).
+
 Include `"effort"` ONLY when non-null. The synthetic `"parallel-group"` row may carry
 `maxAdjusted`/`sumAdjusted`.
 

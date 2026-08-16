@@ -442,11 +442,11 @@ exist yet or would add complexity out of proportion to the current scope:
 ## Appendix: trigger-figure measurement history
 
 The README's Overhead table reports the trigger-path token figure as a single current number
-(≈10,569 raw / ≈11.9–12.1k as-read, 2026-08-14). This appendix records how that number moved
+(≈10,675 raw / ≈12.1–12.2k as-read, 2026-08-16). This appendix records how that number moved
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Nine movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Eleven movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -512,10 +512,17 @@ Nine movements, each under an identical raw `tiktoken cl100k_base` sum unless no
     2,417 bytes), 11,995–12,121 as-read (422 on-path reference lines × 3.3–3.6, one line more
     than movement 9) — 1,879–2,005 still to spare. The same pass edited `references/resume.md`
     (1,502 → 1,563, off-path, resume-only) and `references/formulas.md` (off-path).
+11. The 2026-08-16 background-dispatch/notification-close documentation pass (Task 8) grew
+    `source-a.md` (+43) and `file-formats.md` (+30) on-path documenting the ack-vs-agent-done
+    close authority, the `in_progress` reopen, and the all-done quiet-transcript grace: +73 →
+    10,675 raw (SKILL.md 3,333 + source-a.md 2,621 + file-formats.md 3,244 + artifact-template.md
+    651 + calibration-summary allowance 826, fixture unchanged at 2,417 bytes), 12,074–12,201
+    as-read (424 on-path reference lines × 3.3–3.6, two lines more than movement 10) — 1,799–1,926
+    still to spare under the 14,000 budget.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with 1,879–2,005 to spare
-(10,602 raw); see the README Overhead table for the current breakdown.
+movements 1 and 2. The path stays under the 14,000 budget as-read, with 1,799–1,926 to spare
+(10,675 raw); see the README Overhead table for the current breakdown.
