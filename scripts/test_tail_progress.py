@@ -577,6 +577,35 @@ class BackgroundDispatchObserveTest(unittest.TestCase):
         self.assertEqual(o["spans"], [(tp.token_usage.parse_ts(T1).isoformat(),
                                        tp.token_usage.parse_ts(T2).isoformat())])
 
+    def test_foreground_result_containing_ack_phrase_still_closes(self):
+        """_ACK_RE must be anchored (review finding 1): a FOREGROUND subagent's own
+        report that merely CONTAINS the ack phrase later in its text (not at the
+        very start) must not be misclassified as a background launch ack -- this
+        repo is itself about background dispatch, so a summary discussing it is
+        plausible. (Note: the reviewer's own illustrative sentence happened to
+        start with the phrase, which anchoring alone does not change -- see
+        report; this test instead pins the case anchoring actually fixes: the
+        phrase appearing after other text within the first 120 chars.)"""
+        def foreground_report_entry(ts, tool_id):
+            return {"type": "user", "timestamp": ts,
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                             "content": "Fix complete: Async agent launched "
+                                                        "successfully as part of the fix; "
+                                                        "all 12 tests pass."}]}}
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha"),
+            foreground_report_entry(T2, "tu-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(o["spans"], [(tp.token_usage.parse_ts(T1).isoformat(),
+                                       tp.token_usage.parse_ts(T2).isoformat())])
+
+    def test_genuine_ack_still_matches_anchored_regex(self):
+        """A real launch ack begins with the phrase -- confirms the anchor didn't
+        break the shape it exists to recognize."""
+        self.assertTrue(tp._ACK_RE.search(
+            "Async agent launched successfully. (internal metadata) agentId: a38211c56e7a"))
+
 
 class SourceCObserveUnitTest(unittest.TestCase):
     """Spec §4.3: Source C has no declared plan — the TodoWrite list IS the plan."""
@@ -855,6 +884,58 @@ class BackgroundDisplayCloseTest(unittest.TestCase):
             self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
             # T1 10:05 -> T3 10:20 = 15.0 agent-minutes, not the 2-second ack span
             self.assertEqual(t["delegatedMin"], 15.0)
+        finally:
+            env.cleanup()
+
+    def test_finishedAt_takes_max_span_end_not_last(self):
+        """Review finding 3: a repeat notification extends an EARLIER span in
+        place, so span-end order in the list is not guaranteed non-decreasing.
+        Two parallel background dispatches to the same task, tu-1 notified first
+        (closing into spans[0]), tu-2 notified next (closing into spans[1] with
+        a LATER end than tu-1's), then a repeat notification for tu-1 that
+        extends spans[0] past tu-2's end -- finishedAt must reflect the true
+        max, not whichever span happens to be last in the list."""
+        d1 = "2026-07-18T12:00:00.000Z"
+        d2 = "2026-07-18T12:01:00.000Z"
+        n1 = "2026-07-18T12:20:00.000Z"          # tu-1 first notif -> spans[0] end
+        n2 = "2026-07-18T12:25:00.000Z"          # tu-2 notif -> spans[1] end (12:25)
+        n3 = "2026-07-18T12:40:00.000Z"          # tu-1 repeat notif -> spans[0] extended
+        env = SyncEnv([dispatch_entry(d1, "tu-1", "Alpha", background=True),
+                       dispatch_entry(d2, "tu-2", "Alpha", background=True),
+                       notification_entry(n1, "tu-1"),
+                       notification_entry(n2, "tu-2"),
+                       notification_entry(n3, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            rc, lines = env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertTrue(t.get("unconfirmed"))
+            # max span end is n3 (12:40), NOT spans[-1] which is spans[1] ending 12:25
+            self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(n3).isoformat())
+        finally:
+            env.cleanup()
+
+    def test_never_notified_background_dispatch_never_display_closes(self):
+        """Review finding 2/4 steady state: a background dispatch that never
+        sends its agent-done notification must leave the task open forever --
+        it must NOT display-close, and the job must NOT reach all-done, no
+        matter how many sync cycles run. This is the regression net for the
+        corrected formulas.md prose (no fallback if a notification is lost)."""
+        env = SyncEnv([dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                       ack_result_entry(T2, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            rc, lines = env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertNotEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)
+            self.assertNotIn("all-done", [e.get("event") for e in lines])
+            # run again to confirm the steady state holds, not just cycle one
+            rc2, lines2 = env.run_one_shot()
+            t2 = env.state()["tasks"][0]
+            self.assertNotEqual(t2["status"], "done")
+            self.assertNotIn("all-done", [e.get("event") for e in lines2])
         finally:
             env.cleanup()
 

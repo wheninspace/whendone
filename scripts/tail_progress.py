@@ -45,7 +45,7 @@ DEFAULT_DEBOUNCE_S = 30
 
 _ORDINAL = re.compile(r"^\s*(?:task\s+)?\d+\s*[.):]\s*", re.IGNORECASE)
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
-_ACK_RE = re.compile(r"\bAsync agent launched\b")
+_ACK_RE = re.compile(r"^\s*Async agent launched\b")
 
 
 def normalize(name):
@@ -570,7 +570,7 @@ def sync_cycle(state_path, now, args):
         t["unconfirmed"] = True
         if not t.get("startedAt") and o.get("startedAt"):
             t["startedAt"] = o["startedAt"]
-        t["finishedAt"] = o["spans"][-1][1]
+        t["finishedAt"] = max(e for _, e in o["spans"])
         dm = _delegated_min(o.get("spans"))
         if dm is not None:
             t["delegatedMin"] = dm

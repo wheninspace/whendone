@@ -65,7 +65,11 @@ first) and searches EVERY id in that list for a same-family substring match agai
 alias — not only the busiest model, since on a delegated task the lead's own usage is usually
 that first, busiest entry and would otherwise mask the subagent's model. First match in that
 order wins and replaces the alias; no match anywhere in the window → the alias stands and is
-logged as-is (previous paragraph).
+logged as-is (previous paragraph). This order is a heuristic, not a guarantee: when a single
+task window holds two versions of one family (e.g. `claude-sonnet-4-5` and `claude-sonnet-5`),
+the match can be a sibling subagent's id rather than the one this task actually ran under.
+`model` is display/advisory metadata only — it never feeds factor, q1, or q3 math — so this
+residual ambiguity cannot skew calibration.
 
 Include `"effort"` ONLY when non-null. The synthetic `"parallel-group"` row may carry
 `maxAdjusted`/`sumAdjusted`.
@@ -160,8 +164,14 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   correlated back to the dispatch by `tool_use` id. A repeat notification for the same id (a
   resumed/relaunched agent) extends that span's end rather than opening a new one, and only
   forward in time — last wins, monotonically. There is no fallback if a notification is lost:
-  the span simply stays open and only that task's `delegatedMin` goes missing; nothing else
-  about the task's own close is affected.
+  `open` for that task never decrements, which is more consequential than a missing
+  `delegatedMin`. The task can never display-close while `open` stays truthy, and if it was
+  already display-closed by an earlier (matched) dispatch, this still-open one reopens it
+  (N4) and it can never re-close — so for that task, `all-done` never fires for the job.
+  This is a deliberate trade, not a regression: the alternative (closing on the ack, v0.5.0's
+  bug) silently under-counted the agent's actual runtime, whereas this failure mode never
+  blocks the underlying work and is not silent — `check_staleness` still emits one `stale`
+  event for the task that never stops "running".
 - **Only main-session transcripts carry event authority.** A job's declared `sessionIds` name
   main transcripts; each also has a discoverable sibling directory of subagent transcript
   files (`token_usage.py`'s `transcript_paths`). Of the two, only the MAIN files are parsed for
