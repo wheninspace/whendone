@@ -2141,6 +2141,40 @@ class DebounceGateTest(unittest.TestCase):
         finally:
             env.cleanup()
 
+    def test_no_transition_complete_job_still_fires_all_done(self):
+        """N10: all-done must fire on a cycle with NO in-cycle transition at
+        all (no completions, no displays) as long as the job is already
+        complete and not held — it is no longer gated on
+        `bool(completions or displays)`. Fixture: both tasks are already
+        `done` and confirmed (no `unconfirmed`) before this cycle even runs,
+        the transcript contributes nothing new, and the debounce window is
+        OPEN (`_render_ok=False`, no `_force_render`) — the old
+        `all_done_now = bool(completions or displays) and complete and not
+        held` gate would evaluate to False here and swallow the event; this
+        pins that a revert back to that gate would be caught."""
+        done1 = mktask(1, status="done",
+                      startedAt=tp.token_usage.parse_ts(T0).isoformat(),
+                      finishedAt=tp.token_usage.parse_ts(T1).isoformat(),
+                      actualMin=5.0)
+        done2 = mktask(2, status="done",
+                      startedAt=tp.token_usage.parse_ts(T1).isoformat(),
+                      finishedAt=tp.token_usage.parse_ts(T2).isoformat(),
+                      actualMin=7.0)
+        env = SyncEnv([], mkstate(tasks=[done1, done2]))
+        try:
+            import argparse as ap
+            args = ap.Namespace(job_id=None, projects_dir=env.projects, now=None,
+                                stale_min=None, _render_ok=False)   # window OPEN
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                _, events = tp.sync_cycle(env.state_path,
+                                          tp.token_usage.parse_ts(T3), args)
+            self.assertEqual(len([e for e in events
+                                  if e.get("event") == "all-done"]), 1)
+            self.assertFalse(getattr(args, "_pending", False))   # not deferred
+        finally:
+            env.cleanup()
+
     def test_display_close_all_done_bypasses_debounce(self):
         """D2 + D11: an all-`unconfirmed` job's terminal cycle carries only
         `displays`, no `completions` — so all_done_now must count displays too,
