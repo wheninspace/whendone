@@ -44,8 +44,8 @@ flip. Suite: 408 → 445 tests, warning-clean. Schema changes are additive.
   stub that exists yet errors).
 
 Trigger path after the wave: raw 11,054 cl100k tokens (README Overhead table is the
-authoritative stamp). Tagging: v0.7.0 was tagged retroactively at its release commit;
-v0.5.0 and v0.6.0 remain merged-but-untagged history.
+authoritative stamp). Tagging: v0.8.0 is the first git tag since v0.4.0 — v0.5.0 through
+v0.7.0 remain merged-but-untagged history.
 
 ## [0.7.0] — 2026-08-22
 

@@ -304,8 +304,8 @@ v0.8.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the 
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
 runs in CI on Linux, macOS, and Windows on every push. v0.5.0 and v0.6.0 were merged
-(2026-08-15 and 2026-08-16) but never tagged; v0.7.0 was tagged retroactively at its release
-commit, making v0.7.0 and v0.8.0 the first tags since v0.4.0.
+(2026-08-15 and 2026-08-16) but never tagged, and v0.7.0 shipped untagged the same morning
+v0.8.0 was built — v0.8.0 is the first git tag since v0.4.0.
 
 **v0.6.0's background-dispatch rework and v0.7.0's close-authority rework were live-verified
 on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a harness shipping
