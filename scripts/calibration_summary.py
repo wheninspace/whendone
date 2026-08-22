@@ -332,6 +332,13 @@ def rotate(jsonl_path, lines):
             pass
 
 
+# P14: recency-note threshold, informational only -- never affects factors. A
+# relative gap of this size or more between the (unshrunk) last-10 mean and the
+# (shrunk) blended lifetime factor is treated as "notable" and surfaces a one-line
+# trend note in --report; anything smaller is treated as noise.
+RECENCY_NOTE_THRESHOLD = 0.20
+
+
 def report(jsonl_path):
     """Accuracy report on stdout — the LLM must never read the jsonl itself."""
     paths = sorted(glob.glob(os.path.join(os.path.dirname(jsonl_path),
@@ -359,6 +366,8 @@ def report(jsonl_path):
     for r in rows:
         bycat.setdefault(r["category"], []).append(r)
     split_lines = []
+    model_lines = []
+    recency_lines = []
     for cat in sorted(bycat):
         rs = bycat[cat]
         # M21: clamp every ratio before it reaches any pooling step. M2: weight by each
@@ -369,9 +378,23 @@ def report(jsonl_path):
         recent, recent_w = ratios[-10:], weights[-10:]
         lifetime_mean = winsorized_mean(ratios, weights)
         recent_mean = winsorized_mean(recent, recent_w)  # unshrunk — no blend() here (M17)
+        factor = blend(lifetime_mean, len(ratios))
         print(f"| {cat} | {len(ratios)} | {lifetime_mean:.2f} "
-              f"| {blend(lifetime_mean, len(ratios)):.2f} "
+              f"| {factor:.2f} "
               f"| {recent_mean:.2f} |")
+
+        # P14: gentle recency note, informational only -- never feeds the factor
+        # above. Strictly gated on n>10: at n<=10 the "last 10" window IS the full
+        # lifetime window (recent_mean == lifetime_mean exactly), so any gap versus
+        # the shrunk `factor` would be pure K=5 shrinkage, not a real recency trend.
+        if len(ratios) > 10 and factor > 0:
+            rel_diff = (recent_mean - factor) / factor
+            if abs(rel_diff) >= RECENCY_NOTE_THRESHOLD:
+                direction = "faster" if recent_mean < factor else "slower"
+                recency_lines.append(
+                    f"- {cat}: recent runs trending {direction} than the blended "
+                    f"factor (last-10 mean {recent_mean:.2f} vs factor {factor:.2f})")
+
         # P2 (fixes C5): parallel/sequential split, informational only -- it never
         # feeds the factor above, it only makes contention bias visible so a later
         # decision to re-scope factors has data to look at. A row missing the
@@ -383,14 +406,33 @@ def report(jsonl_path):
         seq_med = f"{statistics.median(seq_ratios):.2f}" if seq_ratios else "—"
         split_lines.append(f"- {cat}: parallel n={len(par_ratios)} (median ratio {par_med}), "
                            f"sequential n={len(seq_ratios)} (median ratio {seq_med})")
+
+        # P14: per-model informational split, mirroring the style of the
+        # parallel/sequential split above (n + median ratio per id) -- never feeds
+        # the factor. Models are already sanitize()d in parse_row.
+        per_model = []
+        for m in sorted({r["model"] for r in rs}):
+            m_ratios = [clamp_ratio(r["act"] / r["est"]) for r in rs if r["model"] == m]
+            per_model.append(f"`{m}` n={len(m_ratios)} "
+                             f"(median ratio {statistics.median(m_ratios):.2f})")
+        model_lines.append(f"- {cat}: " + ", ".join(per_model))
+
+    if recency_lines:
+        print("\n## Recency note\n")
+        for line in recency_lines:
+            print(line)
     print("\n## Parallel vs sequential\n")
     for line in split_lines:
+        print(line)
+    print("\n## Per-model split\n")
+    for line in model_lines:
         print(line)
     print("\n## Biggest misses\n")
     worst = sorted(rows, key=lambda r: abs(math.log(r["act"] / r["est"])), reverse=True)[:5]
     for r in worst:
-        print(f'- {r["date"]} {r["category"]}: est {r["est"]} min, actual {r["act"]} min '
-              f'(project "{sanitize(r["project"])}", job "{sanitize(r["job"])}")')
+        print(f'- {r["date"]} {r["category"]} (`{r["model"]}`): est {r["est"]} min, '
+              f'actual {r["act"]} min (project "{sanitize(r["project"])}", '
+              f'job "{sanitize(r["job"])}")')
     return 0
 
 

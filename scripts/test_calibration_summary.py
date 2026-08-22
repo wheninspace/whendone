@@ -528,6 +528,132 @@ class TestReportAndRotation(unittest.TestCase):
         self.assertIn("- testing: parallel n=0 (median ratio —), "
                       "sequential n=3 (median ratio 1.00)", out)
 
+    def test_report_biggest_misses_includes_model(self):
+        # P14: "Biggest misses" lines gain the model id alongside the existing
+        # project/job fields, so a miss can be traced to which model produced it.
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write(row(raw=1, actual=900, model="opus-x") + "\n")
+                for a in (10, 11, 9, 10, 10):
+                    f.write(row(actual=a) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+        misses = out.split("## Biggest misses")[1]
+        self.assertIn("`opus-x`", misses)
+        self.assertIn('project "proj"', misses)   # pre-existing field, still present
+
+    def test_report_per_model_split_line_per_category(self):
+        # P14: per-model informational split per category, mirroring the style of
+        # the existing parallel/sequential split (n + median ratio per id).
+        rows_ = [row(model="alpha", raw=10, actual=10) for _ in range(3)] \
+              + [row(model="beta", raw=10, actual=20) for _ in range(2)]
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+        self.assertIn("## Per-model split", out)
+        self.assertIn("- testing: `alpha` n=3 (median ratio 1.00), "
+                      "`beta` n=2 (median ratio 2.00)", out)
+
+    def test_report_recency_note_when_last10_diverges_from_factor(self):
+        # P14: a gentle recency note fires when the unshrunk last-10 mean diverges
+        # notably (>=20%) from the shrunk blended factor. 5 rows at ratio 1.0 then
+        # 10 rows at ratio 3.0 -- the last-10 window is all 3.0, well above the
+        # blended factor of 2.0.
+        rows_ = [row(raw=10, actual=10) for _ in range(5)] \
+              + [row(raw=10, actual=30) for _ in range(10)]
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+        self.assertIn("## Recency note", out)
+        self.assertIn("testing: recent runs trending slower", out)
+        self.assertIn("last-10 mean 3.00 vs factor 2.00", out)
+
+    def test_report_no_recency_note_when_ratios_stable(self):
+        rows_ = [row(raw=10, actual=10) for _ in range(11)]
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            out = buf.getvalue()
+        self.assertNotIn("## Recency note", out)
+
+    def test_report_no_recency_note_when_n_at_10_even_if_shrinkage_gap_is_large(self):
+        # Regression for the n>10 (strict) gate: at exactly n=10, the "last 10"
+        # window IS the full lifetime window, so recent_mean == lifetime_mean and
+        # any gap versus the shrunk `factor` is pure K=5 shrinkage, not a real
+        # recency trend. A uniform ratio of 3.0 at n=10 produces a ~29% gap from
+        # the shrunk factor purely from shrinkage -- this must NOT fire a note.
+        rows_ = [row(raw=10, actual=30) for _ in range(10)]
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            out = buf.getvalue()
+        self.assertNotIn("## Recency note", out)
+
+    def test_report_factor_matches_main_summary_factor_on_same_fixture(self):
+        # P14: proves this task's report() edits never moved the factor model --
+        # report()'s independently-computed "Lifetime factor" column must still
+        # equal main()'s "Factor (blended)" column, and both must equal a
+        # hand-computed pinned expectation, on the same fixture.
+        rows_ = [row(category="review", raw=10, actual=15) for _ in range(5)]
+        expected_factor = cs.blend(cs.winsorized_mean([1.5] * 5, [10] * 5), 5)
+        self.assertAlmostEqual(expected_factor, 1.25, places=6)
+
+        main_out = run_main(rows_)
+        main_factor = None
+        for line in main_out.splitlines():
+            if line.startswith("| review |"):
+                main_factor = float(line.split("|")[2].strip())
+        self.assertIsNotNone(main_factor)
+        self.assertAlmostEqual(main_factor, expected_factor, places=6)
+
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+        report_factor = None
+        for line in out.splitlines():
+            if line.startswith("| review |"):
+                # report()'s table is | Category | n | Mean ratio | Lifetime factor |
+                # Last-10 |, one column wider than main()'s -- index[4], not [3].
+                report_factor = float(line.split("|")[4].strip())
+        self.assertIsNotNone(report_factor)
+        self.assertAlmostEqual(report_factor, expected_factor, places=6)
+
     def test_rotation(self):
         with tempfile.TemporaryDirectory() as td:
             jp, op = os.path.join(td, "c.jsonl"), os.path.join(td, "s.md")
