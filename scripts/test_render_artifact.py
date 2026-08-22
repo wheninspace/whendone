@@ -1058,6 +1058,19 @@ class ProgressBarTest(unittest.TestCase):
         self.assertIn('<div class="bar-fill" style="width:0.0%">', page)
         self.assertIn('<div class="bar-band" style="left:25.0%;width:50.0%">', page)
 
+    def test_band_pinned_to_sliver_when_overrun_clamp_would_erase_it(self):
+        # Review fix (round 2): the suite's OWN default fixture -- state(tasks=
+        # [task(1)]) -- is already a 6x overrun (el=60 from the default 09:00 ->
+        # NOW 10:00 job span, task est 10 -> span 10). Both natural band edges
+        # ((60+5)/10=6.5, (60+15)/10=7.5) clamp to 1.0 and would erase the band
+        # entirely, while the headline right above it still reads "± 5 min"
+        # (independently: remaining 10, band [5,15] -> a=b=5). The band must
+        # still render, pinned to a visible sliver at the bar's right edge.
+        s = state(tasks=[task(1)])
+        _, page, _ = run_cli(s)
+        self.assertIn("± 5 min", page)
+        self.assertIn('<div class="bar-band" style="left:97.0%;width:3.0%">', page)
+
     def test_bar_omitted_for_source_c_no_estimate_span(self):
         # Source C never has estimates -> estimateTotalMin (the bar's span) is
         # always 0 (references/source-c.md) -> the bar is omitted, not a

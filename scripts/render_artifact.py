@@ -725,15 +725,25 @@ def interval(us, summary):
     return lowsum, highsum, any_widened, any_high
 
 
+MIN_BAND_FRAC = 0.03  # visual floor, fraction of bar width (review fix, round 2):
+# mirrors eta_text()'s "the interval never reads 0 while anything is pending/
+# running" floor (its b = 1 a few lines below) -- clamping both band edges to the
+# bar's right side must never fully erase a band while lowsum/highsum say a real
+# interval exists (a routine overrun case: elapsed past roughly (1+band_pct)*span).
+
+
 def progress_bar_html(us, summary, el, span):
     """P12: CSS-only progress bar for the ETA block. Filled fraction = elapsed share
     of `span` (the SAME total_estimate(us) aggregation exposed as estimateTotalMin —
     no new formula); the fill's right edge doubles as the "now" marker (a visible
     border). The +/- band re-uses interval()'s existing low/high bounds (never
     recomputed) placed at (elapsed+low)/span .. (elapsed+high)/span around the
-    estimate end. Returns "" (omit, never a misleading full/empty bar) when there is
-    no elapsed baseline or no estimated span — e.g. Source C, where estimateTotalMin
-    is always 0 (references/source-c.md)."""
+    estimate end -- clamped to the visible bar, with a pinned minimum sliver at the
+    right edge (MIN_BAND_FRAC) when that clamping would otherwise collapse the band
+    to nothing while a real interval still exists. Returns "" (omit, never a
+    misleading full/empty bar) when there is no elapsed baseline or no estimated
+    span — e.g. Source C, where estimateTotalMin is always 0
+    (references/source-c.md)."""
     if el is None or not span or span <= 0:
         return ""
     frac = max(0.0, min(1.0, el / span))
@@ -743,9 +753,10 @@ def progress_bar_html(us, summary, el, span):
     if lowsum > 0 or highsum > 0:
         lo = max(0.0, min(1.0, (el + lowsum) / span))
         hi = max(0.0, min(1.0, (el + highsum) / span))
-        if hi > lo:
-            parts.append('<div class="bar-band" style="left:%s%%;width:%s%%"></div>'
-                         % (esc("%.1f" % (lo * 100)), esc("%.1f" % ((hi - lo) * 100))))
+        if hi <= lo:
+            lo, hi = max(0.0, 1.0 - MIN_BAND_FRAC), 1.0
+        parts.append('<div class="bar-band" style="left:%s%%;width:%s%%"></div>'
+                     % (esc("%.1f" % (lo * 100)), esc("%.1f" % ((hi - lo) * 100))))
     parts.append("</div>")
     return "".join(parts)
 
