@@ -943,46 +943,6 @@ def _base_row(state, state_path, started, finished):
     }
 
 
-def group_row(state, group_id):
-    """The synthetic parallel-group row, or None while the group is not yet
-    fully and CONFIRMEDLY closed.
-
-    D2 at group level: an `unconfirmed` member is a display close — its span is
-    dispatch-derived, it logged no individual row, and it stays revisitable. It
-    must not contribute to the group row either, for two reasons:
-      1. no double log. Individual tasks are protected implicitly (once
-         status == "done" plan_transitions skips them forever), but this row
-         keys on the GROUP, not the task: without this guard a member that
-         later upgrades unconfirmed -> confirmed re-enters handle_completion,
-         finds every member `done` again, and appends a SECOND parallel-group
-         row for the same work (reproduced 2026-08-14: rows of 12.0 and 20.0
-         actualMin for one 2-member group).
-      2. no timing-dependent data. Displays are applied AFTER completions in
-         sync_cycle, so identical transcript evidence seen in one cycle
-         produced no row while the same evidence split across two produced
-         one. The row now lands at exactly one point in the group's life --
-         the moment its last member confirms -- whatever the watcher's cadence.
-    "No data beats biased data": the group simply logs nothing unless every
-    member's close is todo-evidenced."""
-    members = [t for t in state.get("tasks", [])
-               if isinstance(t, dict) and t.get("group") == group_id]
-    if not members or any(t.get("status") != "done" for t in members):
-        return None
-    if any(t.get("unconfirmed") for t in members):
-        return None
-    starts = [t.get("startedAt") for t in members if t.get("startedAt")]
-    ends = [t.get("finishedAt") for t in members if t.get("finishedAt")]
-    raws = [t.get("rawEstimateMin") for t in members
-            if isinstance(t.get("rawEstimateMin"), (int, float))]
-    ests = [t.get("estimateMin") for t in members
-            if isinstance(t.get("estimateMin"), (int, float))]
-    if not (starts and ends and raws and ests):
-        return None                     # missing evidence -> no row, never invented
-    return {"category": "parallel-group", "rawEstimateMin": max(raws),
-            "maxAdjusted": max(ests), "sumAdjusted": sum(ests),
-            "startedAt": min(starts), "finishedAt": max(ends)}
-
-
 def handle_completion(state_path, state, t, started, finished, args, spans=None):
     """A CONFIRMED (todo-evidenced) close, D1 — the only path that ever logs a
     calibration row. `started`/`finished` are the full task span (D3: review
@@ -1031,30 +991,32 @@ def handle_completion(state_path, state, t, started, finished, args, spans=None)
             t["model"] = ids[0]
             write_state(state_path, state)
 
-    # (c) append — individual row for sequential tasks; group members wait for
-    # the synthetic row when the LAST member lands. Source-c jobs never log
-    # (guarded before this function is ever called).
+    # (c) append — one row per completing task, including parallel-group members
+    # (P2, fixes C5: fan-out work never fed calibration before this). A member's
+    # own confirmed close carries a real marker/todo-derived span exactly like a
+    # sequential task's -- it is NOT held back for the rest of the group to
+    # finish -- and additionally carries "parallel": true so factors and
+    # --report can tell contention-affected spans apart. The synthetic
+    # parallel-group row is retired: no new ones are ever written (legacy rows
+    # already on disk still parse and stay excluded from factors, unchanged).
+    # Source-c jobs never log (guarded before this function is ever called).
     row = None
-    if t.get("group") is None:
-        started_final = t.get("startedAt")
-        if started_final and finished:
-            row = dict(_base_row(state, state_path, started_final, finished),
-                       category=t.get("category"),
-                       rawEstimateMin=t.get("rawEstimateMin"),
-                       model=t.get("model") or "unknown")
-            if t.get("effort") is not None:
-                row["effort"] = t["effort"]
-            dmin = t.get("delegatedMin")                 # D3: alongside, never instead
-            if isinstance(dmin, (int, float)) and not isinstance(dmin, bool):
-                # bool is an int in Python: a corrupt/hand-edited state carrying
-                # `"delegatedMin": true` would otherwise reach Task 2's validator
-                # and sink the ENTIRE row (no row, actualMin null).
-                row["delegatedMin"] = dmin
-    else:
-        g = group_row(state, t.get("group"))
-        if g is not None:
-            row = dict(_base_row(state, state_path, g.pop("startedAt"), g.pop("finishedAt")),
-                       **g, model="unknown")
+    started_final = t.get("startedAt")
+    if started_final and finished:
+        row = dict(_base_row(state, state_path, started_final, finished),
+                   category=t.get("category"),
+                   rawEstimateMin=t.get("rawEstimateMin"),
+                   model=t.get("model") or "unknown")
+        if t.get("effort") is not None:
+            row["effort"] = t["effort"]
+        dmin = t.get("delegatedMin")                     # D3: alongside, never instead
+        if isinstance(dmin, (int, float)) and not isinstance(dmin, bool):
+            # bool is an int in Python: a corrupt/hand-edited state carrying
+            # `"delegatedMin": true` would otherwise reach Task 2's validator
+            # and sink the ENTIRE row (no row, actualMin null).
+            row["delegatedMin"] = dmin
+        if t.get("group") is not None:
+            row["parallel"] = True
     appended = None
     if row is not None:
         try:

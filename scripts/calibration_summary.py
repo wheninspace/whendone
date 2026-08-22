@@ -180,6 +180,12 @@ def parse_row(line):
                   # rows written before this field existed.
                   "maxAdjusted": _finite_or_none(row.get("maxAdjusted")),
                   "sumAdjusted": _finite_or_none(row.get("sumAdjusted")),
+                  # P2 (fixes C5): a parallel-group member's own row, logged only on
+                  # ordinary category rows (never on the legacy synthetic PARALLEL
+                  # row). Anything other than a literal `true` -- absent, or a
+                  # malformed/hand-edited value -- counts as sequential, same rule
+                  # --report applies when it splits by this flag.
+                  "parallel": row.get("parallel") is True,
                   "project": row.get("project", ""), "job": row.get("job", "")}
 
 
@@ -352,6 +358,7 @@ def report(jsonl_path):
     bycat = {}
     for r in rows:
         bycat.setdefault(r["category"], []).append(r)
+    split_lines = []
     for cat in sorted(bycat):
         rs = bycat[cat]
         # M21: clamp every ratio before it reaches any pooling step. M2: weight by each
@@ -365,6 +372,20 @@ def report(jsonl_path):
         print(f"| {cat} | {len(ratios)} | {lifetime_mean:.2f} "
               f"| {blend(lifetime_mean, len(ratios)):.2f} "
               f"| {recent_mean:.2f} |")
+        # P2 (fixes C5): parallel/sequential split, informational only -- it never
+        # feeds the factor above, it only makes contention bias visible so a later
+        # decision to re-scope factors has data to look at. A row missing the
+        # `parallel` field (every pre-P2 row, and every ordinary sequential row)
+        # counts as sequential.
+        par_ratios = [clamp_ratio(r["act"] / r["est"]) for r in rs if r.get("parallel")]
+        seq_ratios = [clamp_ratio(r["act"] / r["est"]) for r in rs if not r.get("parallel")]
+        par_med = f"{statistics.median(par_ratios):.2f}" if par_ratios else "—"
+        seq_med = f"{statistics.median(seq_ratios):.2f}" if seq_ratios else "—"
+        split_lines.append(f"- {cat}: parallel n={len(par_ratios)} (median ratio {par_med}), "
+                           f"sequential n={len(seq_ratios)} (median ratio {seq_med})")
+    print("\n## Parallel vs sequential\n")
+    for line in split_lines:
+        print(line)
     print("\n## Biggest misses\n")
     worst = sorted(rows, key=lambda r: abs(math.log(r["act"] / r["est"])), reverse=True)[:5]
     for r in worst:

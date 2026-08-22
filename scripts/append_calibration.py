@@ -97,6 +97,16 @@ def build_row(obj):
     effort = obj.get("effort")
     if effort is not None:
         row["effort"] = effort
+    # P2 (fixes C5): a parallel-group member's individual row carries this additive
+    # boolean marker so calibration_summary.py can split reporting by contention.
+    # Absent (ordinary sequential rows, and every pre-P2 row) is valid and means
+    # sequential -- rejected loudly (not silently coerced) when present but not
+    # actually a bool, same posture as every other optional field here.
+    parallel = obj.get("parallel")
+    if parallel is not None:
+        if not isinstance(parallel, bool):
+            return None, f"invalid parallel: {parallel!r}"
+        row["parallel"] = parallel
     # M22: parallel-group synthetic rows carry the ETA rule's actual operands
     # (max-of-adjusted, sum-of-adjusted estimates) so calibration_summary.py can report
     # wall/max-adjusted and wall/sum-adjusted medians. Optional (omitted for ordinary

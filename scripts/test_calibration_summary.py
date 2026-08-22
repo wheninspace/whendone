@@ -214,6 +214,28 @@ class TestHardening(unittest.TestCase):
         self.assertNotIn("wall-clock / max-adjusted", out)
         self.assertNotIn("wall-clock / sum-adjusted", out)
 
+    def test_parse_row_reads_parallel_flag(self):
+        status, r = cs.parse_row(row(parallel=True))
+        self.assertEqual(status, "ok")
+        self.assertTrue(r["parallel"])
+
+    def test_parse_row_defaults_parallel_false_when_absent(self):
+        status, r = cs.parse_row(row())
+        self.assertEqual(status, "ok")
+        self.assertFalse(r["parallel"])
+
+    def test_member_row_with_parallel_flag_enters_factors_like_sequential(self):
+        # P2 (fixes C5): a parallel-group member's row (real category, "parallel":
+        # true) must feed the SAME category factor as an ordinary sequential row --
+        # fan-out work never fed calibration at all before this fix.
+        rows_ = [row() for _ in range(4)] + [row(parallel=True)]
+        out = run_main(rows_)
+        self.assertIn("5 data points", out)
+        line = next(l for l in out.splitlines() if l.startswith("| testing |"))
+        cols = [c.strip() for c in line.strip("|").split("|")]
+        # cols: category, factor, n, confidence, spread
+        self.assertEqual(cols[2], "5")
+
     def test_delegated_min_field_ignored_by_parser(self):
         # delegatedMin is an optional additive field for future use; parse_row must
         # tolerate it and ignore it (not use it in factor calculations).
@@ -472,6 +494,39 @@ class TestReportAndRotation(unittest.TestCase):
             self.assertEqual(cols[4], "2.00")
             self.assertEqual(cols[2], cols[4])   # lifetime mean == last-10 mean ratio
             self.assertNotEqual(cols[3], cols[4])  # lifetime FACTOR is shrunk, differs
+
+    def test_report_parallel_sequential_split_line_per_category(self):
+        # P2 (fixes C5): --report's per-category split makes contention bias visible
+        # without feeding it into the factor itself.
+        rows_ = [row(raw=10, actual=10) for _ in range(3)] \
+              + [row(raw=10, actual=20, parallel=True) for _ in range(2)]
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+        self.assertIn("## Parallel vs sequential", out)
+        self.assertIn("- testing: parallel n=2 (median ratio 2.00), "
+                      "sequential n=3 (median ratio 1.00)", out)
+
+    def test_report_split_line_counts_rows_without_parallel_field_as_sequential(self):
+        rows_ = [row(raw=10, actual=10) for _ in range(3)]   # no `parallel` key at all
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as td:
+            jp = os.path.join(td, "c.jsonl")
+            with open(jp, "w", encoding="utf-8") as f:
+                f.write("\n".join(rows_) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cs.report(jp)
+            out = buf.getvalue()
+        self.assertIn("- testing: parallel n=0 (median ratio —), "
+                      "sequential n=3 (median ratio 1.00)", out)
 
     def test_rotation(self):
         with tempfile.TemporaryDirectory() as td:

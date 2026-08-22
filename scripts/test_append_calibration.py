@@ -340,6 +340,33 @@ class TestOptionalFields(unittest.TestCase):
         row, err = ac.build_row(dict(obj()))
         self.assertNotIn("delegatedMin", row)
 
+    def test_parallel_true_round_trips_through_the_writer(self):
+        # P2 (fixes C5): a parallel-group member's row carries this additive marker
+        # so calibration_summary.py can split reporting by contention.
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = os.path.join(td, "data")
+            tmp = write_tmp(td, obj(parallel=True))
+            ok, err = ac.append(tmp, data_dir=data_dir)
+            self.assertTrue(ok, err)
+            row = json.loads(read_lines(data_dir)[0])
+            self.assertIs(row["parallel"], True)
+
+    def test_parallel_false_accepted(self):
+        row, err = ac.build_row(obj(parallel=False))
+        self.assertIsNone(err)
+        self.assertIs(row["parallel"], False)
+
+    def test_parallel_omitted_when_absent(self):
+        row, err = ac.build_row(obj())
+        self.assertIsNone(err)
+        self.assertNotIn("parallel", row)
+
+    def test_parallel_rejected_when_not_boolean(self):
+        for bad in ("true", 1, 1.0, "yes"):
+            row, err = ac.build_row(dict(obj(), parallel=bad))
+            self.assertIsNone(row, bad)
+            self.assertIn("parallel", err)
+
 
 class AppendObjTest(unittest.TestCase):
     def test_appends_valid_dict(self):

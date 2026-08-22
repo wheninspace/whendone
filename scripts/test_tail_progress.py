@@ -1348,12 +1348,17 @@ class CompletionPipelineTest(unittest.TestCase):
         finally:
             env.cleanup()
 
-    def test_group_members_log_one_synthetic_row(self):
-        # D1: the results end the delegated spans; the todo transitions are what
-        # actually close the two members (the dispatch/result pairs stay in the
-        # fixture so the group row is exercised with delegated spans present).
-        tasks = [mktask(1, name="member a", group="g1", estimateMin=10, rawEstimateMin=8),
-                 mktask(2, name="member b", group="g1", estimateMin=20, rawEstimateMin=25)]
+    def test_group_members_log_individual_parallel_rows(self):
+        # P2 (fixes C5): parallel-group members must feed calibration INDIVIDUALLY --
+        # the retired synthetic combined row never entered per-category factors at
+        # all, so fan-out work never fed estimation. D1: the results end the
+        # delegated spans; the todo transitions are what actually close the two
+        # members (the dispatch/result pairs stay in the fixture so delegated spans
+        # are present, same as before).
+        tasks = [mktask(1, name="member a", group="g1", category="testing",
+                        estimateMin=10, rawEstimateMin=8),
+                 mktask(2, name="member b", group="g1", category="debugging",
+                        estimateMin=20, rawEstimateMin=25)]
         env = SyncEnv([todo_entry(T0, [item("member a", "in_progress"),
                                        item("member b", "in_progress")], mid="m1"),
                        dispatch_entry(T0, "tu-a", "member a"),
@@ -1368,14 +1373,40 @@ class CompletionPipelineTest(unittest.TestCase):
         try:
             env.run_one_shot()
             rows = self.rows()
-            self.assertEqual(len(rows), 1)
-            r = rows[0]
-            self.assertEqual(r["category"], "parallel-group")
-            self.assertEqual(r["rawEstimateMin"], 25)
-            self.assertEqual(r["maxAdjusted"], 20)
-            self.assertEqual(r["sumAdjusted"], 30)
-            self.assertEqual(r["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
-            self.assertEqual(r["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+            self.assertEqual(len(rows), 2)                 # one row PER member, logged once each
+            self.assertTrue(all(r["parallel"] is True for r in rows))
+            self.assertNotIn("parallel-group", [r["category"] for r in rows])  # retired
+            by_cat = {r["category"]: r for r in rows}
+            a, b = by_cat["testing"], by_cat["debugging"]
+            self.assertEqual(a["rawEstimateMin"], 8)
+            self.assertEqual(a["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+            self.assertEqual(a["finishedAt"], tp.token_usage.parse_ts(T1).isoformat())
+            self.assertEqual(b["rawEstimateMin"], 25)
+            self.assertEqual(b["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+            self.assertEqual(b["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+        finally:
+            env.cleanup()
+
+    def test_group_member_logs_without_waiting_for_the_rest_of_the_group(self):
+        # The actual defect (C5): calibration used to log ONLY once the group's
+        # LAST member confirmed, as one combined row -- a member that finished
+        # early never fed its category factor while a sibling was still running.
+        # Now each member's own confirmed close logs immediately.
+        tasks = [mktask(1, name="member a", group="g1", rawEstimateMin=8),
+                 mktask(2, name="member b", group="g1", rawEstimateMin=25)]
+        env = SyncEnv([todo_entry(T0, [item("member a", "in_progress"),
+                                       item("member b", "in_progress")], mid="m1"),
+                       todo_entry(T1, [item("member a", "completed"),
+                                       item("member b", "in_progress")], mid="m2")],
+                      mkstate(tasks=tasks))
+        try:
+            env.run_one_shot()
+            rows = self.rows()
+            self.assertEqual(len(rows), 1)                # a logged; b is still running
+            self.assertEqual(rows[0]["parallel"], True)
+            self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T1).isoformat())
+            b = env.state()["tasks"][1]
+            self.assertEqual(b["status"], "running")
         finally:
             env.cleanup()
 
@@ -1411,18 +1442,16 @@ class CompletionPipelineTest(unittest.TestCase):
             env.cleanup()
 
 
-T4 = "2026-07-18T10:25:00.000Z"
-T5 = "2026-07-18T10:28:00.000Z"
-
-
-class GroupRowConfirmationTest(unittest.TestCase):
-    """D2 at group level (2026-08-14 final review): the synthetic
-    parallel-group row waits for EVERY member to be confirmed (todo-evidenced).
-
-    Individual tasks can never log twice because plan_transitions skips a task
-    once status == "done"; `unconfirmed` display closes deliberately break that
-    for the upgrade path, and group_row keys on the GROUP, so without its own
-    guard the upgrade appends a second row for the same work."""
+class GroupMemberCalibrationTest(unittest.TestCase):
+    """P2 (fixes C5): each parallel-group member logs its OWN row on its OWN
+    confirmed (todo-evidenced) close, independent of its siblings' state -- the
+    RETIRED synthetic parallel-group row used to wait for the WHOLE group to
+    confirm before logging anything, so fan-out work never fed calibration
+    until the slowest member finally landed (and a job whose group never fully
+    confirmed logged nothing at all, ever). Every member still only ever logs
+    once, guarded by the same general done-is-done rule ordinary sequential
+    tasks rely on (CompletionPipelineTest) -- no group-specific guard is needed
+    now that nothing is keyed on the GROUP anymore."""
 
     #  member a: dispatched at T0, never results, todo-completed at T2
     #  member b: dispatched at T0, results at T1 (display close), todo later
@@ -1464,10 +1493,11 @@ class GroupRowConfirmationTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         return env.state()
 
-    def test_upgraded_member_never_appends_a_second_group_row(self):
-        """The reviewer's repro: b display-closes, a confirms, then the model
-        catches up on b. Pre-guard that wrote TWO parallel-group rows (12.0 and
-        20.0 actualMin) for one group, both feeding the shared factor."""
+    def test_member_logs_as_soon_as_it_confirms_not_when_the_group_does(self):
+        """The reviewer's original repro (b display-closes, a confirms, then the
+        model catches up on b) used to log NOTHING until b finally confirmed
+        too -- a's real span sat unlearned-from the whole time. Now a logs the
+        moment IT confirms, and b's own row lands separately when IT confirms."""
         env = self.group_env(self.C1)
         state = self.feed(env, self.C1)                  # cycle 1
         a, b = state["tasks"]
@@ -1480,26 +1510,28 @@ class GroupRowConfirmationTest(unittest.TestCase):
         self.assertEqual(a["status"], "done")
         self.assertNotIn("unconfirmed", a)
         self.assertTrue(b["unconfirmed"])
-        self.assertEqual(self.rows(), [])                # D2: b is still provisional
+        rows = self.rows()
+        self.assertEqual(len(rows), 1)                   # a logged already -- no waiting
+        self.assertEqual(rows[0]["parallel"], True)
+        self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
 
         state = self.feed(env, self.C3)                  # cycle 3: b upgrades
         self.assertNotIn("unconfirmed", state["tasks"][1])
         rows = self.rows()
-        self.assertEqual(len(rows), 1)                   # exactly one, not two
-        self.assertEqual(rows[0]["category"], "parallel-group")
-        self.assertEqual(rows[0]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
-        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
-        self.assertEqual(rows[0]["actualMin"], 20.0)     # full group span
-        self.assertEqual(rows[0]["maxAdjusted"], 20)
-        self.assertEqual(rows[0]["sumAdjusted"], 30)
+        self.assertEqual(len(rows), 2)                   # b's own row, alongside a's
+        self.assertEqual(rows[1]["parallel"], True)
+        self.assertEqual(rows[1]["startedAt"], tp.token_usage.parse_ts(T0).isoformat())
+        self.assertEqual(rows[1]["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+        self.assertNotIn("parallel-group", [r["category"] for r in rows])  # retired
 
-        self.feed(env, self.C3)                          # and stays at one forever
-        self.assertEqual(len(self.rows()), 1)
+        self.feed(env, self.C3)                          # and stays at two forever
+        self.assertEqual(len(self.rows()), 2)
 
-    def test_same_evidence_logs_the_same_row_in_one_cycle_or_three(self):
-        """Calibration data must not depend on watcher cadence. Displays are
-        applied after completions, so pre-guard the one-cycle reading of this
-        transcript produced ONE row and the split reading produced TWO."""
+    def test_same_evidence_logs_the_same_rows_regardless_of_cadence(self):
+        """Calibration data must not depend on watcher cadence: the same
+        transcript evidence read in one cycle or split across three must
+        produce the same set of rows."""
         one_dir = tempfile.TemporaryDirectory()
         self.addCleanup(one_dir.cleanup)
         os.environ["WHENDONE_DATA_DIR"] = one_dir.name
@@ -1510,32 +1542,8 @@ class GroupRowConfirmationTest(unittest.TestCase):
         env = self.group_env(self.C1)
         for entries in (self.C1, self.C2, self.C3):      # the same events, split
             self.feed(env, entries)
-        self.assertEqual(len(one_cycle), 1)
+        self.assertEqual(len(one_cycle), 2)
         self.assertEqual(self.rows(), one_cycle)         # byte-identical row sets
-
-    def test_reopened_member_holds_the_row_until_it_confirms(self):
-        """Hardest ordering: b display-closes, a confirms, then a LATE dispatch
-        reopens b (B4 posture) and b only confirms after that. The single row
-        must land at b's real close and carry the extended group span."""
-        env = self.group_env(self.C1)
-        self.feed(env, self.C1)
-        self.feed(env, self.C2)                          # a confirmed, b provisional
-        self.assertEqual(self.rows(), [])
-
-        reopened = self.C2 + [dispatch_entry(T3, "tu-b2", "member b")]
-        state = self.feed(env, reopened)
-        b = state["tasks"][1]
-        self.assertEqual(b["status"], "running")         # reverted, still row-less
-        self.assertEqual(self.rows(), [])
-
-        state = self.feed(env, reopened + [
-            result_entry(T4, "tu-b2"),
-            todo_entry(T5, [item("member b", "completed")], mid="m5")])
-        self.assertEqual(state["tasks"][1]["status"], "done")
-        rows = self.rows()
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["finishedAt"], tp.token_usage.parse_ts(T5).isoformat())
-        self.assertEqual(rows[0]["actualMin"], 28.0)     # T0 -> T5, the whole group
 
 
 class SourceCNeverCalibratesTest(unittest.TestCase):

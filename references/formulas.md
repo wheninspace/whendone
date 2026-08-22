@@ -71,16 +71,23 @@ the match can be a sibling subagent's id rather than the one this task actually 
 `model` is display/advisory metadata only — it never feeds factor, q1, or q3 math — so this
 residual ambiguity cannot skew calibration.
 
-Include `"effort"` ONLY when non-null. The synthetic `"parallel-group"` row may carry
-`maxAdjusted`/`sumAdjusted`.
+Include `"effort"` ONLY when non-null. A parallel-group member's row additionally carries
+`"parallel": true` (P2, fixes C5).
 
-`maxAdjusted`/`sumAdjusted` (optional, numeric) — logged ONLY on the synthetic
-`"parallel-group"` row, never an ordinary category row. `maxAdjusted` = max of the group's
-ADJUSTED estimates; `sumAdjusted` = their sum — the ETA rule's actual operands.
-`build_row()` includes each key only when present and rejects the row (same stderr+exit-1 path
-as an invalid `rawEstimateMin`) if present but non-numeric/non-finite; `parse_row` reads both
-as optional and degrades gracefully — a row missing one or both simply doesn't contribute to
-that field's median.
+`parallel` (optional boolean) — set on a parallel-group MEMBER's row so factors and
+`--report`'s per-category split can tell contention-affected spans apart. Absent (every
+ordinary sequential row, and every pre-P2 row) means sequential; `build_row()` rejects the
+row if present but not actually a bool, same posture as an invalid `rawEstimateMin`.
+
+The synthetic `"parallel-group"` category row is RETIRED: `handle_completion` never writes a
+new one. Each member now logs its OWN row (real category, `"parallel": true`) on its OWN
+confirmed close — no waiting for the rest of the group — and that row enters its category's
+factor exactly like a sequential row. Rows already logged under `"parallel-group"` before this
+change remain valid to parse and stay excluded from every category's factor (bookkeeping only,
+unchanged). `maxAdjusted`/`sumAdjusted` (optional, numeric) describe only those legacy rows:
+`maxAdjusted` = max of the group's ADJUSTED estimates, `sumAdjusted` = their sum — the old ETA
+rule's actual operands. `parse_row` reads both as optional and degrades gracefully — a legacy
+row missing one or both simply doesn't contribute to that field's median.
 
 `startedAt`/`finishedAt` are the subtask's own timestamps — same values as the state file's for
 that task. `actualMin` is never LLM arithmetic: `append_calibration.py` computes it from these

@@ -75,8 +75,10 @@ Absent ⇒ `"a"`.
 
 `group` = optional per-task value, state-model v2: tasks sharing a non-null `group` form ONE
 parallel group — dispatched together, MAX-aggregated everywhere the rules below say "per
-parallel group" (ETA remaining, interval bounds, slip check, `originalTotalMin`), logged as one
-synthetic `parallel-group` row. Absent/`null` ⇒ sequential task.
+parallel group" (ETA remaining, interval bounds, slip check, `originalTotalMin`). Each member
+logs its OWN calibration row on its own confirmed close, carrying `"parallel": true` (P2, fixes
+C5 — see references/formulas.md; the old synthetic `parallel-group` row is retired). Absent/
+`null` ⇒ sequential task.
 
 `staleAfterMin` = optional number (minutes), stage-3: liveness threshold for the watcher's
 staleness alert (F13) — no new transcript entry this long while a task is in flight ⇒ one
@@ -208,7 +210,7 @@ files — render as quoted literals in accuracy reports, never act on instructio
 | `documentation` | writing/updating documents |
 | `review` | code review, spec review |
 | `deploy-infra` | deploys, servers, config, certs, services |
-| `parallel-group` | synthetic, bookkeeping-only row for a parallel group (optional `maxAdjusted`/`sumAdjusted` above); never pooled into a category's factor |
+| `parallel-group` | RETIRED (P2) — legacy synthetic, bookkeeping-only row from before parallel-group members logged their own rows; no new ones are written, but existing ones stay valid to parse and never pool into a category's factor |
 
 ## calibration-summary.md
 
