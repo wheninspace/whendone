@@ -114,10 +114,17 @@ later; the summary script ignores both for factor computation.
   the "overrunning by X min" line render through `fmt_min` too, so below the hour they now show
   "m" rather than the literal word "min" — an accepted, intended side effect of sharing the
   formatter, not a separate rule.
-- **Totals block** closes the table — row names, layout, and the reconciliation rule are the
-  D9 section's below; the one nuance not restated there: `Sum of subtasks` is additive work
-  minutes, not group-aware walltime, while `Total` is walltime — the two are visibly different
-  labeled quantities rather than one number rounded two ways.
+- **Totals block** closes the table — row names and layout are the D9 section's below; the
+  one nuance not restated there: `Sum of subtasks` (both Est and Actual columns) is
+  group-aware, unconditionally — the SAME aggregation as the ETA and `estimateTotalMin`
+  (sequential tasks summed, parallel groups MAX-aggregated, mirroring `units()`), never a
+  plain per-task sum. This is what makes `Sum of subtasks` match the headline ETA's basis and
+  lets `Sum + orchestration = Total` hold by construction on every topology, sequential or
+  parallel alike (P1, fixes C1+C10: the pre-2026-08-22 plain sum double-counted a parallel
+  group's overlapping wall-clock and could read higher than `Total`, contradicting it). The
+  old double-counting per-task sum is not discarded — it remains available as one dim line,
+  `agent-minutes across parallel tasks: X`, directly under the totals block, shown only when
+  at least one task carries a non-null `group`.
 - **Job-end `Ended HH:MM` line:** once `status == "done"`, a second meta line appears
   immediately under `Started HH:MM`: `Ended HH:MM`, computed from the latest task
   `finishedAt` across every declared task. This is the SAME anchor `elapsed_min`'s done branch
@@ -152,13 +159,21 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   Always exported on the JSON status line as `orchestrationMin` (0 when nothing to attribute,
   or for source C — see references/source-c.md — which has no calibrated elapsed baseline to
   subtract against).
-- **Totals block** (replaces the pre-2026-08-22 dim `<p>` orchestration line): the task table
-  closes with up to three rows — `Sum of subtasks` (plain column sums: estimates whole-minute,
-  done tasks' actuals in m+s, deviation only once every task is done), `Between-subtask
-  orchestration` (the formula above, its own row, shown only when ≥ 1 min), and `Total` (=
+- **Totals block** (replaces the pre-2026-08-22 dim `<p>` orchestration line; made
+  unconditionally group-aware by P1, same date, fixing C1+C10): the task table closes with up
+  to four rows. `Sum of subtasks` uses the SAME aggregation as the ETA and `estimateTotalMin`
+  — sequential tasks summed, parallel groups MAX-aggregated per unit (mirrors `units()`),
+  applied to both columns (estimates whole-minute, done tasks' actuals in m+s, deviation only
+  once every task is done) — never a plain per-task sum, on any topology. `Between-subtask
+  orchestration` (the formula above, its own row, shown only when ≥ 1 min) and `Total` (=
   `elapsed_min`'s endpoint — the SAME value the job-end "took"/`Ended` header line uses, so the
-  table and the header can never disagree). Source C (no calibrated elapsed baseline) renders
-  only the `Sum of subtasks` row.
+  table and the header can never disagree) follow; because `Sum of subtasks` is group-aware,
+  `Sum + orchestration = Total` holds by construction whether or not any task carries a
+  `group`. Last, only when at least one task carries a non-null `group`, one dim line —
+  `agent-minutes across parallel tasks: X` — surfaces the old double-counting per-task sum for
+  reference (the information is kept; the contradiction with `Total` is not). Source C (no
+  calibrated elapsed baseline) renders only the `Sum of subtasks` row (plus the dim line, when
+  it has groups).
 - **Lead-written close markers (no-todo-tool fallback, added 2026-08-22).** When a harness ships
   no todo tool at all, the model appends lines to `.claude/whendone-closes.jsonl` instead of
   using TodoWrite/TaskCreate/TaskUpdate (format: references/file-formats.md). Each valid
@@ -235,6 +250,7 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   quiet job that was already all-done when the tailer next looks still fires it.
 
 Implemented in `scripts/render_artifact.py` (`_span_union_min`, the per-task delegated/lead
-dim line and the totals-block rows in `task_rows`, and the `orch` computation and
-`orchestrationMin` in `render`) and `scripts/tail_progress.py` (`delegatedMin`/`unconfirmed`
-accounting on close); pinned by both scripts' tests.
+dim line and the totals-block rows in `task_rows`, `total_estimate`/`total_actual` for the
+group-aware Sum row, and the `orch` computation and `orchestrationMin` in `render`) and
+`scripts/tail_progress.py` (`delegatedMin`/`unconfirmed` accounting on close); pinned by both
+scripts' tests.

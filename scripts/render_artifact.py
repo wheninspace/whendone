@@ -261,17 +261,21 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
                    % (icon, name, cat, est_txt, actual))
     real = [t for t in tasks if isinstance(t, dict)]
     if real:
-        # Totals block (M7): Sum of subtasks (plain column arithmetic, as
-        # before), Between-subtask orchestration (D9 remainder, >= 1 min), and
-        # Total = the SAME elapsed endpoint the took/Ended header uses -- the
-        # header and the table reconcile by construction. Sources with no
-        # calibrated elapsed baseline (C) keep only the sum row.
-        est_sum = sum(task_est(t) for t in real)
-        acts = [a for a in (display_actual(t) for t in real
-                            if t.get("status") == "done") if a is not None]
+        # Totals block (M7, made group-aware by P1 2026-08-22 -- fixes C1+C10): Sum of
+        # subtasks uses the SAME aggregation as the ETA/estimateTotalMin -- sequential
+        # tasks summed, parallel groups MAX-aggregated (units()/total_estimate/
+        # total_actual) -- so the Est sum matches the headline ETA's basis and
+        # "Sum + orchestration = Total" holds by construction on every topology, not
+        # only ungrouped ones (the old plain per-task sum double-counted a parallel
+        # group's overlapping wall-clock). Between-subtask orchestration (D9
+        # remainder, >= 1 min) and Total = the SAME elapsed endpoint the took/Ended
+        # header uses -- the header and the table reconcile by construction. Sources
+        # with no calibrated elapsed baseline (C) keep only the sum row.
+        us = units(real)
+        est_sum = total_estimate(us)
+        a_sum = total_actual(us)
         est_cell = esc(fmt_min(est_sum)) if est_sum else "—"
-        if acts:
-            a_sum = sum(acts)
+        if a_sum is not None:
             if est_sum and all(t.get("status") == "done" for t in real):
                 act_cell = ('<span class="dev">%s</span> <span class="dev">%s</span>'
                             % (esc(fmt_min_s(a_sum)), esc(fmt_dev(a_sum, est_sum))))
@@ -291,6 +295,23 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
             out.append('<tr class="total"><td></td><td>Total</td>'
                        '<td class="dim"></td><td></td><td>%s</td></tr>'
                        % esc(fmt_min_s(elapsed)))
+        if any(t.get("group") is not None for t in real):
+            # P1: the old double-counting per-task sum is still useful information
+            # (real agent-minutes spent across a parallel fan-out) -- kept as one dim
+            # line so the totals block above can be group-aware without losing it.
+            plain_est = sum(task_est(t) for t in real)
+            plain_acts = [a for a in (display_actual(t) for t in real
+                                      if t.get("status") == "done") if a is not None]
+            parts = []
+            if plain_est:
+                parts.append("Est %s" % fmt_min(plain_est))
+            if plain_acts:
+                parts.append("Actual %s" % fmt_min_s(sum(plain_acts)))
+            if parts:
+                out.append('<tr><td></td><td class="dim">%s</td>'
+                           '<td class="dim"></td><td></td><td></td></tr>'
+                           % esc("agent-minutes across parallel tasks: "
+                                 + " · ".join(parts)))
     return "\n".join(out)
 
 
@@ -563,6 +584,25 @@ def total_estimate(us):
     estimateTotalMin so the model copies it into the state file at job start instead of
     doing the arithmetic itself."""
     return sum(max(task_est(t) for t in u) for u in us if u)
+
+
+def total_actual(us):
+    """P1 (fixes C1+C10): the totals block's group-aware Actual sum — mirrors
+    total_estimate's aggregation (sequential sum + MAX per parallel group) so
+    "Sum + orchestration = Total" holds by construction on every topology, not just
+    ungrouped ones. Per unit: MAX over its DONE members' display_actual (only a done
+    task has an actual figure; an unfinished member of a partly-done group contributes
+    nothing, same as an unfinished sequential task always did). None when no unit has
+    contributed yet (mirrors the pre-P1 empty-acts "—" case) rather than 0.0, which
+    would be indistinguishable from a real all-zero-duration total."""
+    total, any_done = 0.0, False
+    for u in us:
+        vals = [a for a in (display_actual(t) for t in u if t.get("status") == "done")
+                if a is not None]
+        if vals:
+            any_done = True
+            total += max(vals)
+    return total if any_done else None
 
 
 def _done_end(state):

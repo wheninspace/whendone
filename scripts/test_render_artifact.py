@@ -276,6 +276,24 @@ class TestComputationCore(unittest.TestCase):
               task(3, group="g", estimateMin=8)]
         self.assertEqual(ra.total_estimate(ra.units(ts)), 18.0)
 
+    def test_total_actual_uses_max_per_group(self):
+        # P1 (fixes C1+C10): mirrors total_estimate — sequential sum + MAX per
+        # parallel group over DONE members' display_actual, never the plain
+        # per-task sum that double-counts a group's overlapping wall-clock.
+        ts = [task(1, status="done", actualMin=10.0),
+              task(2, group="g", status="done", actualMin=6.0),
+              task(3, group="g", status="done", actualMin=9.0)]
+        self.assertEqual(ra.total_actual(ra.units(ts)), 19.0)
+
+    def test_total_actual_group_ignores_not_yet_done_member(self):
+        ts = [task(1, group="g", status="done", actualMin=6.0),
+              task(2, group="g", status="pending")]
+        self.assertEqual(ra.total_actual(ra.units(ts)), 6.0)
+
+    def test_total_actual_no_done_tasks_is_none(self):
+        ts = [task(1, status="pending"), task(2, status="running")]
+        self.assertIsNone(ra.total_actual(ra.units(ts)))
+
     def test_elapsed_running_subtracts_paused_total(self):
         s = state(pausedTotalMin=10)
         self.assertAlmostEqual(ra.elapsed_min(s, self.now), 50.0)  # 60 wall - 10 paused
@@ -941,6 +959,63 @@ class TotalsBlockTest(unittest.TestCase):
         self.assertIn("Sum of subtasks", page)
         self.assertNotIn("Between-subtask orchestration", page)
         self.assertNotIn(">Total<", page)
+
+    def _group_st(self):
+        # Alpha sequential (10m); Beta/Gamma a parallel group dispatched
+        # together (same startedAt) with different finishedAt. OLD plain sum
+        # would be 10+6+9=25 (Est 10+5+8=23) — double-counting the group's
+        # overlapping wall-clock. Group-aware sum is 10+max(6,9)=19
+        # (Est 10+max(5,8)=18).
+        return state(status="done", originalTotalMin=30,
+                    tasks=[task(nr=1, name="Alpha", status="done", actualMin=10.0,
+                                estimateMin=10, rawEstimateMin=10,
+                                startedAt="2026-07-18T09:00:00+02:00",
+                                finishedAt="2026-07-18T09:10:00+02:00"),
+                           task(nr=2, name="Beta", group="g", status="done",
+                                actualMin=6.0, estimateMin=5, rawEstimateMin=5,
+                                startedAt="2026-07-18T09:12:00+02:00",
+                                finishedAt="2026-07-18T09:18:00+02:00"),
+                           task(nr=3, name="Gamma", group="g", status="done",
+                                actualMin=9.0, estimateMin=8, rawEstimateMin=8,
+                                startedAt="2026-07-18T09:12:00+02:00",
+                                finishedAt="2026-07-18T09:21:00+02:00")])
+
+    def test_totals_sum_is_group_aware_not_plain_per_task_sum(self):
+        rc, page, out = run_cli(self._group_st(), now="2026-07-18T10:00:00+02:00")
+        sum_row = next(l for l in page.splitlines() if "Sum of subtasks" in l)
+        self.assertIn(">18 m<", sum_row)                    # Est: 10 + max(5,8)
+        self.assertIn('<span class="dev">19 m</span>', sum_row)   # Actual: 10 + max(6,9)
+        self.assertNotIn(">23 m<", sum_row)                 # OLD plain Est sum
+        self.assertNotIn('<span class="dev">25 m</span>', sum_row)  # OLD plain Actual sum
+
+    def test_parallel_group_sum_plus_orchestration_equals_total(self):
+        # The reconciliation invariant proven on a topology WITH a parallel
+        # group, not just sequential-only fixtures (C1+C10 regression guard).
+        # span-union: 09:00-09:10 (10m) + 09:12-09:21 (9m, group shares a
+        # start) = 19m; elapsed = 09:00 -> latest finishedAt 09:21 = 21m;
+        # orch = 21 - 19 = 2m. Sum (19) + orch (2) = Total (21).
+        rc, page, out = run_cli(self._group_st(), now="2026-07-18T10:00:00+02:00")
+        self.assertEqual(rc, 0)
+        sum_row = next(l for l in page.splitlines() if "Sum of subtasks" in l)
+        orch_row = next(l for l in page.splitlines()
+                        if "Between-subtask orchestration" in l)
+        total_row = next(l for l in page.splitlines() if ">Total<" in l)
+        # Sum (19) + orchestration (2) = Total (21) -- fails under the OLD plain
+        # per-task sum, which would show 25 here (10+6+9), not 19.
+        self.assertIn('<span class="dev">19 m</span>', sum_row)
+        self.assertIn(">2 m<", orch_row)
+        self.assertIn(">21 m<", total_row)
+        self.assertAlmostEqual(json.loads(out)["orchestrationMin"], 2.0, places=1)
+
+    def test_agent_minutes_dim_line_shown_when_group_exists(self):
+        rc, page, out = run_cli(self._group_st(), now="2026-07-18T10:00:00+02:00")
+        self.assertIn("agent-minutes across parallel tasks: Est 23 m · Actual 25 m",
+                      page)
+        self.assertIn('class="dim"', page)
+
+    def test_agent_minutes_dim_line_absent_without_groups(self):
+        rc, page, out = run_cli(self._st(), now="2026-07-18T10:00:00+02:00")
+        self.assertNotIn("agent-minutes across parallel tasks", page)
 
 
 class UnconfirmedLabelTest(unittest.TestCase):
