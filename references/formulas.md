@@ -114,12 +114,10 @@ later; the summary script ignores both for factor computation.
   the "overrunning by X min" line render through `fmt_min` too, so below the hour they now show
   "m" rather than the literal word "min" — an accepted, intended side effect of sharing the
   formatter, not a separate rule.
-- A bold Total row (dim-labeled "sum of subtasks") closes the table: plain column sums — all
-  estimates (whole minutes); done tasks' actuals in m+s precision (`8 m 30 s`), deviation only
-  once every task is done. Sums are work minutes, not group-aware walltime: the job-end "took"
-  line shows walltime, also in m+s (`took 7 m 55 s`) — facts get seconds, estimates stay
-  whole-minute, and the two totals are visibly different labeled quantities rather than one
-  number rounded two ways.
+- **Totals block** closes the table — row names, layout, and the reconciliation rule are the
+  D9 section's below; the one nuance not restated there: `Sum of subtasks` is additive work
+  minutes, not group-aware walltime, while `Total` is walltime — the two are visibly different
+  labeled quantities rather than one number rounded two ways.
 - **Job-end `Ended HH:MM` line:** once `status == "done"`, a second meta line appears
   immediately under `Started HH:MM`: `Ended HH:MM`, computed from the latest task
   `finishedAt` across every declared task. This is the SAME anchor `elapsed_min`'s done branch
@@ -151,10 +149,26 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   minus `pausedTotalMin`) and `span-union` merges every task's own `startedAt`→`finishedAt`
   interval (running tasks use `now` as the open end) into non-overlapping runs before summing
   — a parallel group's overlapping wall-clock spans are counted ONCE, never summed per member.
-  Rendered as a job-level dim line, "Between-subtask orchestration: X min", shown only when
-  X ≥ 1 min, plus always exported on the JSON status line as `orchestrationMin` (0 when
-  nothing to attribute, or for source C — see references/source-c.md — which has no
-  calibrated elapsed baseline to subtract against).
+  Always exported on the JSON status line as `orchestrationMin` (0 when nothing to attribute,
+  or for source C — see references/source-c.md — which has no calibrated elapsed baseline to
+  subtract against).
+- **Totals block** (replaces the pre-2026-08-22 dim `<p>` orchestration line): the task table
+  closes with up to three rows — `Sum of subtasks` (plain column sums: estimates whole-minute,
+  done tasks' actuals in m+s, deviation only once every task is done), `Between-subtask
+  orchestration` (the formula above, its own row, shown only when ≥ 1 min), and `Total` (=
+  `elapsed_min`'s endpoint — the SAME value the job-end "took"/`Ended` header line uses, so the
+  table and the header can never disagree). Source C (no calibrated elapsed baseline) renders
+  only the `Sum of subtasks` row.
+- **Lead-written close markers (no-todo-tool fallback, added 2026-08-22).** When a harness ships
+  no todo tool at all, the model appends lines to `.claude/whendone-closes.jsonl` instead of
+  using TodoWrite/TaskCreate/TaskUpdate (format: references/file-formats.md). Each valid
+  `{"task","status","ts"}` line is TODO-EQUIVALENT evidence — `tail_progress.py`'s
+  `read_close_markers` synthesizes it into the same `todos` event stream D1/N4/N9 already
+  consume, so a marker `completed` line is a CONFIRMED close: it feeds the calibration row, the
+  N9 alias upgrade, and an immediate `all-done` exactly like a real todo transition — no
+  separate rule branch. Markers timestamped before the job's `startedAt` are stale leftovers
+  from an earlier job and are ignored (stale-file guard); a missing/oversized/malformed file or
+  line contributes nothing (fail-soft), never an exception.
 - **A dispatch's span end depends on whether it runs in the background.** A dispatch counts as
   background when its input carries a truthy `run_in_background`, or, flag-less, when its
   `tool_result` text matches the launch-acknowledgment shape ("Async agent launched"). For a
@@ -201,7 +215,7 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   "done"` (so it still appears finished in the artifact) but was never logged to
   calibration.jsonl, so its `actualMin` is null and the Actual column falls back to
   `display_actual`'s timestamp-derived span. The renderer marks it with a dim
-  "unconfirmed — closed on subagent result" line under the task name so the artifact never
+  "unconfirmed — closed on agent completion" line under the task name so the artifact never
   implies a confirmed close it doesn't have. Two things can happen to it next: todo `completed`
   evidence upgrades it to a confirmed close (row appended, once); or, before that, a todo
   `in_progress` sighting for it OR a new matched dispatch still in flight REOPENS it back to
