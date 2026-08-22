@@ -140,8 +140,9 @@ it) — then run the job-end steps below:
 2. Push notification: "Job done."
 3. Regenerate the calibration summary via Bash: `python3
    <skill-dir>/scripts/calibration_summary.py ~/.claude/whendone-data/calibration.jsonl
-   ~/.claude/whendone-data/calibration-summary.md`. `python3` not found → try `python`, then
-   `py -3`; none exists → skip regeneration, keep the previous summary, tell the user once —
+   ~/.claude/whendone-data/calibration-summary.md`. `python3` missing or failing (Windows'
+   Store stub exists yet errors) → try `python`, then `py -3`; none works → skip regeneration,
+   keep the previous summary, tell the user once —
    NEVER compute the statistics yourself. Skip entirely if this job logged zero new valid data
    points.
 4. State: `status: "done"` (the file may remain; the next job overwrites it).

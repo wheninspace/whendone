@@ -178,7 +178,7 @@ otherwise "uncertain delivery").
 | Artifact publish fails | Continue; retry next wake; 3 straight misses → stop trying, say so |
 | calibration.jsonl corrupt | Rename to `calibration.broken-<date>.jsonl`, start fresh, note it |
 | PushNotification missing | Silent degradation |
-| python3/python/py all missing at job end | Skip regeneration, keep previous summary, tell the user once |
+| python3/python/py all missing or failing at job end | Skip regeneration, keep previous summary, tell the user once |
 | Artifact tool absent, "run without the artifact", or no-publish gate set | Skip publishing; keep a compact chat progress table; say so once: "No artifact publishing is available here, so progress will be shown as a table in chat instead." |
 | Watcher/tailer events (stale, ownership-lost, already-running, tail-unavailable) | See file-formats.md's event table and the active source's fail-soft table (source-a/b/c.md) |
 

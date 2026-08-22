@@ -16,12 +16,11 @@ Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"r
 whendone"** when you kick off a long job — a plan execution, a 6+ subtask fan-out, anything
 you'd walk away from. Full install/update/uninstall details further down.
 
-<!-- TODO(D): refresh screenshot from the 2026-08-22 dogfood artifact -->
-<img src="assets/progress-artifact.png" width="440" alt="WhenDone progress artifact: the DONE state of a real 14-subtask job — task table with actual-vs-estimate per subtask, a +51% overrun, per-task and job-level token counts">
+<img src="assets/progress-artifact.png" width="440" alt="WhenDone progress artifact: the DONE state of a real 12-subtask job — task table with actual-vs-estimate and per-task model and token counts, group-aware totals with a +59% overrun, and the between-subtask orchestration split">
 
-*The actual DONE-state artifact from a real 14-subtask job — this repo's own hardening run,
-monitored by whendone ([full record](docs/test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17),
-[image provenance](docs/design.md#readme-asset-provenance)).*
+*The actual DONE-state artifact from a real 12-subtask job — the 2026-08-22 run that built
+v0.8.0 itself, monitored by whendone
+([image provenance](docs/design.md#readme-asset-provenance)).*
 
 ## Do you need this?
 
@@ -63,7 +62,7 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.7.0 (2026-08-22), single author. **The core loop — declared estimates ×
+**Status:** v0.8.0 (2026-08-22), single author. **The core loop — declared estimates ×
 calibrated correction factors, marker-based closes, and self-widening intervals — was
 live-verified end-to-end by a 2026-08-22 dogfood run on a harness shipping no todo tool at
 all.** Every v0.5.0-and-earlier feature claim has its own recorded live run too, in
@@ -132,7 +131,7 @@ than that, and the fixed cost dominates before the job's own work can amortize i
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ≈11.0k cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 after Task C3's five user-facing say-so sentences (was ≈10.9k/≈12.4–12.5k right before it). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
+| When it triggers (incl. each resume session) | 11,054 cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 at the v0.8.0 release re-measure (was ≈10.9k/≈12.4–12.5k before Session C's user-facing copy additions). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
 | Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,331 tokens) / `source-c.md` (1,085) are read only once that source is detected |
 | Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
@@ -301,22 +300,21 @@ link. Delete it there yourself if you want it gone.
 
 ## Maturity
 
-v0.7.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the exact
+v0.8.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
 runs in CI on Linux, macOS, and Windows on every push. v0.5.0 and v0.6.0 were merged
-(2026-08-15 and 2026-08-16) but never tagged — the last real git tag is v0.4.0, so v0.7.0 is
-the first tag candidate since then.
+(2026-08-15 and 2026-08-16) but never tagged; v0.7.0 was tagged retroactively at its release
+commit, making v0.7.0 and v0.8.0 the first tags since v0.4.0.
 
 **v0.6.0's background-dispatch rework and v0.7.0's close-authority rework were live-verified
 on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a harness shipping
 no todo tool at all (the exact environment the bug this release fixes reproduces in):
 confirmed marker-based closes mid-run, versioned executor model names, per-task actuals
-against estimate with the delegated/lead split, a live ETA whose interval tightened from
-roughly ±46 minutes to ±13 minutes as the job progressed, and calibration rows logged from it.
-The 408-test suite plus the CI matrix back that up. The Windows re-run of the same two
-reworks is still open; `docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` tracks it
-and gates the public flip.
+against estimate with the delegated/lead split, a live ETA — 46-minute headline estimate —
+whose interval tightened to ±13 minutes as the job progressed, and calibration rows logged
+from it. The 445-test suite plus the CI matrix back that up. The Windows re-run of the same
+two reworks is still open, tracked in the maintainer's local verification checklist.
 
 **v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
 todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the
@@ -344,9 +342,9 @@ resumed fresh, once per calibrated source — and each found and fixed a real bu
 display bug; a killed Workflow run's leftover record falsely finalizing a job) — see
 [docs/test-log.md](docs/test-log.md). What remains untested: a resume from a fresh clone at
 the tag (both drills ran in the dev tree, where the installed skill dir is a symlink to this
-repo). The 14-subtask run behind the hero image also used the dev tree, not a fresh clone at
-the tag; that run is headless, so the hero image is a manually captured screenshot of its own
-DONE artifact ([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
+repo). The 12-subtask run behind the hero image also used the dev tree; the image is its
+final state re-rendered with the v0.8.0 renderer and captured headlessly
+([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
 and threat model in [docs/design.md](docs/design.md).
 
 Windows was verified live on 2026-08-13 (Windows 11, Python 3.13): a real 8-subtask Source-A

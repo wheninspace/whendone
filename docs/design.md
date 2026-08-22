@@ -209,13 +209,17 @@ proves misleading in practice.
 
 ## README asset provenance
 
-The README's hero image is a manually captured screenshot of the DONE-state artifact from this
-repo's own round-2 hardening run (14 subtasks, monitored by whendone on 2026-07-17 — full
-record in
-[docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17)).
-That run is headless, so the image was captured from the artifact page, not produced by the
-run, and the run used the dev working tree (the installed skill dir is a symlink to this repo)
-on the release branch — not a fresh clone at the tag. To confirm the screenshot is faithful,
+The README's hero image (since v0.8.0) is the DONE-state artifact of the 2026-08-22 run that
+executed the v0.8.0 flip-readiness plan itself (jobId 20260822T1611, 12 subtasks, monitored
+by the then-installed whendone; state and closes archived in the maintainer's local
+run-evidence directory). The page was re-rendered from that run's final state file with the
+v0.8.0 renderer (`render_artifact.py`, `--now` = the run's own end timestamp) and captured
+with headless Chrome (620 CSS px, device scale 2) — same data, current renderer; the live run
+predates the group-aware totals it displays. The run used the dev working tree (the installed
+skill dir is a symlink to this repo) — not a fresh clone at the tag. The previous hero (the
+2026-07-17 14-subtask hardening run, recorded in
+[docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17))
+was a manually captured screenshot. To confirm the screenshot is faithful,
 open [`assets/real-run-artifact.html`](../assets/real-run-artifact.html) — the actual rendered
 page. A simpler constructed example lives in
 [`assets/demo-artifact.html`](../assets/demo-artifact.html), generated (not hand-edited) from
@@ -598,6 +602,14 @@ Fifteen movements, each under an identical raw `tiktoken cl100k_base` sum unless
     allowance 826 unchanged) — 25 tokens under the 11,056 ceiling. See the README Overhead
     table (P10's single current-state home) for the as-read figure this movement produced,
     rather than a range restated here.
+16. **v0.8.0 release polish (2026-08-22, two small waves):** the final-review fix wave
+    (P4 false-positive fix, softened topology claim, P10 restamp) added +11 to
+    `references/source-a.md` (3,018 → 3,029), and Session D's interpreter-fallback robustness
+    wording (fallback on failure, not only absence — Windows Store `python3` stub) added +12
+    (SKILL.md 3,200 → 3,202 [+2] + source-a.md 3,029 → 3,039 [+10]): 11,031 → 11,054 raw
+    (file-formats.md 3,343, artifact-template.md 644, calibration-summary allowance 826 all
+    unchanged) — 2 tokens under the 11,056 ceiling. Current as-read figure: README Overhead
+    table.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;

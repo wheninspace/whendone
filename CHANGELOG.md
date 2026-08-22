@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.8.0] — 2026-08-22
+
+Flip-readiness wave, driven by a 10-subtask adversarial self-review (6 perspective audits →
+2 opposed debaters → 1 claim verifier) run the same day: fix the two confirmed correctness
+defects, close the top silent-failure gaps, prune unverified surface from the shipped skill,
+single-home the documentation bookkeeping, and polish the artifact + README for the public
+flip. Suite: 408 → 445 tests, warning-clean. Schema changes are additive.
+
+- **Group-aware totals:** the artifact's `Sum of subtasks` (Est and Actual) now uses the same
+  aggregation as the ETA — sequential tasks summed, parallel groups MAX-aggregated — so
+  `Sum + orchestration = Total` holds by construction on all topologies and the Est sum
+  matches the headline ETA's basis. Agent-minutes across parallel tasks stay visible as one
+  dim line whenever a group exists.
+- **Parallel-member calibration rows:** members of a parallel group now log individual
+  calibration rows (real marker-derived spans, new additive `"parallel": true` field) and
+  enter category factors; the synthetic `parallel-group` row is retired (old rows still parse,
+  still excluded). `--report` gains a parallel/sequential split per category so contention
+  bias stays visible.
+- **Silent-failure hardening:** new fail-soft `marker-missing` tailer event (a matched
+  dispatch with no `in_progress` marker within 3 minutes gets one nudge); the Watcher ladder
+  gains lead-turn L1 death detection (stale `lastChangedEventAt` + no notification → one L3
+  one-shot, relaunch L1); docs now state the `completed` marker is always available as close
+  authority — a lost agent-done notification can never permanently strand a task.
+- **Source gates and demotions:** Source C now states its precondition (requires a harness
+  with a todo tool) and, when none exists, says so once and offers a quick Source A
+  declaration as the zero-friction fallback. Source B is labeled experimental (single dogfood
+  2026-07-18) pending a re-dogfood. The marker channel is documented as the primary close
+  authority everywhere; todo tools, where present, are equivalent evidence.
+- **Presentation:** per-row unconfirmed labels collapse to a dim mark plus one job-level
+  note; the ETA block gains a theme-aware CSS progress bar (elapsed share, now-position,
+  ± band); five prescribed one-sentence user-facing notes (watcher demotion, L1 relaunch,
+  ownership lost, artifact tool absent, no-todo-tool marker note).
+- **Calibration report polish:** per-model split per category, model+project on biggest-miss
+  lines, gentle recency note; the factor model itself is untouched.
+- **Docs single-home:** trigger-path token figures live in the README Overhead table only
+  (one fresh authoritative re-measure resolved a 9-token discrepancy); decision codes are
+  date-scoped and confined to design.md and plans. README overhauled for the flip: one status
+  line, 3-line quickstart above the fold, real-tag install text, re-derived ~30-min/6-subtask
+  cutoff, artifact-panel cost tip promoted.
+- **Interpreter fallback robustness:** the `python3` → `python` → `py -3` chain now triggers
+  on failure as well as absence (Windows 11 feedback: the Microsoft Store ships a `python3`
+  stub that exists yet errors).
+
+Trigger path after the wave: raw 11,054 cl100k tokens (README Overhead table is the
+authoritative stamp). Tagging: v0.7.0 was tagged retroactively at its release commit;
+v0.5.0 and v0.6.0 remain merged-but-untagged history.
+
 ## [0.7.0] — 2026-08-22
 
 **v0.5.0 and v0.6.0 above were merged (2026-08-15 and 2026-08-16) but never tagged — the last
@@ -42,15 +89,17 @@ pre-v0.7 state files stay valid.
   the closes-file mechanics entry; `references/source-a.md` gains the full no-todo-tool
   protocol (announce once, create the file fresh, append at todo-transition-equivalent
   moments). Trigger-path budget re-measured after the doc additions: raw 11,047 (+372 over the
-  prior 10,675 measurement), ≈12,509–12,642 as read with Read-tool line prefixes, still under
+  prior 10,675 measurement; v0.8.0's fresh authoritative re-measure of the same content read
+  11,056 — a 9-token tooling drift, resolved by making the README Overhead table the single
+  home for current figures), ≈12,509–12,642 as read with Read-tool line prefixes, still under
   the 14,000 prefix-inclusive budget with 1,358–1,491 to spare — stamped in the README Overhead
   table and `docs/design.md`'s appendix (movement 12).
 
 Suite: 408 tests, warning-clean. **Live-verified on macOS by a 2026-08-22 dogfood run** — a
 real 10-subtask Source-A job on the exact no-todo-tool harness build this release's fix
 reproduces in: confirmed marker-based closes mid-run, per-task actuals, and calibration rows
-logged from it. The Windows re-run is still open; see
-`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and the README's Maturity section.
+logged from it. The Windows re-run is still open; tracked in the maintainer's local
+verification checklist and noted in the README's Maturity section.
 
 ## [0.6.0] — 2026-08-16
 
