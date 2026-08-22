@@ -130,7 +130,8 @@ later; the summary script ignores both for factor computation.
   (sequential tasks summed, parallel groups MAX-aggregated, mirroring `units()`), never a
   plain per-task sum. This is what makes `Sum of subtasks` match the headline ETA's basis and
   lets `Sum + orchestration = Total` hold by construction on every topology, sequential or
-  parallel alike (P1, fixes C1+C10: the pre-2026-08-22 plain sum double-counted a parallel
+  parallel alike (exact when a group's members start together, per the `group` contract)
+  (P1, fixes C1+C10: the pre-2026-08-22 plain sum double-counted a parallel
   group's overlapping wall-clock and could read higher than `Total`, contradicting it). The
   old double-counting per-task sum is not discarded — it remains available as one dim line,
   `agent-minutes across parallel tasks: X`, directly under the totals block, shown only when

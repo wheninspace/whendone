@@ -272,7 +272,8 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
         # tasks summed, parallel groups MAX-aggregated (units()/total_estimate/
         # total_actual) -- so the Est sum matches the headline ETA's basis and
         # "Sum + orchestration = Total" holds by construction on every topology, not
-        # only ungrouped ones (the old plain per-task sum double-counted a parallel
+        # only ungrouped ones (exact when a group's members start together, per the
+        # `group` contract) (the old plain per-task sum double-counted a parallel
         # group's overlapping wall-clock). Between-subtask orchestration (D9
         # remainder, >= 1 min) and Total = the SAME elapsed endpoint the took/Ended
         # header uses -- the header and the table reconcile by construction. Sources
@@ -616,7 +617,8 @@ def total_actual(us):
     """P1 (fixes C1+C10): the totals block's group-aware Actual sum — mirrors
     total_estimate's aggregation (sequential sum + MAX per parallel group) so
     "Sum + orchestration = Total" holds by construction on every topology, not just
-    ungrouped ones. Per unit: MAX over its DONE members' display_actual (only a done
+    ungrouped ones (exact when a group's members start together, per the `group`
+    contract). Per unit: MAX over its DONE members' display_actual (only a done
     task has an actual figure; an unfinished member of a partly-done group contributes
     nothing, same as an unfinished sequential task always did). None when no unit has
     contributed yet (mirrors the pre-P1 empty-acts "—" case) rather than 0.0, which

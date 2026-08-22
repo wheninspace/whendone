@@ -124,7 +124,7 @@ The mechanism IS context spend, so here is the short version: ~140 tokens every 
 ~12k as read when it fires, ~0.1–2k per subtask boundary, ~1k at job end. Worth it for jobs
 of **~6+ subtasks or ~30 minutes-plus** that you actually walk away from; the skill itself
 declines smaller jobs — the trigger cost alone is hard to amortize below that. The arithmetic:
-trigger-to-first-publish runs ≈12.4–12.5k as-read (table below) plus ~1.5–2k for the first
+trigger-to-first-publish runs ≈12.5–12.7k as-read (table below) plus ~1.5–2k for the first
 write, ≈14k total before any subtask even closes; spread across 6 subtasks that's
 ~2.3k/subtask — just above the top of the ~0.1–2k per-boundary range above. Fewer subtasks
 than that, and the fixed cost dominates before the job's own work can amortize it.
@@ -132,7 +132,7 @@ than that, and the fixed cost dominates before the job's own work can amortize i
 | When | Cost |
 |---|---|
 | Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | ≈10.9k cl100k tokens raw, ≈12.4–12.5k as read with Read-tool line prefixes — measured 2026-08-22 after the docs-single-home + trigger-path slimming pass (was ≈11.5k/≈13.0–13.2k right before it). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
+| When it triggers (incl. each resume session) | ≈11.0k cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 after Task C3's five user-facing say-so sentences (was ≈10.9k/≈12.4–12.5k right before it). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
 | Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,331 tokens) / `source-c.md` (1,085) are read only once that source is detected |
 | Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
@@ -304,8 +304,9 @@ link. Delete it there yourself if you want it gone.
 v0.7.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
-runs in CI on Linux, macOS, and Windows on every push. v0.6.0 above was merged 2026-08-16 but
-never tagged — v0.7.0 is the first tag candidate since v0.5.0.
+runs in CI on Linux, macOS, and Windows on every push. v0.5.0 and v0.6.0 were merged
+(2026-08-15 and 2026-08-16) but never tagged — the last real git tag is v0.4.0, so v0.7.0 is
+the first tag candidate since then.
 
 **v0.6.0's background-dispatch rework and v0.7.0's close-authority rework were live-verified
 on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a harness shipping

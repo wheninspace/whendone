@@ -101,9 +101,9 @@ degrades visibility, never the work.
 
 **L1 death detection (P4):** at ANY lead turn while tasks are in flight, check `now −
 lastChangedEventAt` (state) against `staleAfterMin` — if it's exceeded AND no watcher
-notification arrived in that window, the watcher is dead. Run one L3 one-shot, relaunch L1, and
-state the relaunch once in chat: "The progress watcher had died — I synced the state and
-restarted it; no work was lost."
+notification arrived in that window, run one L3 one-shot as the verdict: `already-running` means
+the watcher is alive — do nothing further. Otherwise relaunch L1 and state the relaunch once in
+chat: "The progress watcher had died — I synced the state and restarted it; no work was lost."
 
 ## Wake handling (all levels)
 

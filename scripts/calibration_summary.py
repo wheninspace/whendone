@@ -409,11 +409,12 @@ def report(jsonl_path):
 
         # P14: per-model informational split, mirroring the style of the
         # parallel/sequential split above (n + median ratio per id) -- never feeds
-        # the factor. Models are already sanitize()d in parse_row.
+        # the factor. Models are already sanitize()d in parse_row; sanitize() again
+        # here, at the use site, as defense in depth -- idempotent, no output change.
         per_model = []
         for m in sorted({r["model"] for r in rs}):
             m_ratios = [clamp_ratio(r["act"] / r["est"]) for r in rs if r["model"] == m]
-            per_model.append(f"`{m}` n={len(m_ratios)} "
+            per_model.append(f"`{sanitize(m)}` n={len(m_ratios)} "
                              f"(median ratio {statistics.median(m_ratios):.2f})")
         model_lines.append(f"- {cat}: " + ", ".join(per_model))
 
@@ -430,7 +431,7 @@ def report(jsonl_path):
     print("\n## Biggest misses\n")
     worst = sorted(rows, key=lambda r: abs(math.log(r["act"] / r["est"])), reverse=True)[:5]
     for r in worst:
-        print(f'- {r["date"]} {r["category"]} (`{r["model"]}`): est {r["est"]} min, '
+        print(f'- {r["date"]} {r["category"]} (`{sanitize(r["model"])}`): est {r["est"]} min, '
               f'actual {r["act"]} min (project "{sanitize(r["project"])}", '
               f'job "{sanitize(r["job"])}")')
     return 0

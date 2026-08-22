@@ -471,7 +471,7 @@ The README's Overhead table is the single current-state home for the trigger-pat
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Fourteen movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Fifteen movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -590,11 +590,19 @@ Fourteen movements, each under an identical raw `tiktoken cl100k_base` sum unles
     1,478–1,613 to spare under the 14,000 as-read budget. This pass also re-stamped the README
     Overhead table and converted design.md's own current-state statements (this appendix's
     overview and its Method note below) to point at that stamp instead of restating it, per P10.
+15. **Task C3 (2026-08-22, P13 — five prescribed user-facing say-so sentences)** added four
+    verbatim sentences to `references/source-a.md` (watcher-demotion, L1-relaunch,
+    ownership-lost, no-todo-tool marker note) and one to `SKILL.md` (artifact-tool-absent):
+    +136 → 11,031 raw (SKILL.md 3,175 → 3,200 [+25] + source-a.md 2,907 → 3,018 [+111] +
+    file-formats.md 3,343 unchanged + artifact-template.md 644 unchanged + calibration-summary
+    allowance 826 unchanged) — 25 tokens under the 11,056 ceiling. See the README Overhead
+    table (P10's single current-state home) for the as-read figure this movement produced,
+    rather than a range restated here.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
 movements 1 and 2. Current headroom against the 14,000 as-read budget: see the README Overhead
-table (P10's single current-state home) rather than a number restated here — movement 14 above
+table (P10's single current-state home) rather than a number restated here — movement 15 above
 records the pass that produced it.
