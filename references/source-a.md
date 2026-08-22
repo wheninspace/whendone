@@ -43,7 +43,9 @@ user asks otherwise), and `group` on parallel-group members.
 **In the SAME turn, create the todo list: one item per declared task, item text EXACTLY the
 task `name`** (TodoWrite: item `content`; harnesses with TaskCreate/TaskUpdate instead: one
 TaskCreate per task, its `subject` — the tailer observes both). If ToolSearch finds no todo tool
-at all, say so once in chat and write markers directly: create
+at all, say so once in chat — "This harness has no todo list I can mirror, so I'll record task
+starts and closes in a small marker file — same live artifact and ETA as usual." — and write
+markers directly: create
 `.claude/whendone-closes.jsonl` FRESH at declare time (same gitignore + write-target
 preconditions as the state file), then append one line at each todo-transition moment —
 `in_progress` when starting a task, `completed` when closing it —
@@ -79,8 +81,10 @@ full artifact URL as a plain markdown link in chat.
 
 ## Watcher ladder: setup and demotion
 
-Three levels, tried in order; state each demotion once in chat. The ladder never blocks the
-job (Global Constraint 2) — a dead or absent watcher degrades visibility, never the work.
+Three levels, tried in order; state each demotion once in chat: "Live progress watching just
+lost a capability level — updates will be a bit less frequent, but the job and its ETA
+continue." The ladder never blocks the job (Global Constraint 2) — a dead or absent watcher
+degrades visibility, never the work.
 
 - **L1 Monitor:** `python3 <skill-dir>/scripts/tail_progress.py
   <project-root>/.claude/whendone-state.json --follow`, `persistent: true`, description
@@ -98,7 +102,8 @@ job (Global Constraint 2) — a dead or absent watcher degrades visibility, neve
 **L1 death detection (P4):** at ANY lead turn while tasks are in flight, check `now −
 lastChangedEventAt` (state) against `staleAfterMin` — if it's exceeded AND no watcher
 notification arrived in that window, the watcher is dead. Run one L3 one-shot, relaunch L1, and
-state the relaunch once in chat.
+state the relaunch once in chat: "The progress watcher had died — I synced the state and
+restarted it; no work was lost."
 
 ## Wake handling (all levels)
 
@@ -168,7 +173,7 @@ additions on top:
 |---|---|
 | `tail-unavailable` | Declared estimates still render; no live updates; say so in chat |
 | `already-running` | Find and stop the stray watcher (TaskStop) before relaunching — never run two tailers against one state file |
-| `ownership-lost` | Stop touching state/log/artifact immediately (same rule as the old per-checkpoint jobId check) |
+| `ownership-lost` | Stop touching state/log/artifact immediately (same rule as the old per-checkpoint jobId check); say so once: "Another session has taken over this WhenDone job, so this session stops updating the progress artifact." |
 | Renderer (`render_artifact.py`) down | Show the chat table with the last successful `etaText`; never hand-compute a fresh interval |
 | Append (`append_calibration.py`) down | `actualMin` stays null for the affected row; continue |
 
