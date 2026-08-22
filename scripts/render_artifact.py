@@ -77,6 +77,7 @@ th:nth-child(4),td:nth-child(4) { width:3.6em; white-space:nowrap; }
 th:nth-child(5),td:nth-child(5) { width:26%; }
 td:nth-child(5) .dev { white-space:nowrap; }
 tr.total td { border-top:2px solid var(--dim); border-bottom:none; font-weight:600; }
+tr.orch td { border-bottom:none; font-weight:400; }
 .dim { color:var(--dim); font-size:.9em; }
 .pause-box { border:2px solid var(--paused); border-radius:8px; padding:12px 16px; margin:12px 0; }
 @media (max-width:480px) {
@@ -176,7 +177,7 @@ def _spent(entry):
     return int(entry.get("output") or 0) + int(entry.get("freshInput") or 0)
 
 
-def task_rows(tasks, tmap, now, job_status=None):
+def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
     out = []
     shown_groups = set()
     for t in tasks:
@@ -197,7 +198,7 @@ def task_rows(tasks, tmap, now, job_status=None):
             # calibration row was logged for this task (see formulas.md). Mark it
             # dim rather than hide it: the artifact must stay honest about which
             # closes are provisional.
-            name += '<br><span class="dim">unconfirmed — closed on subagent result</span>'
+            name += '<br><span class="dim">unconfirmed — closed on agent completion</span>'
         if isinstance(t.get("agentsDone"), int) and (
                 isinstance(t.get("agentsExpected"), int)
                 or isinstance(t.get("agentsStarted"), int)):
@@ -260,11 +261,11 @@ def task_rows(tasks, tmap, now, job_status=None):
                    % (icon, name, cat, est_txt, actual))
     real = [t for t in tasks if isinstance(t, dict)]
     if real:
-        # Totals row: plain column arithmetic — Est over every estimated task,
-        # Actual (work minutes) over done tasks so far. NOT group-aware
-        # walltime: the eta block above stays the walltime authority.
-        # Deviation only once every task is done — a partial sum against the
-        # full estimate would read as a huge false underrun mid-run.
+        # Totals block (M7): Sum of subtasks (plain column arithmetic, as
+        # before), Between-subtask orchestration (D9 remainder, >= 1 min), and
+        # Total = the SAME elapsed endpoint the took/Ended header uses -- the
+        # header and the table reconcile by construction. Sources with no
+        # calibrated elapsed baseline (C) keep only the sum row.
         est_sum = sum(task_est(t) for t in real)
         acts = [a for a in (display_actual(t) for t in real
                             if t.get("status") == "done") if a is not None]
@@ -278,10 +279,18 @@ def task_rows(tasks, tmap, now, job_status=None):
                 act_cell = '<span class="dev">%s</span>' % esc(fmt_min_s(a_sum))
         else:
             act_cell = "—"
-        out.append('<tr class="total"><td></td><td>Total'
-                   '<br><span class="dim">sum of subtasks</span></td>'
+        out.append('<tr class="total"><td></td><td>Sum of subtasks</td>'
                    '<td class="dim"></td><td>%s</td><td>%s</td></tr>'
                    % (est_cell, act_cell))
+        if elapsed is not None:
+            if orch is not None and orch >= 1:
+                out.append('<tr class="orch"><td></td>'
+                           '<td class="dim">Between-subtask orchestration</td>'
+                           '<td class="dim"></td><td></td>'
+                           '<td class="dim">%s</td></tr>' % esc(fmt_min_s(orch)))
+            out.append('<tr class="total"><td></td><td>Total</td>'
+                       '<td class="dim"></td><td></td><td>%s</td></tr>'
+                       % esc(fmt_min_s(elapsed)))
     return "\n".join(out)
 
 
@@ -400,17 +409,15 @@ def render(state, tokens, summary, now, push_status, superseded):
     orch = 0.0
     if el is not None and state.get("source") != "c":
         orch = max(0.0, el - _span_union_min(tasks, now))
-    orch_line = ""
-    if orch >= 1:
-        orch_line = ('<p class="dim">%s</p>\n'
-                     % esc("Between-subtask orchestration: %s" % fmt_min_s(orch)))
 
     page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
-            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s%s"
+            "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s"
             % (esc("WhenDone: " + job), CSS, banner, eta_block,
-               task_rows(tasks, tmap, now, status), wf_line, orch_line,
-               pause_box, footer))
+               task_rows(tasks, tmap, now, status,
+                         elapsed=el if state.get("source") != "c" else None,
+                         orch=orch),
+               wf_line, pause_box, footer))
 
     stat = {"ok": True, "status": "superseded" if superseded else status,
             "etaText": etxt, "slipAlert": bool(slip_alert),

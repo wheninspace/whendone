@@ -487,8 +487,7 @@ class TestFullPage(unittest.TestCase):
                               startedAt="2026-07-18T09:59:00+02:00"),
                          task(3)])
         _, page, _ = run_cli(s)
-        self.assertIn('<tr class="total"><td></td><td>Total'
-                      '<br><span class="dim">sum of subtasks</span></td>'
+        self.assertIn('<tr class="total"><td></td><td>Sum of subtasks</td>'
                       '<td class="dim"></td><td>30 m</td>'
                       '<td><span class="dev">11 m 24 s</span></td></tr>', page)
         self.assertIn("tr.total td", page)     # styled: top border, bold
@@ -497,8 +496,7 @@ class TestFullPage(unittest.TestCase):
         s = state(tasks=[task(1, status="done", actualMin=11.4),
                          task(2, status="done", actualMin=4.0)])
         _, page, _ = run_cli(s)
-        self.assertIn('<tr class="total"><td></td><td>Total'
-                      '<br><span class="dim">sum of subtasks</span></td>'
+        self.assertIn('<tr class="total"><td></td><td>Sum of subtasks</td>'
                       '<td class="dim"></td><td>20 m</td>'
                       '<td><span class="dev">15 m 24 s</span> '
                       '<span class="dev">(−23 %)</span></td></tr>', page)
@@ -520,8 +518,7 @@ class TestFullPage(unittest.TestCase):
         s = state(tasks=[task(1, estimateMin=None, rawEstimateMin=None),
                          task(2, estimateMin=None, rawEstimateMin=None)])
         _, page, _ = run_cli(s)
-        self.assertIn('<tr class="total"><td></td><td>Total'
-                      '<br><span class="dim">sum of subtasks</span></td>'
+        self.assertIn('<tr class="total"><td></td><td>Sum of subtasks</td>'
                       '<td class="dim"></td><td>—</td><td>—</td></tr>', page)
 
     def test_paused_job_shows_pause_icon_on_running_task(self):
@@ -786,7 +783,8 @@ class DelegatedSplitAndOrchestrationTest(unittest.TestCase):
                               startedAt="2026-07-18T09:20:00+02:00",
                               finishedAt="2026-07-18T09:30:00+02:00")])
         _, page, out = run_cli(s, now="2026-07-18T09:35:00+02:00")
-        self.assertIn("Between-subtask orchestration:", page)
+        self.assertIn('<tr class="orch"><td></td>'
+                      '<td class="dim">Between-subtask orchestration</td>', page)
         self.assertAlmostEqual(json.loads(out)["orchestrationMin"], 15.0, places=1)
 
     def test_d_overlapping_spans_unioned_not_summed(self):
@@ -889,6 +887,71 @@ class DelegatedSplitPlacementTest(unittest.TestCase):
                               now="2026-07-18T11:00:00+02:00")
         cells = self._row_cells(page)
         self.assertLess(cells[4].index("delegated"), cells[4].index("tok"))
+
+
+class TotalsBlockTest(unittest.TestCase):
+    """M7: Sum of subtasks + Between-subtask orchestration = Total, and Total
+    shares elapsed_min's endpoint with the took/Ended header (reconciles by
+    construction). Replaces the old job-level dim <p> line."""
+
+    def _st(self):
+        return state(status="done", originalTotalMin=30,
+                     tasks=[task(nr=1, name="Alpha", status="done", actualMin=10.0,
+                                 estimateMin=15, rawEstimateMin=15,
+                                 startedAt="2026-07-18T09:00:00+02:00",
+                                 finishedAt="2026-07-18T09:10:00+02:00"),
+                            task(nr=2, name="Beta", status="done", actualMin=8.0,
+                                 estimateMin=15, rawEstimateMin=15,
+                                 startedAt="2026-07-18T09:14:00+02:00",
+                                 finishedAt="2026-07-18T09:22:00+02:00")])
+
+    def test_three_rows_and_reconciliation_with_took(self):
+        # spans 09:00-09:10 and 09:14-09:22: union 18 m, elapsed 22 m, orch 4 m
+        rc, page, out = run_cli(self._st(), now="2026-07-18T10:00:00+02:00")
+        self.assertEqual(rc, 0)
+        self.assertIn("Sum of subtasks", page)
+        self.assertIn("Between-subtask orchestration", page)
+        row = next(l for l in page.splitlines() if ">Total<" in l)
+        self.assertIn("22 m", row)                     # = the took figure
+        self.assertIn("took 22 m (estimated 30 m)", page)
+        self.assertNotIn("<p class=\"dim\">Between-subtask orchestration", page)
+        self.assertAlmostEqual(json.loads(out)["orchestrationMin"], 4.0, places=1)
+
+    def test_running_job_total_is_elapsed_so_far(self):
+        st = self._st()
+        st["status"] = "running"
+        st["tasks"][1]["status"] = "running"
+        st["tasks"][1]["finishedAt"] = None
+        rc, page, out = run_cli(st, now="2026-07-18T09:30:00+02:00")
+        row = next(l for l in page.splitlines() if ">Total<" in l)
+        self.assertIn("30 m", row)                     # elapsed 09:00 -> 09:30
+
+    def test_sub_minute_orchestration_row_omitted_total_kept(self):
+        st = self._st()
+        # move Beta to butt against Alpha: union 09:00-09:10 + 09:10-09:22 = 22
+        st["tasks"][1]["startedAt"] = "2026-07-18T09:10:00+02:00"
+        rc, page, out = run_cli(st, now="2026-07-18T10:00:00+02:00")
+        self.assertNotIn("Between-subtask orchestration", page)
+        self.assertIn(">Total<", page)
+
+    def test_source_c_keeps_single_sum_row_only(self):
+        st = self._st()
+        st["source"] = "c"
+        rc, page, out = run_cli(st, now="2026-07-18T10:00:00+02:00")
+        self.assertIn("Sum of subtasks", page)
+        self.assertNotIn("Between-subtask orchestration", page)
+        self.assertNotIn(">Total<", page)
+
+
+class UnconfirmedLabelTest(unittest.TestCase):
+    def test_label_names_agent_completion_not_subagent_result(self):
+        st = state(tasks=[task(nr=1, name="Alpha", status="done", actualMin=5.0,
+                               startedAt="2026-07-18T09:00:00+02:00",
+                               finishedAt="2026-07-18T09:05:00+02:00")])
+        st["tasks"][0]["unconfirmed"] = True
+        rc, page, _ = run_cli(st)
+        self.assertIn("unconfirmed — closed on agent completion", page)
+        self.assertNotIn("closed on subagent result", page)
 
 
 if __name__ == "__main__":
