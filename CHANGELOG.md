@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.7.0] — 2026-08-22
+
+**v0.6.0 above was merged 2026-08-16 but never tagged — v0.7.0 is the first tag candidate
+since v0.5.0.**
+
+Close-authority rework, third bug in the same family v0.5.0 and v0.6.0 fixed: a live run on
+2026-08-22 hit a harness that shipped NO todo tool at all (TodoWrite, TaskCreate, and
+TaskUpdate were all absent), which silently disabled Source A's entire confirmed-close
+path — no calibration rows, no alias upgrade, all-done never fired — and the executor
+hand-forced task status/`finishedAt` in the state file to get the job to end, tearing the
+row's `actualMin` and dumping its real time into orchestration. Schema changes are additive;
+pre-v0.7 state files stay valid.
+
+- **Lead-written close-marker channel (todo-equivalent close authority):** a new
+  `.claude/whendone-closes.jsonl`, sibling of the state file, gives the lead a way to confirm
+  a close without any todo tool. The lead announces the protocol once, creates the file fresh
+  at job start (gitignored, same as the state file), and appends one `{"task","status","ts"}`
+  line — `status: "in_progress"` or `"completed"` — at each todo-transition-equivalent moment.
+  `completed` lines carry the same authority as a todo `completed` transition; `in_progress`
+  carries start authority, including reopening an already-closed task. `tail_progress.py`'s
+  `read_close_markers` reads the file fail-soft (capped at 1 MB / 10,000 lines, a stale guard
+  against markers older than the job's own `startedAt`) — a malformed or missing file degrades
+  to no marker evidence, never a crash or a wrong close.
+- **Totals block restructure:** the artifact's summary now shows `Sum of subtasks` /
+  `Between-subtask orchestration` (only rendered when it's ≥ 1 minute; replaces the old dim
+  orchestration `<p>` line) / `Total` — and `Total` is defined to equal `elapsed_min`'s own
+  endpoint, the same value the header's `took` and `Ended` line already show, so the three
+  numbers reconcile by construction instead of by hoped-for arithmetic. Source C's totals
+  block keeps only the sum row (no estimate, no orchestration split).
+- **Clearer unconfirmed label:** the display-closed-but-not-yet-confirmed marker now reads
+  "unconfirmed — closed on agent completion" (was a vaguer "unconfirmed").
+- **Skill hard rule:** `references/source-a.md` now states explicitly that the model never
+  sets a task's `status`/`finishedAt` in the state file by hand, at any point including job
+  end — a task closes only on todo/marker evidence; hand-forcing it is the exact failure mode
+  this release fixes.
+- **Docs:** `references/formulas.md` states the marker-authority rules (`in_progress` = start
+  authority, `completed` = confirmed close) normatively; `references/file-formats.md` gains
+  the closes-file mechanics entry; `references/source-a.md` gains the full no-todo-tool
+  protocol (announce once, create the file fresh, append at todo-transition-equivalent
+  moments). Trigger-path budget re-measured after the doc additions: raw 11,047 (+372 over the
+  prior 10,675 measurement), ≈12,509–12,642 as read with Read-tool line prefixes, still under
+  the 14,000 prefix-inclusive budget with 1,358–1,491 to spare — stamped in the README Overhead
+  table and `docs/design.md`'s appendix (movement 12).
+
+Suite: 408 tests, warning-clean. **No live run yet on this release** — the reproducing
+environment (a no-todo-tool harness build) is the one the owner's verification checklist
+targets first; see `docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and the
+Maturity section below.
+
 ## [0.6.0] — 2026-08-16
 
 Background-dispatch evidence rework: a live macOS job on 2026-08-16 exposed a second

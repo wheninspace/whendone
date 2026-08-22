@@ -51,14 +51,16 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.6.0 (2026-08-16), single author. Every v0.5.0-and-earlier feature claim is
+**Status:** v0.7.0 (2026-08-22), single author. Every v0.5.0-and-earlier feature claim is
 backed by a recorded live run in [docs/test-log.md](docs/test-log.md) — macOS throughout,
 Windows verified 2026-08-13, and v0.5.0's time-attribution rework verified live on Windows
-2026-08-15, on the machine where the bug it fixes was observed. **v0.6.0's background-dispatch
-rework (ack-vs-`agent-done` close authority, the `in_progress` reopen, the all-done quiet-
-transcript grace) has no recorded live run on either platform yet** — 393 tests plus the CI
-matrix pass, but the owner's verification run is still pending; see
-`docs/reviews/2026-08-16-v0.6.0-verification-checklist.md`. What remains untested is listed in
+2026-08-15, on the machine where the bug it fixes was observed. **Neither v0.6.0's
+background-dispatch rework (ack-vs-`agent-done` close authority, the `in_progress` reopen,
+the all-done quiet-transcript grace) nor v0.7.0's close-authority rework (the lead-written
+close-marker channel for harnesses with no todo tool, the totals-block restructure) has a
+recorded live run on either platform yet** — 408 tests plus the CI matrix pass, but the
+owner's verification run is still pending; see
+`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md`. What remains untested is listed in
 [Maturity](#maturity) below.
 
 ## Three sources
@@ -214,13 +216,13 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 ## Install
 
 ```bash
-git clone --branch v0.6.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.7.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.6.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.7.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 **Windows:** verified live end-to-end twice. On 2026-08-13 (Windows 11, Python 3.13,
@@ -275,16 +277,18 @@ link. Delete it there yourself if you want it gone.
 
 ## Maturity
 
-v0.6.0 (2026-08-16), single author, tested against Claude Code CLI 2.1.209 (the exact
+v0.7.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the exact
 environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
 versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
-runs in CI on Linux, macOS, and Windows on every push.
+runs in CI on Linux, macOS, and Windows on every push. v0.6.0 above was merged 2026-08-16 but
+never tagged — v0.7.0 is the first tag candidate since v0.5.0.
 
-**v0.6.0's background-dispatch rework has no recorded live run yet, on either platform.** The
-393-test suite (macOS) plus the CI matrix are the only evidence so far; the owner's own
-verification run — a real Source-A job with background dispatches, on macOS first (the bug
-this release fixes reproduces there), then the Windows re-run — is tracked locally in
-`docs/reviews/2026-08-16-v0.6.0-verification-checklist.md` and gates the public flip.
+**Neither v0.6.0's background-dispatch rework nor v0.7.0's close-authority rework has a
+recorded live run yet, on either platform.** The 408-test suite (macOS) plus the CI matrix
+are the only evidence so far; the owner's own verification run — a real Source-A job on a
+no-todo-tool harness build first (the bug v0.7.0 fixes reproduces there), covering both
+releases' behavior together, macOS first then the Windows re-run — is tracked locally in
+`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and gates the public flip.
 
 **v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
 todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the
