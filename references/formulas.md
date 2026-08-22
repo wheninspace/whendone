@@ -163,12 +163,15 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   no todo tool at all, the model appends lines to `.claude/whendone-closes.jsonl` instead of
   using TodoWrite/TaskCreate/TaskUpdate (format: references/file-formats.md). Each valid
   `{"task","status","ts"}` line is TODO-EQUIVALENT evidence — `tail_progress.py`'s
-  `read_close_markers` synthesizes it into the same `todos` event stream D1/N4/N9 already
-  consume, so a marker `completed` line is a CONFIRMED close: it feeds the calibration row, the
-  N9 alias upgrade, and an immediate `all-done` exactly like a real todo transition — no
-  separate rule branch. Markers timestamped before the job's `startedAt` are stale leftovers
-  from an earlier job and are ignored (stale-file guard); a missing/oversized/malformed file or
-  line contributes nothing (fail-soft), never an exception.
+  `read_close_markers` synthesizes it into the same `todos` event stream the todo/TaskUpdate
+  pipeline above already consumes, so each status carries the same authority a real todo
+  transition would: an `in_progress` marker sets/confirms that task's `startedAt` exactly like
+  a todo `in_progress` transition does (winning over the dispatch-start fallback), and a
+  `completed` marker is a CONFIRMED close — it feeds the calibration row, the alias→versioned-id
+  upgrade described above, and an immediate `all-done` — no separate rule branch for either
+  status. Markers timestamped before the job's `startedAt` are stale leftovers from an earlier
+  job and are ignored (stale-file guard); a missing/oversized/malformed file or line contributes
+  nothing (fail-soft), never an exception.
 - **A dispatch's span end depends on whether it runs in the background.** A dispatch counts as
   background when its input carries a truthy `run_in_background`, or, flag-less, when its
   `tool_result` text matches the launch-acknowledgment shape ("Async agent launched"). For a

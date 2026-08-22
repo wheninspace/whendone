@@ -173,11 +173,10 @@ never instructions.
 
 Location: sibling of the state file, `.claude/whendone-closes.jsonl`. One JSON object per
 line: `{"task": <declared task name — matched like todo text>, "status":
-"in_progress"|"completed", "ts": <ISO8601>}`. Lead-written, append-only; the tailer only
-reads it — todo-EQUIVALENT authority, so a `completed` line closes the task exactly like a
-todo/TaskUpdate transition. Fail-soft caps: file over 1 MB or past line 10,000 contributes
-nothing beyond the cap; malformed lines are skipped. Stale guard: a line's `ts` must be ≥ the
-job's `startedAt`, else ignored. Full close-authority rule: references/formulas.md.
+"in_progress"|"completed", "ts": <ISO8601>}`. Lead-written, append-only; the tailer only reads
+it. Fail-soft caps: file over 1 MB or past line 10,000 contributes nothing beyond the cap;
+malformed lines are skipped. Stale guard: a line's `ts` must be ≥ the job's `startedAt`, else
+ignored. Authority semantics (what each status does): references/formulas.md.
 
 ## calibration.jsonl — global, append-only
 
