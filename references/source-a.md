@@ -54,7 +54,7 @@ references/formulas.md). Declared names must be unique —
 duplicates are unmatchable by
 design, since the tailer matches todo/dispatch text back to task names verbatim (the
 tailer's matcher additionally tolerates case/whitespace/leading-ordinal differences — never
-looser). A task closes ONLY on its todo/TaskUpdate `completed` transition — make it when YOU consider the
+looser). A task closes ONLY on its todo/TaskUpdate `completed` transition (or its marker-file equivalent — above) — make it when YOU consider the
 task done, after its review/fix cycle. Subagent results never close a task: dispatches whose
 `description` exactly matches a task's `name` accrue to that task's *delegated span* (shown in
 the artifact) — name every dispatch that's part of task N's work (implementer, review, fix

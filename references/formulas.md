@@ -163,9 +163,9 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   no todo tool at all, the model appends lines to `.claude/whendone-closes.jsonl` instead of
   using TodoWrite/TaskCreate/TaskUpdate (format: references/file-formats.md). Each valid
   `{"task","status","ts"}` line is TODO-EQUIVALENT evidence — `tail_progress.py`'s
-  `read_close_markers` synthesizes it into the same `todos` event stream the todo/TaskUpdate
-  pipeline above already consumes, so each status carries the same authority a real todo
-  transition would: an `in_progress` marker sets/confirms that task's `startedAt` exactly like
+  `read_close_markers` synthesizes it into the same `todos` event stream the tailer already
+  consumes for todo/TaskUpdate transitions, so each status carries the same authority a real
+  todo transition would: an `in_progress` marker sets/confirms that task's `startedAt` exactly like
   a todo `in_progress` transition does (winning over the dispatch-start fallback), and a
   `completed` marker is a CONFIRMED close — it feeds the calibration row, the alias→versioned-id
   upgrade described above, and an immediate `all-done` — no separate rule branch for either
@@ -235,6 +235,6 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   quiet job that was already all-done when the tailer next looks still fires it.
 
 Implemented in `scripts/render_artifact.py` (`_span_union_min`, the per-task delegated/lead
-dim line in `task_rows`, the `orch`/`orch_line` block and `orchestrationMin` in `render`) and
-`scripts/tail_progress.py` (`delegatedMin`/`unconfirmed` accounting on close); pinned by both
-scripts' tests.
+dim line and the totals-block rows in `task_rows`, and the `orch` computation and
+`orchestrationMin` in `render`) and `scripts/tail_progress.py` (`delegatedMin`/`unconfirmed`
+accounting on close); pinned by both scripts' tests.

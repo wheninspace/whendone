@@ -19,7 +19,8 @@ pre-v0.7 state files stay valid.
   at job start (gitignored, same as the state file), and appends one `{"task","status","ts"}`
   line — `status: "in_progress"` or `"completed"` — at each todo-transition-equivalent moment.
   `completed` lines carry the same authority as a todo `completed` transition; `in_progress`
-  carries start authority, including reopening an already-closed task. `tail_progress.py`'s
+  carries start authority, including reopening a task whose close is still unconfirmed
+  (a confirmed close stays done). `tail_progress.py`'s
   `read_close_markers` reads the file fail-soft (capped at 1 MB / 10,000 lines, a stale guard
   against markers older than the job's own `startedAt`) — a malformed or missing file degrades
   to no marker evidence, never a crash or a wrong close.
@@ -30,7 +31,8 @@ pre-v0.7 state files stay valid.
   numbers reconcile by construction instead of by hoped-for arithmetic. Source C's totals
   block keeps only the sum row (no estimate, no orchestration split).
 - **Clearer unconfirmed label:** the display-closed-but-not-yet-confirmed marker now reads
-  "unconfirmed — closed on agent completion" (was a vaguer "unconfirmed").
+  "unconfirmed — closed on agent completion" (was "unconfirmed — closed on subagent result",
+  which misattributed the close to the subagent rather than the lead's own completion evidence).
 - **Skill hard rule:** `references/source-a.md` now states explicitly that the model never
   sets a task's `status`/`finishedAt` in the state file by hand, at any point including job
   end — a task closes only on todo/marker evidence; hand-forcing it is the exact failure mode
