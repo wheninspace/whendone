@@ -85,8 +85,8 @@ calibrated:
 ## What you get
 
 - **A progress artifact** — task table, actual vs. estimate per task, which model ran
-  each subtask (full version, e.g. "Sonnet 5", plus reasoning effort when explicitly set;
-  both live-verified by the 2026-08-22 dogfood run),
+  each subtask (full version, e.g. "Sonnet 5" — live-verified by the 2026-08-22 dogfood run —
+  plus reasoning effort when explicitly set),
   total ETA with an honest interval, and token consumption per task and per job. The same
   account-scoped page throughout — one URL, republished at every subtask boundary. It's a
   claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
