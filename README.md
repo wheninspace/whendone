@@ -5,6 +5,18 @@ progress page you can open anywhere — your phone included. Declared once at jo
 current by a background watcher; every finished subtask feeds the calibration that sharpens
 the next job's estimate. The statistics are computed outside the model.
 
+## Quickstart
+
+```bash
+git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+```
+<!-- TODO(D2): update to the real tag at release -->
+
+Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"run with
+whendone"** when you kick off a long job — a plan execution, a 6+ subtask fan-out, anything
+you'd walk away from. Full install/update/uninstall details further down.
+
+<!-- TODO(D): refresh screenshot from the 2026-08-22 dogfood artifact -->
 <img src="assets/progress-artifact.png" width="440" alt="WhenDone progress artifact: the DONE state of a real 14-subtask job — task table with actual-vs-estimate per subtask, a +51% overrun, per-task and job-level token counts">
 
 *The actual DONE-state artifact from a real 14-subtask job — this repo's own hardening run,
@@ -51,17 +63,13 @@ that loop empirically: every finished subtask logs its raw estimate against its 
 per category, and a small stdlib Python script — not the model — turns that history into
 per-category correction factors for the next job's ETA.
 
-**Status:** v0.7.0 (2026-08-22), single author. Every v0.5.0-and-earlier feature claim is
-backed by a recorded live run in [docs/test-log.md](docs/test-log.md) — macOS throughout,
-Windows verified 2026-08-13, and v0.5.0's time-attribution rework verified live on Windows
-2026-08-15, on the machine where the bug it fixes was observed. **Neither v0.6.0's
-background-dispatch rework (ack-vs-`agent-done` close authority, the `in_progress` reopen,
-the all-done quiet-transcript grace) nor v0.7.0's close-authority rework (the lead-written
-close-marker channel for harnesses with no todo tool, the totals-block restructure) has a
-recorded live run on either platform yet** — 408 tests plus the CI matrix pass, but the
-owner's verification run is still pending; see
-`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md`. What remains untested is listed in
-[Maturity](#maturity) below.
+**Status:** v0.7.0 (2026-08-22), single author. **The core loop — declared estimates ×
+calibrated correction factors, marker-based closes, and self-widening intervals — was
+live-verified end-to-end by a 2026-08-22 dogfood run on a harness shipping no todo tool at
+all.** Every v0.5.0-and-earlier feature claim has its own recorded live run too, in
+[docs/test-log.md](docs/test-log.md) — macOS throughout, Windows verified 2026-08-13, and
+v0.5.0's time-attribution rework verified live on Windows 2026-08-15, on the machine where the
+bug it fixes was observed. What remains untested is listed in [Maturity](#maturity) below.
 
 ## Three sources
 
@@ -77,7 +85,8 @@ calibrated:
 ## What you get
 
 - **A progress artifact** — task table, actual vs. estimate per task, which model ran
-  each subtask (full version, e.g. "Haiku 4.5", plus reasoning effort when explicitly set),
+  each subtask (full version, e.g. "Sonnet 5", plus reasoning effort when explicitly set —
+  live-verified by the 2026-08-22 dogfood run),
   total ETA with an honest interval, and token consumption per task and per job. The same
   account-scoped page throughout — one URL, republished at every subtask boundary. It's a
   claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
@@ -114,7 +123,11 @@ calibrated:
 The mechanism IS context spend, so here is the short version: ~140 tokens every session,
 ~12k as read when it fires, ~0.1–2k per subtask boundary, ~1k at job end. Worth it for jobs
 of **~6+ subtasks or ~30 minutes-plus** that you actually walk away from; the skill itself
-declines smaller jobs — the trigger cost alone is hard to amortize below that.
+declines smaller jobs — the trigger cost alone is hard to amortize below that. The arithmetic:
+trigger-to-first-publish runs ≈12.4–12.5k as-read (table below) plus ~1.5–2k for the first
+write, ≈14k total before any subtask even closes; spread across 6 subtasks that's
+~2.3k/subtask — just above the top of the ~0.1–2k per-boundary range above. Fewer subtasks
+than that, and the fixed cost dominates before the job's own work can amortize it.
 
 | When | Cost |
 |---|---|
@@ -125,6 +138,11 @@ declines smaller jobs — the trigger cost alone is hard to amortize below that.
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
 | Per resume (additionally) | + `references/resume.md` (≈1.6k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
 | After a compaction notice | One re-read of SKILL.md's Invariants section + the state file ≈ ~1–1.8k tokens; recurs only on a compaction notice, not on any fixed schedule |
+
+> **Tip:** Keep the artifact panel closed between checks if you're minding tokens. An open
+> panel makes the harness re-inject the rendered page HTML at every watcher wake (the "Per
+> watcher wake" row above); the phone/browser walk-away pattern this skill is built for
+> measured **zero** of those echoes in a controlled experiment.
 
 Rows marked measured are real `tiktoken` `cl100k_base` runs on this repo's actual files and
 real session transcripts; the rest are `char/4` proxies. All counts are cl100k — Claude's own
@@ -194,9 +212,9 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
   artifact rendering. Without it these degrade off — whendone never does statistics in the model.
 - It does not work in claude.ai chat — there's no file system there.
 - No todo tool required for Source A — a lead-written `completed` marker in
-  `.claude/whendone-closes.jsonl` is the close authority on every harness, and
-  TodoWrite/TaskCreate/TaskUpdate, where present, are equivalent evidence for the same close.
-  Source C is the one mode that needs a todo tool (see Three sources above).
+  `.claude/whendone-closes.jsonl` is always available as the close authority, on every
+  harness, and TodoWrite/TaskCreate/TaskUpdate, where present, are equivalent evidence for the
+  same close. Source C is the one mode that needs a todo tool (see Three sources above).
 
 ## First run — what it will ask you
 
@@ -219,14 +237,16 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 
 ## Install
 
+<!-- TODO(D2): update to the real tag at release -->
+
 ```bash
-git clone --branch v0.7.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.7.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 **Windows:** verified live end-to-end twice. On 2026-08-13 (Windows 11, Python 3.13,
@@ -287,12 +307,16 @@ versions are untested, not necessarily unsupported. Since 2026-08-13 the full te
 runs in CI on Linux, macOS, and Windows on every push. v0.6.0 above was merged 2026-08-16 but
 never tagged — v0.7.0 is the first tag candidate since v0.5.0.
 
-**Neither v0.6.0's background-dispatch rework nor v0.7.0's close-authority rework has a
-recorded live run yet, on either platform.** The 408-test suite (macOS) plus the CI matrix
-are the only evidence so far; the owner's own verification run — a real Source-A job on a
-no-todo-tool harness build first (the bug v0.7.0 fixes reproduces there), covering both
-releases' behavior together, macOS first then the Windows re-run — is tracked locally in
-`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and gates the public flip.
+**v0.6.0's background-dispatch rework and v0.7.0's close-authority rework were live-verified
+on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a harness shipping
+no todo tool at all (the exact environment the bug this release fixes reproduces in):
+confirmed marker-based closes mid-run, versioned executor model names, per-task actuals
+against estimate with the delegated/lead split, a live ETA whose interval tightened from
+roughly ±46 minutes to ±13 minutes as the job progressed, and calibration rows logged from
+it. The 408-test suite
+plus the CI matrix back that up. The Windows re-run of the same two reworks is still open;
+`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` tracks it and gates the public
+flip.
 
 **v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
 todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the

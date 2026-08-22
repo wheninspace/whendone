@@ -46,10 +46,11 @@ pre-v0.7 state files stay valid.
   the 14,000 prefix-inclusive budget with 1,358–1,491 to spare — stamped in the README Overhead
   table and `docs/design.md`'s appendix (movement 12).
 
-Suite: 408 tests, warning-clean. **No live run yet on this release** — the reproducing
-environment (a no-todo-tool harness build) is the one the owner's verification checklist
-targets first; see `docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and the
-Maturity section below.
+Suite: 408 tests, warning-clean. **Live-verified on macOS by a 2026-08-22 dogfood run** — a
+real 10-subtask Source-A job on the exact no-todo-tool harness build this release's fix
+reproduces in: confirmed marker-based closes mid-run, per-task actuals, and calibration rows
+logged from it. The Windows re-run is still open; see
+`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` and the README's Maturity section.
 
 ## [0.6.0] — 2026-08-16
 
