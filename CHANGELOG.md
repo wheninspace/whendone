@@ -2,8 +2,8 @@
 
 ## [0.7.0] — 2026-08-22
 
-**v0.6.0 above was merged 2026-08-16 but never tagged — v0.7.0 is the first tag candidate
-since v0.5.0.**
+**v0.5.0 and v0.6.0 above were merged (2026-08-15 and 2026-08-16) but never tagged — the last
+real git tag is v0.4.0, so v0.7.0 is the first tag candidate since then.**
 
 Close-authority rework, third bug in the same family v0.5.0 and v0.6.0 fixed: a live run on
 2026-08-22 hit a harness that shipped NO todo tool at all (TodoWrite, TaskCreate, and

@@ -37,7 +37,8 @@ group, never a sum of every member. Left side: per task, `actualMin` if done els
 `estimateMin` (in-flight → `max(estimateMin, elapsed)`), summed with per-group MAX added (a
 fully DONE group contributes the MAX of members' `actualMin`). Alert when total `> 1.5 ×
 originalTotalMin`, computed once at job start over ALL subtasks' initial `estimateMin`, never
-revised.
+revised except the F9 rebaseline on resume after a plan restructure (mechanics:
+references/source-a.md's Stop/pause/resume deltas — not restated here).
 
 **Implemented in `scripts/render_artifact.py` (F6).** The renderer computes remaining, ETA,
 elapsed, interval, per-task deviation, and the 150 %-slip check from this section's rules and
@@ -72,7 +73,9 @@ the match can be a sibling subagent's id rather than the one this task actually 
 residual ambiguity cannot skew calibration.
 
 Include `"effort"` ONLY when non-null. A parallel-group member's row additionally carries
-`"parallel": true` (P2, fixes C5).
+`"parallel": true` (P2, fixes C5) and the member task's own real `model` — the retired
+synthetic group row always hardcoded `"unknown"`; a deliberate consequence of the P2
+unification, not an oversight.
 
 `parallel` (optional boolean) — set on a parallel-group MEMBER's row so factors and
 `--report`'s per-category split can tell contention-affected spans apart. Absent (every

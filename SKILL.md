@@ -107,7 +107,8 @@ tree, never a linked worktree's.
    appends.
 7. Two hard preconditions gate the writes in step 8:
    - **Write-target precondition:** for each of `<project-root>/.claude/whendone-state.json`,
-     `.gitignore`, and `<project-root>/.claude/whendone-tail.lock`, verify it either doesn't
+     `.gitignore`, `<project-root>/.claude/whendone-tail.lock`, and
+     `<project-root>/.claude/whendone-closes.jsonl`, verify it either doesn't
      exist yet, or exists as a REGULAR FILE whose canonical path (`realpath`) resolves INSIDE
      the project root — not a symlink, not outside the root (docs/design.md's Safety decisions). Check fails → STOP,
      don't write, flag the user. `.claude/STOP` is exempt (delete-only — step 4).

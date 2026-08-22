@@ -45,6 +45,15 @@ planning session to understand why things are built the way they are.
   ordinary per-category estimate bias, so neither confirms the max rule (or the sum) is the
   statistically correct aggregator.
 
+  **2026-08-22 reversal (P2, fixes C5):** superseded above. Parallel-group members now log
+  individual calibration rows (`"parallel": true`) on their own confirmed close instead of the
+  retired synthetic group row — real marker-derived member spans exist now, and the IQR-based
+  spread already absorbs the contention variance the original argument worried about, so
+  per-member rows no longer corrupt the ratio the way this bullet originally reasoned. Legacy
+  `parallel-group` rows stay valid to parse and remain excluded from every category's factor
+  (bookkeeping only, unchanged). Mechanics: `references/formulas.md`'s Calibration row
+  derivation section, not restated here.
+
 ## Calibration statistics
 
 Mirrors the docstring in `scripts/calibration_summary.py`:
@@ -168,11 +177,12 @@ proves misleading in practice.
   `.claude/whendone-state.json` and must never be committed. Before the first write, the skill
   ensures it's covered by the project's `.gitignore` — this is a precondition to the write
   happening at all, not a follow-up step.
-- **Write targets are validated.** A cloned or shared repo can ship `.claude/whendone-state.json`
-  or `.gitignore` as a symlink instead of a regular file, pointing anywhere the user has write
-  access — e.g. `~/.zshrc`. Without a check, job start would overwrite whatever the symlink
-  resolves to with state JSON or a gitignore edit, and attacker-influenced `job` free-text would
-  land inside it. Before the first write to either path, the skill verifies it either doesn't
+- **Write targets are validated.** A cloned or shared repo can ship `.claude/whendone-state.json`,
+  `.gitignore`, or `.claude/whendone-closes.jsonl` as a symlink instead of a regular file,
+  pointing anywhere the user has write access — e.g. `~/.zshrc`. Without a check, job start
+  would overwrite whatever the symlink resolves to with state JSON, a gitignore edit, or a
+  marker-file append, and attacker-influenced `job`/task-name free-text would land inside it.
+  Before the first write to any of these paths, the skill verifies it either doesn't
   exist yet or is a regular file whose canonical path (`realpath`) resolves inside the project
   root; a symlink, or a canonical path outside the root, stops the write and flags the user
   instead of proceeding. The same untrusted-input treatment applies to `artifactFile` on resume:
