@@ -1019,14 +1019,37 @@ class TotalsBlockTest(unittest.TestCase):
 
 
 class UnconfirmedLabelTest(unittest.TestCase):
-    def test_label_names_agent_completion_not_subagent_result(self):
+    """P9: the old per-row long label collapses to a short dim mark; the
+    explanation moves to a single job-level note above the task table."""
+
+    def test_row_shows_short_dim_mark_not_long_label(self):
         st = state(tasks=[task(nr=1, name="Alpha", status="done", actualMin=5.0,
                                startedAt="2026-07-18T09:00:00+02:00",
                                finishedAt="2026-07-18T09:05:00+02:00")])
         st["tasks"][0]["unconfirmed"] = True
         rc, page, _ = run_cli(st)
-        self.assertIn("unconfirmed — closed on agent completion", page)
+        self.assertIn('<span class="dim">unconfirmed</span>', page)
+        self.assertNotIn("closed on agent completion", page)
         self.assertNotIn("closed on subagent result", page)
+
+    def test_job_level_note_appears_with_correct_n_and_m(self):
+        # 3 done tasks, 1 unconfirmed -> "1 of 3 closes unconfirmed ..."
+        st = state(tasks=[
+            task(1, status="done", actualMin=5.0, unconfirmed=True),
+            task(2, status="done", actualMin=5.0),
+            task(3, status="done", actualMin=5.0),
+        ])
+        rc, page, _ = run_cli(st)
+        self.assertIn("1 of 3 closes unconfirmed (no marker/todo evidence) "
+                      "— no calibration logged for them.", page)
+        # appears exactly once, not once per unconfirmed row
+        self.assertEqual(page.count("closes unconfirmed"), 1)
+
+    def test_job_level_note_absent_when_none_unconfirmed(self):
+        st = state(tasks=[task(1, status="done", actualMin=5.0),
+                          task(2, status="done", actualMin=5.0)])
+        rc, page, _ = run_cli(st)
+        self.assertNotIn("closes unconfirmed", page)
 
 
 class ProgressBarTest(unittest.TestCase):

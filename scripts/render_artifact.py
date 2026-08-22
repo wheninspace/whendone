@@ -199,11 +199,12 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
                 line = "%s · %s effort" % (line, t["effort"])
             name += '<br><span class="dim">%s</span>' % esc(line)
         if t.get("unconfirmed"):
-            # D9: a display-close with no todo transition ever observed — no
+            # D9/P9: a display-close with no todo transition ever observed — no
             # calibration row was logged for this task (see formulas.md). Mark it
             # dim rather than hide it: the artifact must stay honest about which
-            # closes are provisional.
-            name += '<br><span class="dim">unconfirmed — closed on agent completion</span>'
+            # closes are provisional. The explanation itself lives in ONE job-level
+            # note above the table (render()) rather than repeated on every row.
+            name += '<br><span class="dim">unconfirmed</span>'
         if isinstance(t.get("agentsDone"), int) and (
                 isinstance(t.get("agentsExpected"), int)
                 or isinstance(t.get("agentsStarted"), int)):
@@ -331,6 +332,8 @@ def render(state, tokens, summary, now, push_status, superseded):
     job = str(state.get("job") or "job")
     status = state.get("status") or "running"
     done_count = sum(1 for t in tasks if t.get("status") == "done")
+    unconfirmed_count = sum(1 for t in tasks
+                            if t.get("status") == "done" and t.get("unconfirmed"))
     total = len(tasks)
     tmap = token_map(tokens)
     now_hhmm = now.strftime("%H:%M")
@@ -429,6 +432,16 @@ def render(state, tokens, summary, now, push_status, superseded):
                   "chat or create the file <code>.claude/STOP</code> in the project "
                   "root. %s</p>" % esc(PUSH_STATUS[push_status]))
 
+    unconfirmed_note = ""
+    if unconfirmed_count:
+        # P9: the per-row long label collapsed to a short dim mark (task_rows);
+        # the explanation is stated ONCE here, above the table, instead of once
+        # per affected row. M = total closed/done tasks (done_count) -- "N of the
+        # M closes" is unconfirmed, not N of the whole task list.
+        unconfirmed_note = ('<p class="dim">%s</p>\n' % esc(
+            "%d of %d closes unconfirmed (no marker/todo evidence) "
+            "— no calibration logged for them." % (unconfirmed_count, done_count)))
+
     wf_line = ""
     if isinstance(state.get("wfAgentsStarted"), int):
         d = state.get("wfAgentsDone")
@@ -444,10 +457,10 @@ def render(state, tokens, summary, now, push_status, superseded):
     if el is not None and state.get("source") != "c":
         orch = max(0.0, el - _span_union_min(tasks, now))
 
-    page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n"
+    page = ("<title>%s</title>\n<style>%s</style>\n%s\n%s\n%s"
             '<table>\n<tr><th></th><th>Subtask</th><th class="dim">Category</th>'
             "<th>Est.</th><th>Actual</th></tr>\n%s\n</table>\n%s%s%s"
-            % (esc("WhenDone: " + job), CSS, banner, eta_block,
+            % (esc("WhenDone: " + job), CSS, banner, eta_block, unconfirmed_note,
                task_rows(tasks, tmap, now, status,
                          elapsed=el if state.get("source") != "c" else None,
                          orch=orch),

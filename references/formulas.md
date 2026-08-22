@@ -249,9 +249,13 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   (references/source-a.md) — is marked `t["unconfirmed"] = true`. Such a task IS `status ==
   "done"` (so it still appears finished in the artifact) but was never logged to
   calibration.jsonl, so its `actualMin` is null and the Actual column falls back to
-  `display_actual`'s timestamp-derived span. The renderer marks it with a dim
-  "unconfirmed — closed on agent completion" line under the task name so the artifact never
-  implies a confirmed close it doesn't have. Two things can happen to it next: todo `completed`
+  `display_actual`'s timestamp-derived span. The renderer marks it with a short dim
+  "unconfirmed" line under the task name — no per-row repetition of the explanation (P9) — and,
+  once per job whenever at least one close is unconfirmed, ONE line above the task table:
+  "N of M closes unconfirmed (no marker/todo evidence) — no calibration logged for them." (N =
+  unconfirmed closes, M = total closed/done tasks). Together they keep the artifact honest
+  about which closes are provisional without implying a confirmed close it doesn't have. Two
+  things can happen to an unconfirmed close next: todo `completed`
   evidence upgrades it to a confirmed close (row appended, once); or, before that, a todo
   `in_progress` sighting for it OR a new matched dispatch still in flight REOPENS it back to
   `running` and clears the marker — the lead is still working the task, so the provisional
@@ -268,6 +272,7 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
 
 Implemented in `scripts/render_artifact.py` (`_span_union_min`, the per-task delegated/lead
 dim line and the totals-block rows in `task_rows`, `total_estimate`/`total_actual` for the
-group-aware Sum row, and the `orch` computation and `orchestrationMin` in `render`) and
+group-aware Sum row, the `orch` computation and `orchestrationMin` in `render`, and `render`'s
+`unconfirmed_count`/`unconfirmed_note` for the job-level dedupe note) and
 `scripts/tail_progress.py` (`delegatedMin`/`unconfirmed` accounting on close); pinned by both
 scripts' tests.
