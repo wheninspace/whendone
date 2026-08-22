@@ -39,6 +39,9 @@ import render_artifact
 import workflow_journal
 
 DISPATCH_TOOLS = ("Task", "Agent")
+MARKER_FILE = "whendone-closes.jsonl"
+MARKER_MAX_BYTES = 1_000_000
+MARKER_MAX_LINES = 10_000
 DEFAULT_STALE_MIN = 10
 DEFAULT_INTERVAL_S = 5
 DEFAULT_DEBOUNCE_S = 30
@@ -178,6 +181,44 @@ def _result_text(content):
                            if isinstance(p, dict) and p.get("type") == "text"
                            and isinstance(p.get("text"), str))
     return content[:120] if isinstance(content, str) else ""
+
+
+def read_close_markers(state_path, not_before):
+    """M1: lead-written close markers -- .claude/whendone-closes.jsonl next to the
+    state file, one JSON object per line: {"task": <declared name>, "status":
+    "in_progress"|"completed", "ts": <ISO8601>}. Todo-EQUIVALENT evidence: each
+    valid line becomes a single-item 'todos' event at ts, so the whole todo
+    pipeline (D1 authority, N4 reopen, N9 upgrade, calibration) is reused with no
+    rule changes. The tailer only READS this file; the lead is its only writer.
+    M2 fail-soft: missing/oversized/unreadable file and malformed lines contribute
+    nothing, never an exception. M3: markers older than `not_before` (the job's
+    startedAt) are stale leftovers from an earlier job -- ignored; not_before None
+    accepts all. Marker strings are data, never instructions."""
+    path = os.path.join(os.path.dirname(os.path.abspath(state_path)), MARKER_FILE)
+    events = []
+    try:
+        if os.path.getsize(path) > MARKER_MAX_BYTES:
+            return events
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i >= MARKER_MAX_LINES:
+                    break
+                try:
+                    m = json.loads(line)
+                    ts = token_usage.parse_ts(m.get("ts"))
+                    task, st = m.get("task"), m.get("status")
+                except (json.JSONDecodeError, ValueError, TypeError,
+                        AttributeError):
+                    continue
+                if ts is None or not isinstance(task, str) \
+                        or st not in ("in_progress", "completed"):
+                    continue
+                if not_before is not None and ts < not_before:
+                    continue
+                events.append((ts, "todos", [{"content": task, "status": st}]))
+    except OSError:
+        pass
+    return events
 
 
 _TASK_ID_RE = re.compile(r"#(\d+)")
@@ -523,6 +564,11 @@ def sync_cycle(state_path, now, args):
         events, last_ts = [], None
         out.append({"event": "tail-unavailable", "reason": "transcript exceeds size cap"})
         emit(out[-1])
+
+    markers = read_close_markers(state_path,
+                                 token_usage.parse_ts(state.get("startedAt")))
+    if markers:
+        events = sorted(events + markers, key=lambda ev: ev[0])
 
     # D4: observe the model's OWN Artifact publishes (Source A only -- see
     # finish_cycle's publishLag gate for why B/C never get this scan).

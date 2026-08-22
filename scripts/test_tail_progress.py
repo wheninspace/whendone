@@ -391,6 +391,127 @@ class MainOnlyAuthorityTest(unittest.TestCase):
             env.cleanup()
 
 
+class MarkerCloseTest(unittest.TestCase):
+    """M1/M2/M3: lead-written close markers are todo-equivalent evidence — the
+    confirmed-close authority for harnesses that ship no todo tool at all
+    (2026-08-22 live run: TodoWrite, TaskCreate and TaskUpdate all absent)."""
+
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name
+        self.calib.cleanup()
+
+    def _write_markers(self, env, objs, raw_lines=()):
+        p = os.path.join(os.path.dirname(env.state_path), "whendone-closes.jsonl")
+        with open(p, "w", encoding="utf-8") as f:
+            for r in raw_lines:
+                f.write(r + "\n")
+            for o in objs:
+                f.write(json.dumps(o) + "\n")
+
+    def test_completed_marker_confirm_closes_task(self):
+        env = SyncEnv([dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                       notification_entry(T2, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            self._write_markers(env, [
+                {"task": "Alpha", "status": "in_progress", "ts": T1},
+                {"task": "Alpha", "status": "completed", "ts": T3}])
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)      # confirmed, todo-equivalent
+            self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T3).isoformat())
+            self.assertEqual(t["startedAt"], tp.token_usage.parse_ts(T1).isoformat())
+            self.assertIsNotNone(t["actualMin"])    # calibration pipeline ran
+        finally:
+            env.cleanup()
+
+    def test_marker_upgrades_display_close_and_all_done_fires_immediately(self):
+        """Train-puzzle regression: display close + reopen churn with no todo
+        authority; a completed marker confirms the close and all-done fires
+        WITHOUT waiting out the N3 quiet grace."""
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "Alpha", background=True),
+                       notification_entry(T1, "tu-1")],
+                      mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            # newest transcript ts is T1 (10:05); now 10:12 -> 7 min quiet < 10
+            rc, lines = env.run_one_shot(now="2026-07-18T10:12:00+00:00")
+            t = env.state()["tasks"][0]
+            self.assertTrue(t.get("unconfirmed"))   # display close, held
+            self.assertNotIn("all-done", [e.get("event") for e in lines])
+            self._write_markers(env, [{"task": "Alpha", "status": "completed",
+                                       "ts": T2}])
+            rc, lines = env.run_one_shot(now="2026-07-18T10:14:00+00:00")
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)
+            self.assertEqual(t["finishedAt"], tp.token_usage.parse_ts(T2).isoformat())
+            self.assertIn("all-done", [e.get("event") for e in lines])
+        finally:
+            env.cleanup()
+
+    def test_marker_matching_uses_normalize(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            self._write_markers(env, [{"task": "  task 1:  ALPHA ",
+                                       "status": "completed", "ts": T1}])
+            env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["status"], "done")
+        finally:
+            env.cleanup()
+
+    def test_malformed_unknown_and_stale_lines_are_skipped(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            self._write_markers(env, [
+                {"task": "NoSuchTask", "status": "completed", "ts": T1},
+                {"task": "Alpha", "status": "paused", "ts": T1},       # bad status
+                {"task": "Alpha", "status": "completed"},              # no ts
+                # stale: before the job's startedAt (09:00Z) -> M3 guard
+                {"task": "Alpha", "status": "completed",
+                 "ts": "2026-07-17T10:00:00.000Z"},
+            ], raw_lines=["not json at all", '{"task": 3}'])
+            rc, lines = env.run_one_shot()
+            self.assertEqual(env.state()["tasks"][0]["status"], "pending")
+        finally:
+            env.cleanup()
+
+    def test_oversized_marker_file_skipped_silently(self):
+        env = SyncEnv([], mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            p = os.path.join(os.path.dirname(env.state_path),
+                             "whendone-closes.jsonl")
+            with open(p, "wb") as f:                 # sparse: never write 1 MB
+                f.seek(tp.MARKER_MAX_BYTES)
+                f.write(b"x")
+            rc, lines = env.run_one_shot()           # must not raise
+            self.assertEqual(env.state()["tasks"][0]["status"], "pending")
+        finally:
+            env.cleanup()
+
+    def test_markers_apply_even_when_tail_unavailable(self):
+        """Visibility never blocks the work: an oversized MAIN transcript kills
+        the tail, but marker evidence still closes the task."""
+        env = SyncEnv([], mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            main_t = os.path.join(env.projects, "proj", "sidA.jsonl")
+            with open(main_t, "wb") as f:            # sparse > transcript cap
+                f.seek(tp.token_usage.MAX_TRANSCRIPT_BYTES)
+                f.write(b"x")
+            self._write_markers(env, [{"task": "Alpha", "status": "completed",
+                                       "ts": T1}])
+            rc, lines = env.run_one_shot()
+            evs = [e.get("event") for e in lines]
+            self.assertIn("tail-unavailable", evs)
+            self.assertEqual(env.state()["tasks"][0]["status"], "done")
+        finally:
+            env.cleanup()
+
+
 class LocalTimePolicyTest(unittest.TestCase):
     """Local-time policy: when no --now is given (L1 --follow and bare
     one-shot), the tailer's internal `now` must be local-tz aware — the
