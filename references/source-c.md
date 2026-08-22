@@ -1,5 +1,10 @@
 # Source C — plain solo/todo-list jobs: no declaration, pace-based ETA
 
+**Precondition: requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate).
+SKILL.md's Source detection gates on this before ever reaching this file; a build with neither
+tool cannot run Source C at all — the lead declares a quick Source A plan instead (default-table
+estimates, normal Declare-once mechanics: references/source-a.md).
+
 No declared plan and no estimates: `scripts/tail_progress.py` mirrors the session's todo
 list (TodoWrite, or its TaskCreate/TaskUpdate successor in newer harnesses — the tailer
 observes both) into the state file as-is, and the ETA is pace-based (item completion rate), always

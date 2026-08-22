@@ -181,10 +181,13 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   reference (the information is kept; the contradiction with `Total` is not). Source C (no
   calibrated elapsed baseline) renders only the `Sum of subtasks` row (plus the dim line, when
   it has groups).
-- **Lead-written close markers (no-todo-tool fallback, added 2026-08-22).** When a harness ships
-  no todo tool at all, the model appends lines to `.claude/whendone-closes.jsonl` instead of
-  using TodoWrite/TaskCreate/TaskUpdate (format: references/file-formats.md). Each valid
-  `{"task","status","ts"}` line is TODO-EQUIVALENT evidence — `tail_progress.py`'s
+- **Close markers: the PRIMARY close authority (added 2026-08-22, reframed P8 same date).** A
+  task's `completed` marker in `.claude/whendone-closes.jsonl` is the close authority that's
+  always available, on every harness. TodoWrite/TaskCreate/TaskUpdate, where a harness provides
+  them, are EQUIVALENT evidence for the same close, handled identically — mechanics unchanged:
+  the model still writes marker lines only when ToolSearch found no todo tool at declare time
+  (format: references/file-formats.md). Each valid `{"task","status","ts"}` line is
+  TODO-EQUIVALENT evidence — `tail_progress.py`'s
   `read_close_markers` synthesizes it into the same `todos` event stream the tailer already
   consumes for todo/TaskUpdate transitions, so each status carries the same authority a real
   todo transition would: an `in_progress` marker sets/confirms that task's `startedAt` exactly like

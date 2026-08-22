@@ -42,14 +42,14 @@ two.
 - **Lead/subagent-driven job** (plan file, todo list, or subagent dispatches drive the
   work) → **Source A**. Read `references/source-a.md` at
   job-start step 8.
-- **Workflow-engine run** → **Source B**. Read `references/source-b.md` at job-start
-  step 8 — declaration happens when the lead authors the workflow script (per-phase
-  estimates + `[wd:<slug>]` prompt tags), and the same watcher ladder applies.
-- **Plain solo/todo-list job, no declared plan** → **Source C**. Read `references/source-c.md`
-  at job-start step 8 — no declaration: the tailer mirrors the session's todo list as-is
-  (TodoWrite, or its TaskCreate/TaskUpdate successor — it observes both), the ETA
-  is pace-based and always labeled uncalibrated, and no calibration is ever logged. Offer a
-  declared Source-A plan instead if the user wants a calibrated ETA.
+- **Workflow-engine run** → **Source B**. Read `references/source-b.md` at job-start step 8.
+- **Plain solo/todo-list job, no declared plan** → **Source C**, gated: ToolSearch for a todo
+  tool (TodoWrite or TaskCreate/TaskUpdate) before committing to it. Found → read
+  `references/source-c.md` at job-start step 8. None found → Source C is impossible; say "This
+  harness has no todo tool, so live todo mirroring isn't available — I'll declare the task list
+  myself instead (estimates from the default table) so you still get a live artifact and ETA."
+  Then run a quick Source A declaration instead (references/source-a.md's Declare-once,
+  default-table estimates).
 
 ## Job start
 

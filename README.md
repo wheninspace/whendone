@@ -71,8 +71,8 @@ calibrated:
 | Source | What it is | ETA |
 |---|---|---|
 | **A** | Lead/subagent runs — a plan execution, a fan-out of subtasks | **Calibrated** — every finished subtask logs estimate vs. actual and corrects the next job |
-| **B** | Workflow-engine runs, declared at launch | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
-| **C** | Plain solo / todo-list work | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
+| **B** | Workflow-engine runs, declared at launch (**experimental — single dogfood 2026-07-18**) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
+| **C** | Plain solo / todo-list work — **requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate); none found → a quick Source-A declaration instead | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
 
 ## What you get
 
@@ -120,7 +120,7 @@ declines smaller jobs — the trigger cost alone is hard to amortize below that.
 |---|---|
 | Every session, used or not | ~140-token trigger description |
 | When it triggers (incl. each resume session) | ≈11.1k cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 after the final-review fixes pass (was ≈11.0k/≈12.5–12.6k). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
-| Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,255 tokens) / `source-c.md` (1,008) are read only once that source is detected |
+| Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,331 tokens) / `source-c.md` (1,085) are read only once that source is detected |
 | Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
 | Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
 | Per resume (additionally) | + `references/resume.md` (≈1.6k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
@@ -193,6 +193,10 @@ review the diff (see Update below). Full threat model: [docs/design.md](docs/des
 - Python 3 (`python3`, `python`, or `py`) for calibration statistics, token display, and
   artifact rendering. Without it these degrade off — whendone never does statistics in the model.
 - It does not work in claude.ai chat — there's no file system there.
+- No todo tool required for Source A — a lead-written `completed` marker in
+  `.claude/whendone-closes.jsonl` is the close authority on every harness, and
+  TodoWrite/TaskCreate/TaskUpdate, where present, are equivalent evidence for the same close.
+  Source C is the one mode that needs a todo tool (see Three sources above).
 
 ## First run — what it will ask you
 

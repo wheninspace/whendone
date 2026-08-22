@@ -43,8 +43,10 @@ user asks otherwise), and `group` on parallel-group members.
 
 **In the SAME turn, create the todo list: one item per declared task, item text EXACTLY the
 task `name`** (TodoWrite: item `content`; harnesses with TaskCreate/TaskUpdate instead: one
-TaskCreate per task, its `subject` — the tailer observes both). If ToolSearch finds no todo
-tool at all, say so once in chat and use the marker protocol instead: create
+TaskCreate per task, its `subject` — the tailer observes both). A task's `completed` marker is
+always the sanctioned close authority (P5, below); a todo/TaskUpdate transition is equivalent
+evidence, handled identically. If ToolSearch finds no todo tool at all, say so once in chat and
+write markers directly: create
 `.claude/whendone-closes.jsonl` FRESH at declare time (same gitignore + write-target
 preconditions as the state file), then append one line at each todo-transition moment —
 `in_progress` when starting a task, `completed` when closing it —
@@ -54,7 +56,8 @@ references/formulas.md). Declared names must be unique —
 duplicates are unmatchable by
 design, since the tailer matches todo/dispatch text back to task names verbatim (the
 tailer's matcher additionally tolerates case/whitespace/leading-ordinal differences — never
-looser). A task closes ONLY on its todo/TaskUpdate `completed` transition (or its marker-file equivalent — above) — make it when YOU consider the
+looser). A task closes ONLY on its `completed` evidence — a todo/TaskUpdate transition, or the
+marker-file line above, equivalent either way — make it when YOU consider the
 task done, after its review/fix cycle. Subagent results never close a task: dispatches whose
 `description` exactly matches a task's `name` accrue to that task's *delegated span* (shown in
 the artifact) — name every dispatch that's part of task N's work (implementer, review, fix
