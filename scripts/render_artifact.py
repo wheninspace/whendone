@@ -66,6 +66,11 @@ a { color:var(--link); }
 .banner a { color:#fff; }
 .eta { background:var(--card); border-radius:8px; padding:12px 16px; margin:12px 0; }
 .eta strong { font-size:1.3em; }
+.bar { position:relative; height:10px; margin:10px 0 2px; border-radius:5px;
+       background:var(--bg); overflow:hidden; }
+.bar-fill { height:100%; background:var(--running); border-right:2px solid var(--fg);
+            box-sizing:border-box; }
+.bar-band { position:absolute; top:0; bottom:0; background:var(--dim); opacity:.35; }
 table { width:100%; border-collapse:collapse; table-layout:fixed; }
 td,th { padding:6px 8px; text-align:left; border-bottom:1px solid var(--card);
         overflow-wrap:anywhere; vertical-align:top; }
@@ -322,6 +327,7 @@ def render(state, tokens, summary, now, push_status, superseded):
         raise ValueError("state file invalid: expected an object with a tasks array")
     tasks = [t for t in state["tasks"] if isinstance(t, dict)]
     us = units(tasks)
+    est_total = total_estimate(us)  # P12: also the progress bar's span (elapsed/est_total)
     job = str(state.get("job") or "job")
     status = state.get("status") or "running"
     done_count = sum(1 for t in tasks if t.get("status") == "done")
@@ -388,7 +394,14 @@ def render(state, tokens, summary, now, push_status, superseded):
         lines.append('<span class="dim">Tokens: %s spent · %s cache reads</span>'
                      % (esc(fmt_tok(_spent(j))), esc(fmt_tok(int(j.get("cacheRead") or 0)))))
     br = "<br>\n"
-    eta_block = '<div class="eta">%s</div>' % br.join(lines)
+    # P12: the bar needs a live, still-open job with a known elapsed baseline and a
+    # non-zero estimate span. Paused/done are gated out here (the status is frozen —
+    # nothing left to watch move); Source C gates itself out for free since
+    # estimateTotalMin is always 0 there (references/source-c.md). Either path omits
+    # the bar rather than rendering a misleading full/empty one.
+    bar_html = (progress_bar_html(us, summary, el, est_total)
+                if status == "running" and not superseded else "")
+    eta_block = '<div class="eta">%s%s</div>' % (br.join(lines), bar_html)
 
     slip_alert = False
     slip_total = None
@@ -442,7 +455,7 @@ def render(state, tokens, summary, now, push_status, superseded):
 
     stat = {"ok": True, "status": "superseded" if superseded else status,
             "etaText": etxt, "slipAlert": bool(slip_alert),
-            "estimateTotalMin": round(total_estimate(us), 1),
+            "estimateTotalMin": round(est_total, 1),
             "done": done_count, "total": total,
             "orchestrationMin": round(orch, 1)}
     if slip_total is not None:
@@ -710,6 +723,31 @@ def interval(us, summary):
             lowsum += max(lows)
             highsum += max(highs)
     return lowsum, highsum, any_widened, any_high
+
+
+def progress_bar_html(us, summary, el, span):
+    """P12: CSS-only progress bar for the ETA block. Filled fraction = elapsed share
+    of `span` (the SAME total_estimate(us) aggregation exposed as estimateTotalMin —
+    no new formula); the fill's right edge doubles as the "now" marker (a visible
+    border). The +/- band re-uses interval()'s existing low/high bounds (never
+    recomputed) placed at (elapsed+low)/span .. (elapsed+high)/span around the
+    estimate end. Returns "" (omit, never a misleading full/empty bar) when there is
+    no elapsed baseline or no estimated span — e.g. Source C, where estimateTotalMin
+    is always 0 (references/source-c.md)."""
+    if el is None or not span or span <= 0:
+        return ""
+    frac = max(0.0, min(1.0, el / span))
+    parts = ['<div class="bar"><div class="bar-fill" style="width:%s%%"></div>'
+             % esc("%.1f" % (frac * 100))]
+    lowsum, highsum, _, _ = interval(us, summary)
+    if lowsum > 0 or highsum > 0:
+        lo = max(0.0, min(1.0, (el + lowsum) / span))
+        hi = max(0.0, min(1.0, (el + highsum) / span))
+        if hi > lo:
+            parts.append('<div class="bar-band" style="left:%s%%;width:%s%%"></div>'
+                         % (esc("%.1f" % (lo * 100)), esc("%.1f" % ((hi - lo) * 100))))
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def eta_text(state, us, summary, now):

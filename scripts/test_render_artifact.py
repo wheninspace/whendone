@@ -1029,5 +1029,58 @@ class UnconfirmedLabelTest(unittest.TestCase):
         self.assertNotIn("closed on subagent result", page)
 
 
+class ProgressBarTest(unittest.TestCase):
+    """P12: CSS-only progress bar in the ETA block."""
+
+    def test_bar_present_when_running_with_estimates(self):
+        _, page, _ = run_cli(state(tasks=[task(1)]))
+        self.assertIn('<div class="bar">', page)
+        self.assertIn('class="bar-fill"', page)
+
+    def test_filled_width_reflects_elapsed_share(self):
+        # job elapsed 30 min (09:30 -> NOW 10:00); one pending task est 60 ->
+        # span (total_estimate) 60 -> fill 30/60 = 50.0%
+        s = state(startedAt="2026-07-18T09:30:00+02:00",
+                  tasks=[task(1, estimateMin=60, rawEstimateMin=60)])
+        _, page, _ = run_cli(s)
+        self.assertIn('<div class="bar-fill" style="width:50.0%">', page)
+
+    def test_band_present_and_positioned_from_existing_interval(self):
+        # job elapsed 0 (startedAt == NOW); task 1 done (est 100, counts toward
+        # the span but not the interval); task 2 pending est 100, no summary ->
+        # flat +-50% band [50,150]. span = 100 + 100 = 200.
+        # band = (0+50)/200 .. (0+150)/200 = 25.0% .. 75.0% (left 25.0%, width 50.0%)
+        s = state(startedAt=NOW,
+                  tasks=[task(1, status="done", estimateMin=100, rawEstimateMin=100,
+                              actualMin=90.0),
+                         task(2, estimateMin=100, rawEstimateMin=100)])
+        _, page, _ = run_cli(s)
+        self.assertIn('<div class="bar-fill" style="width:0.0%">', page)
+        self.assertIn('<div class="bar-band" style="left:25.0%;width:50.0%">', page)
+
+    def test_bar_omitted_for_source_c_no_estimate_span(self):
+        # Source C never has estimates -> estimateTotalMin (the bar's span) is
+        # always 0 (references/source-c.md) -> the bar is omitted, not a
+        # misleading full/empty bar.
+        s = state(source="c", originalTotalMin=None,
+                  tasks=[{"nr": 1, "name": "x", "status": "running",
+                          "startedAt": "2026-07-18T09:30:00+02:00"}])
+        _, page, _ = run_cli(s)
+        self.assertNotIn('<div class="bar">', page)
+
+    def test_bar_omitted_when_paused(self):
+        s = state(status="paused", pausedAt="2026-07-18T09:40:00+02:00",
+                  tasks=[task(1, estimateMin=60, rawEstimateMin=60)])
+        _, page, _ = run_cli(s)
+        self.assertNotIn('<div class="bar">', page)
+
+    def test_bar_omitted_when_done(self):
+        s = state(status="done",
+                  tasks=[task(1, status="done", actualMin=25.0, estimateMin=60,
+                              rawEstimateMin=60, finishedAt="2026-07-18T09:55:00+02:00")])
+        _, page, _ = run_cli(s)
+        self.assertNotIn('<div class="bar">', page)
+
+
 if __name__ == "__main__":
     unittest.main()
