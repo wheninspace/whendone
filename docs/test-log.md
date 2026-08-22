@@ -288,7 +288,8 @@ This section is the round-2 plan's "missing proof": a real, multi-subtask job ru
 progress artifact, state file, calibration append, and summary regeneration all permitted** —
 not sandbox-blocked as in the earlier headless runs above.
 
-**The job:** this repo's own round-2 hardening plan (`docs/plans/2026-07-17-round2-fixes.md`),
+**The job:** this repo's own round-2 hardening plan (`docs/plans/2026-07-17-round2-fixes.md`,
+internal planning doc, not shipped in this repo),
 14 subtasks, executed with superpowers:subagent-driven-development while whendone monitored it.
 Unedited evidence:
 
@@ -547,7 +548,8 @@ in `scripts/test_tail_progress.py`); the drill is the live cross-session confirm
 
 The release gate (design spec §2): Sources A and B both working, plus Source C and the positioning
 rewrite, all precede the public flip. This section RECORDS the gate; it does not push (the push is
-the owner-run flip checklist, `docs/plans/2026-07-18-flip-checklist.md`).
+the owner-run flip checklist, `docs/plans/2026-07-18-flip-checklist.md`, internal planning
+doc, not shipped in this repo).
 
 **Suites (warning-clean).** `python3 -W error::ResourceWarning -m unittest discover -p 'test_*.py'`
 across the six suites: **267 tests, OK** (243 baseline + 24 stage-5 additions — Source-C observer,
