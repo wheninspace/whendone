@@ -85,8 +85,8 @@ calibrated:
 ## What you get
 
 - **A progress artifact** — task table, actual vs. estimate per task, which model ran
-  each subtask (full version, e.g. "Sonnet 5", plus reasoning effort when explicitly set —
-  live-verified by the 2026-08-22 dogfood run),
+  each subtask (full version, e.g. "Sonnet 5", plus reasoning effort when explicitly set;
+  both live-verified by the 2026-08-22 dogfood run),
   total ETA with an honest interval, and token consumption per task and per job. The same
   account-scoped page throughout — one URL, republished at every subtask boundary. It's a
   claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
@@ -312,11 +312,10 @@ on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a h
 no todo tool at all (the exact environment the bug this release fixes reproduces in):
 confirmed marker-based closes mid-run, versioned executor model names, per-task actuals
 against estimate with the delegated/lead split, a live ETA whose interval tightened from
-roughly ±46 minutes to ±13 minutes as the job progressed, and calibration rows logged from
-it. The 408-test suite
-plus the CI matrix back that up. The Windows re-run of the same two reworks is still open;
-`docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` tracks it and gates the public
-flip.
+roughly ±46 minutes to ±13 minutes as the job progressed, and calibration rows logged from it.
+The 408-test suite plus the CI matrix back that up. The Windows re-run of the same two
+reworks is still open; `docs/reviews/2026-08-22-v0.7.0-verification-checklist.md` tracks it
+and gates the public flip.
 
 **v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
 todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the
