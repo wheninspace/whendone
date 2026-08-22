@@ -512,6 +512,80 @@ class MarkerCloseTest(unittest.TestCase):
             env.cleanup()
 
 
+class MarkerMissingTest(unittest.TestCase):
+    """P3: a dispatch matched a declared task but no in_progress marker/todo
+    evidence arrived within tp.MARKER_MISSING_MIN minutes of the dispatch --
+    one nudge per task, persisted so repeated one-shots (L3) never re-emit."""
+
+    def test_fires_after_threshold_with_no_evidence(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1")],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:03:01+00:00")
+            evs = [l for l in lines if l["event"] == "marker-missing"]
+            self.assertEqual(len(evs), 1)
+            self.assertEqual(evs[0]["task"], 1)
+            self.assertEqual(evs[0]["name"], "task 1")
+            self.assertIsNotNone(env.state()["tasks"][0].get("markerMissingNotifiedAt"))
+        finally:
+            env.cleanup()
+
+    def test_not_emitted_before_threshold(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1")],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:02:59+00:00")
+            self.assertEqual([l for l in lines if l["event"] == "marker-missing"], [])
+            self.assertIsNone(env.state()["tasks"][0].get("markerMissingNotifiedAt"))
+        finally:
+            env.cleanup()
+
+    def test_not_emitted_twice_across_one_shot_calls(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1")],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            env.run_one_shot(now="2026-07-18T10:03:01+00:00")
+            rc, lines = env.run_one_shot(now="2026-07-18T10:30:00+00:00")
+            self.assertEqual([l for l in lines if l["event"] == "marker-missing"], [])
+        finally:
+            env.cleanup()
+
+    def test_suppressed_by_native_todo_evidence(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1"),
+                       todo_entry(T0, [item("task 1", "in_progress")])],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:10:00+00:00")
+            self.assertEqual([l for l in lines if l["event"] == "marker-missing"], [])
+        finally:
+            env.cleanup()
+
+    def test_suppressed_by_marker_evidence(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1")],
+                      mkstate(tasks=[mktask(1)]))
+        try:
+            p = os.path.join(os.path.dirname(env.state_path), "whendone-closes.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"task": "task 1", "status": "in_progress",
+                                    "ts": T0}) + "\n")
+            rc, lines = env.run_one_shot(now="2026-07-18T10:10:00+00:00")
+            self.assertEqual([l for l in lines if l["event"] == "marker-missing"], [])
+        finally:
+            env.cleanup()
+
+    def test_fails_soft_with_malformed_task_entries(self):
+        env = SyncEnv([dispatch_entry(T0, "tu-1", "task 1")],
+                      mkstate(tasks=["not a dict", {"nr": None, "name": "x"},
+                                     mktask(1)]))
+        try:
+            rc, lines = env.run_one_shot(now="2026-07-18T10:03:01+00:00")  # must not raise
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                sum(1 for l in lines if l["event"] == "marker-missing"), 1)
+        finally:
+            env.cleanup()
+
+
 class LocalTimePolicyTest(unittest.TestCase):
     """Local-time policy: when no --now is given (L1 --follow and bare
     one-shot), the tailer's internal `now` must be local-tz aware — the

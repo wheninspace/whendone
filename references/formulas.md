@@ -206,11 +206,15 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   `open` for that task never decrements, which is more consequential than a missing
   `delegatedMin`. The task can never display-close while `open` stays truthy, and if it was
   already display-closed by an earlier (matched) dispatch, this still-open one reopens it
-  (N4) and it can never re-close — so for that task, `all-done` never fires for the job.
-  This is a deliberate trade, not a regression: the alternative (closing on the ack, v0.5.0's
-  bug) silently under-counted the agent's actual runtime, whereas this failure mode never
-  blocks the underlying work and is not silent — `check_staleness` still emits one `stale`
-  event for the task that never stops "running".
+  (N4) and it can never re-close — so for that task, `all-done` never fires for the job VIA
+  OBSERVED EVIDENCE ALONE. This is a deliberate trade, not a regression: the alternative
+  (closing on the ack, v0.5.0's bug) silently under-counted the agent's actual runtime, whereas
+  this failure mode never blocks the underlying work and is not silent — `check_staleness`
+  still emits one `stale` event for the task that never stops "running", and a `marker-missing`
+  nudge (P3) fires once the dispatch has gone unconfirmed for 3 minutes. Not a dead end,
+  though (P5, source-a.md): a lead-written `completed` marker closes the task regardless of
+  `open` — `todoFinishedAt` wins `plan_transitions`' branch order unconditionally — so a lost
+  notification can never permanently strand a task.
 - **Only main-session transcripts carry event authority.** A job's declared `sessionIds` name
   main transcripts; each also has a discoverable sibling directory of subagent transcript
   files (`token_usage.py`'s `transcript_paths`). Of the two, only the MAIN files are parsed for

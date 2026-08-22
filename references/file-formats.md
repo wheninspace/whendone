@@ -106,6 +106,10 @@ categories, never a calibration row (references/source-c.md).
 that task's one staleness event; presence suppresses repeats. Never cleared — a
 resumed/restarted task gets a fresh row in a rebuilt plan.
 
+`markerMissingNotifiedAt` = optional per-task ISO timestamp: set by the tailer when it emits
+that task's one `marker-missing` nudge (P3); presence suppresses repeats, same posture as
+`staleNotifiedAt`.
+
 `lastPublishedAt` = optional per-job ISO timestamp, tailer-written (Source A only): the last
 Artifact publish the tailer observed in the session transcript. `lastChangedEventAt` = the
 last `progress`/`all-done` event it emitted — written on EVERY source; only the comparison of
@@ -151,6 +155,7 @@ these lines are the watcher's wake signals and the model's only per-boundary inp
 | `progress` | `done`, `total`, `changed`, `justDone[]`, `rendered`, `etaText?`, `slipAlert?`, `publishLag?` (Source A only), `sincePublishMin?` (Source A only) | Publish the artifact file (same path → same URL); quote `etaText` if speaking. `slipAlert: true` ⇒ push once (tailer already set `etaAlertSent`). `publishLag: true` ⇒ publish immediately — backstop for a missed publish. |
 | `all-done` | same as `progress` | Held under a quiet-transcript grace while any close is `unconfirmed` (rule in references/formulas.md). Once it fires, run the job-end procedure (source-a.md). |
 | `stale` | `task`, `name`, `stalledMin` | Push once: liveness alert (F13). |
+| `marker-missing` (Source A only) | `task`, `name`, `marker` | Append the missing marker(s) named in the event — or explain in chat (P3). Fails soft, never blocks. |
 | `idle` (Source A only) | `idleMin`, `nextTask` | Mark the next todo `in_progress`, or explain the gap in chat — the orchestration line is accruing. |
 | `stop-requested` | — | `.claude/STOP` exists: finish the current subtask, then run SKILL.md's Stop procedure (its last step deletes the file). Emitted once per watcher run. |
 | `no-op` | `reason` | Nothing — status no longer `running` (stop/pause in progress). |

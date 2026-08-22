@@ -45,6 +45,7 @@ MARKER_MAX_LINES = 10_000
 DEFAULT_STALE_MIN = 10
 DEFAULT_INTERVAL_S = 5
 DEFAULT_DEBOUNCE_S = 30
+MARKER_MISSING_MIN = 3
 
 _ORDINAL = re.compile(r"^\s*(?:task\s+)?\d+\s*[.):]\s*", re.IGNORECASE)
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
@@ -595,6 +596,8 @@ def sync_cycle(state_path, now, args):
             model_changed = True
     if model_changed:
         write_state(state_path, state)
+
+    out.extend(check_marker_missing(state_path, state, now, obs))
 
     starts, completions, displays, reopens = plan_transitions(state, obs)
     for t in reopens:                       # revertible display close (B4 posture)
@@ -1245,6 +1248,39 @@ def _stale_threshold(args, state):
         sv = state.get("staleAfterMin")
         v = sv if isinstance(sv, (int, float)) and sv > 0 else DEFAULT_STALE_MIN
     return v
+
+
+def check_marker_missing(state_path, state, now, obs):
+    """P3: a dispatch matched a declared task but no in_progress marker/todo
+    transition has arrived within MARKER_MISSING_MIN minutes of the dispatch.
+    read_close_markers folds marker lines into the same 'todos' event stream
+    observe() consumes, so `todoSeen` already covers both channels -- a task
+    with ANY todo or marker evidence is never flagged (P3's "no todo
+    evidence" clause). One nudge per task, persisted as
+    `markerMissingNotifiedAt` (mirrors `staleNotifiedAt`, F13) so repeated
+    L3 one-shots never re-emit. Called from sync_cycle's Source-A path only.
+    Fails soft like every tailer check: a malformed task entry or a task with
+    no observed dispatch/todo evidence at all is simply skipped, never
+    raised."""
+    out = []
+    for t in state.get("tasks", []):
+        if not isinstance(t, dict) or t.get("markerMissingNotifiedAt"):
+            continue
+        o = obs.get(t.get("nr"))
+        if not o or o.get("todoSeen"):
+            continue
+        dispatched = token_usage.parse_ts(o.get("startedAt"))
+        if dispatched is None:
+            continue
+        if (now - dispatched).total_seconds() / 60.0 < MARKER_MISSING_MIN:
+            continue
+        t["markerMissingNotifiedAt"] = now.isoformat()
+        write_state(state_path, state)
+        ev = {"event": "marker-missing", "task": t.get("nr"), "name": t.get("name"),
+              "marker": "in_progress"}
+        emit(ev)
+        out.append(ev)
+    return out
 
 
 def check_staleness(state_path, state, now, stale_min, args):

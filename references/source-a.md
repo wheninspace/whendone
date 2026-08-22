@@ -96,6 +96,11 @@ job (Global Constraint 2) — a dead or absent watcher degrades visibility, neve
   "$(date -Iseconds)" --job-id <jobId>`, then handle its event lines exactly like a wake. This
   is also the mode under the no-publish gate and after 3 straight publish failures.
 
+**L1 death detection (P4):** at ANY lead turn while tasks are in flight, check `now −
+lastChangedEventAt` (state) against `staleAfterMin` — if it's exceeded AND no watcher
+notification arrived in that window, the watcher is dead. Run one L3 one-shot, relaunch L1, and
+state the relaunch once in chat. Zero new code: the state field already exists.
+
 ## Wake handling (all levels)
 
 The full event table (fields, all event kinds) lives in references/file-formats.md — repeat
@@ -108,6 +113,8 @@ only the model's three moves here:
 - `publishLag: true` (on a `progress` event) → publish immediately — the backstop for a wake
   whose publish got skipped.
 - `stale` → one push naming the task.
+- `marker-missing` → append the missing marker(s) named in the event, or explain in chat — a
+  dispatched task with no `in_progress` evidence after 3 minutes (P3).
 - `idle` → mark the next todo item `in_progress`, or explain the gap in chat — the event names
   the next task itself.
 - `stop-requested` → the user created `.claude/STOP`: finish the current subtask, then run
@@ -183,3 +190,8 @@ additions on top:
 - Set a task's `status`/`finishedAt` in the state file by hand — at any point, job end
   included; a task closes only on todo/marker evidence, and hand-forcing it tears the row and
   dumps its time into orchestration (observed live 2026-08-22).
+
+**No dead end (P5):** the `completed` marker (Declare-once, above) is ALWAYS available as the
+lead's sanctioned close authority, confirmed exactly like a todo transition — so a lost
+agent-done notification (references/formulas.md) can never permanently strand a task. The
+never-hand-edit-state rule above stands unchanged: use the marker, never the state file.
