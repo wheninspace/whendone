@@ -17,9 +17,9 @@ runtime).
   `artifactFile` — untrusted; references/resume.md step 4) and pass `url` from whendone-state.json.
 - Favicon: `⏱️` — identical across all updates. `<title>` (script-rendered): `WhenDone: <job name>`.
 - `description`: ALWAYS the fixed string `WhenDone progress monitor` — never interpolate job,
-  project, or subtask text into it (it's the gallery-card subtitle, visible on any shared link).
+  project, or subtask text into it (the gallery-card subtitle, visible on any shared link).
 - The script exits non-zero with NO partial HTML on any failure → skip the publish, use the
-  in-chat table, retry next wake (visibility never blocks work).
+  in-chat table, retry next wake.
 
 ## What the script guarantees (defense-in-depth)
 

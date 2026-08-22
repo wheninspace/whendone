@@ -178,10 +178,11 @@ proves misleading in practice.
   ensures it's covered by the project's `.gitignore` — this is a precondition to the write
   happening at all, not a follow-up step.
 - **Write targets are validated.** A cloned or shared repo can ship `.claude/whendone-state.json`,
-  `.gitignore`, or `.claude/whendone-closes.jsonl` as a symlink instead of a regular file,
-  pointing anywhere the user has write access — e.g. `~/.zshrc`. Without a check, job start
-  would overwrite whatever the symlink resolves to with state JSON, a gitignore edit, or a
-  marker-file append, and attacker-influenced `job`/task-name free-text would land inside it.
+  `.gitignore`, `.claude/whendone-tail.lock`, or `.claude/whendone-closes.jsonl` as a symlink
+  instead of a regular file, pointing anywhere the user has write access — e.g. `~/.zshrc`.
+  Without a check, job start would overwrite whatever the symlink resolves to with state JSON,
+  a gitignore edit, a lockfile, or a marker-file append, and attacker-influenced `job`/task-name
+  free-text would land inside it.
   Before the first write to any of these paths, the skill verifies it either doesn't
   exist yet or is a regular file whose canonical path (`realpath`) resolves inside the project
   root; a symlink, or a canonical path outside the root, stops the write and flags the user
@@ -449,14 +450,28 @@ exist yet or would add complexity out of proportion to the current scope:
   distribution is right-skewed, instead of a single symmetric `+/-` percentage — would better
   reflect that overruns are typically larger and more likely than underruns for those categories.
 
+## Doc-growth and decision-code policy (2026-08-22)
+
+**Offset rule (P10, from the plan's Global Constraints):** any doc-growth pass that adds more
+than 50 on-path tokens (SKILL.md, `references/source-a.md`, `references/file-formats.md`,
+`references/artifact-template.md`) must name its offsetting cut in the same commit — a
+net-positive on-path pass doesn't land without one. This is what keeps a multi-task wave from
+ratcheting the trigger path upward one small, individually-reasonable addition at a time.
+
+**Decision-code containment (P10, second half):** future waves use date-scoped decision-code
+prefixes (e.g. `2026-08-22/P1`) inside design.md and plan files only, never inside reference
+docs. Existing inline glosses already in reference docs (`(P2, ...)`, `(P3)`, `(P5, ...)`, and
+similar) stay as-is until the passage they annotate is next touched for another reason, then
+convert to plain language rather than picking up a fresh code.
+
 ## Appendix: trigger-figure measurement history
 
-The README's Overhead table reports the trigger-path token figure as a single current number
-(≈11,056 raw / ≈12,518–12,651 as-read, 2026-08-22). This appendix records how that number moved
+The README's Overhead table is the single current-state home for the trigger-path token figure
+(P10) — read the number there, not here. This appendix instead records how that number moved
 across the measurements that produced it, for anyone auditing the trend rather than just the
 current value.
 
-Twelve movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+Fourteen movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -543,10 +558,43 @@ Twelve movements, each under an identical raw `tiktoken cl100k_base` sum unless 
     artifact-template.md 651 unchanged + calibration-summary allowance 826, fixture unchanged
     at 2,417 bytes), 12,518–12,651 as-read (443 on-path reference lines × 3.3–3.6, nineteen more
     than movement 11) — 1,349–1,482 still to spare under the 14,000 budget.
+13. Four 2026-08-22 v0.8.0 flip-readiness-wave commits grew the path further before the wave's
+    own token-budget task ran, none re-measuring the Overhead table at the time: the P2 fix
+    (parallel-group members log individual calibration rows) added +49 on file-formats.md alone
+    → 11,105; Task A3 (marker-missing nudge event, L1 death-detection protocol, no-dead-end doc)
+    added +318 (source-a.md +215, file-formats.md +103) → 11,423; P6/P7/P8 (gate Source C on a
+    todo tool, freeze Source B, marker channel primary) added +42 (SKILL.md +2, source-a.md +40)
+    → 11,465; Task B2 (consistency fixes: `originalTotalMin` scope, closes.jsonl enumeration, tag
+    history, P2 rationale) added +18 on SKILL.md → 11,483 raw (SKILL.md 3,353 + source-a.md
+    3,095 + file-formats.md 3,558 + artifact-template.md 651 unchanged + calibration-summary
+    allowance 826, fixture unchanged at 2,417 bytes), ≈13,018–13,157 as-read (465 on-path
+    reference lines × 3.3–3.6, twenty-two more than movement 12) — reconstructed exactly via a
+    fresh authoritative re-measure per P10, rather than chased commit-by-commit against any
+    earlier partial figure.
+14. **Task B3 (2026-08-22, P10 — docs single-home + registry containment)** trimmed prose
+    duplication across all four on-path files rather than cutting any rule: collapsed the
+    Watcher-ladder L1/L2/L3 restatement and the wake-handling "model's move" text that SKILL.md
+    and source-a.md both carried in full, reordered source-a.md's close-marker paragraph
+    (mechanism before authority-framing, per Task B1's review), shortened the sensitivity-check
+    examples and the Source-C no-todo-tool chat line, dropped maintainer-only asides ("Zero new
+    code", "Do not duplicate that mechanics here") and the fully-restated Source-B field list
+    (source-b.md's own definitions are normative), and folded several repeated invariant
+    reminders down to one on-path copy each. It also added `markerMissingNotifiedAt` to
+    file-formats.md's JSON schema example (Task A3 had documented it in prose only) and fixed
+    source-a.md's stale "the model's three moves" wording (the list had grown past three; the
+    count was dropped rather than corrected to a new number): −588 → 10,895 raw (SKILL.md 3,353
+    → 3,175 [−178] + source-a.md 3,095 → 2,907 [−188] + file-formats.md 3,558 → 3,343 [−215] +
+    artifact-template.md 651 → 644 [−7] + calibration-summary allowance 826 unchanged), ≈12,387–
+    12,522 as-read (452 on-path reference lines × 3.3–3.6, thirteen fewer than movement 13) —
+    161 tokens of headroom under the Session B exit criterion (11,056 raw, movement 12's value),
+    1,478–1,613 to spare under the 14,000 as-read budget. This pass also re-stamped the README
+    Overhead table and converted design.md's own current-state statements (this appendix's
+    overview and its Method note below) to point at that stamp instead of restating it, per P10.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. The path stays under the 14,000 budget as-read, with 1,349–1,482 to spare
-(11,056 raw); see the README Overhead table for the current breakdown.
+movements 1 and 2. Current headroom against the 14,000 as-read budget: see the README Overhead
+table (P10's single current-state home) rather than a number restated here — movement 14 above
+records the pass that produced it.
