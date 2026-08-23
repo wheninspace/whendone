@@ -221,7 +221,16 @@ skill dir is a symlink to this repo) — not a fresh clone at the tag. The previ
 [docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17))
 was a manually captured screenshot.
 
-The second README image (`assets/source-b-progress.png`, since v0.8.0) is a manually captured
+The Source A mid-run image (`assets/source-a-parallel-progress.png`, since v0.8.2) is a
+manually captured screenshot of the live artifact during the Source A external verification
+run (jobId 20260823T1904 on train-puzzle, 2026-08-23 19:14 — the D4 release-gate run; state,
+closes, and verification NOTE archived in the maintainer's local run-evidence directory). It
+was captured on the v0.8.1 renderer, before that release-gate run's own layout feedback
+landed (v0.8.2: right-aligned Est column, full-size orchestration value, "total agent time"
+label) — the content is real; the column alignment differs slightly from the current
+renderer.
+
+The Source B mid-run image (`assets/source-b-progress.png`, since v0.8.0) is a manually captured
 screenshot of the live artifact mid-run during the Source B re-verification run (jobId
 20260822T2155, 2026-08-22 22:06 — the run that dropped Source B's experimental label; state
 archived in the maintainer's local run-evidence directory). Unlike the hero it is NOT a

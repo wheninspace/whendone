@@ -1009,13 +1009,14 @@ class TotalsBlockTest(unittest.TestCase):
 
     def test_agent_minutes_dim_line_shown_when_group_exists(self):
         rc, page, out = run_cli(self._group_st(), now="2026-07-18T10:00:00+02:00")
-        self.assertIn("agent-minutes across parallel tasks: Est 23 m · Actual 25 m",
+        self.assertIn("total agent time (each subtask summed; the wall-clock totals"
+                      " count a parallel group once): Est 23 m · Actual 25 m",
                       page)
         self.assertIn('class="dim"', page)
 
     def test_agent_minutes_dim_line_absent_without_groups(self):
         rc, page, out = run_cli(self._st(), now="2026-07-18T10:00:00+02:00")
-        self.assertNotIn("agent-minutes across parallel tasks", page)
+        self.assertNotIn("total agent time", page)
 
 
 class UnconfirmedLabelTest(unittest.TestCase):

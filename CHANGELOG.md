@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.2] — 2026-08-23
+
+Artifact polish from watching the Source A external verification run (a real 6-subtask job
+with a 3-member parallel group on another repo — the v0.8.0 release-gate run, passed on all
+six checks: confirmed marker closes, versioned models, group-aware totals, live progress
+bar, six individual calibration rows including the parallel members, zero watcher events).
+
+- **Est column right-aligned** (values easier to compare), with more separation between the
+  Est and Actual columns; Actual stays left-aligned since its cells carry text lines too.
+- **Between-subtask orchestration value** now renders at the same size as the other time
+  values (the label stays dim).
+- **"agent-minutes across parallel tasks" relabeled** to `total agent time (each subtask
+  summed; the wall-clock totals count a parallel group once)` — the old label read as if
+  only parallel members were summed; the line has always summed every subtask's own span,
+  and its point is the contrast with the wall-clock totals above it (the gap between the two
+  is what parallelism saved). It also spans the full row width now instead of wrapping in
+  the Subtask column.
+- **Third README screenshot:** the verification run mid-flight — three subtasks executing in
+  parallel under a live ETA.
+
 ## [0.8.1] — 2026-08-23
 
 Patch release folding in the post-v0.8.0 verification results and release automation — no

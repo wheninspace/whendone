@@ -134,8 +134,9 @@ later; the summary script ignores both for factor computation.
   (P1, fixes C1+C10: the pre-2026-08-22 plain sum double-counted a parallel
   group's overlapping wall-clock and could read higher than `Total`, contradicting it). The
   old double-counting per-task sum is not discarded — it remains available as one dim line,
-  `agent-minutes across parallel tasks: X`, directly under the totals block, shown only when
-  at least one task carries a non-null `group`.
+  `total agent time (each subtask summed; the wall-clock totals count a parallel group
+  once): X`, directly under the totals block, shown only when at least one task carries a
+  non-null `group`.
 - **Job-end `Ended HH:MM` line:** once `status == "done"`, a second meta line appears
   immediately under `Started HH:MM`: `Ended HH:MM`, computed from the latest task
   `finishedAt` across every declared task. This is the SAME anchor `elapsed_min`'s done branch
@@ -181,7 +182,8 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
   table and the header can never disagree) follow; because `Sum of subtasks` is group-aware,
   `Sum + orchestration = Total` holds by construction whether or not any task carries a
   `group`. Last, only when at least one task carries a non-null `group`, one dim line —
-  `agent-minutes across parallel tasks: X` — surfaces the old double-counting per-task sum for
+  `total agent time: X` (labeled in full as "each subtask summed; the wall-clock totals count
+  a parallel group once") — surfaces the old double-counting per-task sum for
   reference (the information is kept; the contradiction with `Total` is not). Source C (no
   calibrated elapsed baseline) renders only the `Sum of subtasks` row (plus the dim line, when
   it has groups).

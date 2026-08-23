@@ -80,6 +80,12 @@ calibrated:
 | **B** | Workflow-engine runs, declared at launch (re-verified live 2026-08-22) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
 | **C** | Plain solo / todo-list work — **requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate); none found → a quick Source-A declaration instead | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
 
+<img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone artifact mid-run on a Source A job: three subtasks executing in parallel (spinner icons), two already closed with actual-vs-estimate deviations, live ETA of −9/+8 minutes, progress bar, and per-task token counts">
+
+*A Source A job mid-flight (the 2026-08-23 external verification run): two subtasks closed
+with their deviations, three more executing in parallel, ETA and progress bar live
+([image provenance](docs/design.md#readme-asset-provenance)).*
+
 <img src="assets/source-b-progress.png" width="440" alt="WhenDone artifact mid-run on a Source B Workflow job: live ETA with an asymmetric −4/+9 min interval widened to measured spread, progress bar, two of three phases done with per-phase agent counts, and 8/9 workflow agents finished">
 
 *A Source B run mid-flight (the 2026-08-22 re-verification run itself): live ETA with an

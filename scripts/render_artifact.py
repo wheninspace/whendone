@@ -78,8 +78,9 @@ th { overflow-wrap:normal; }
 th:nth-child(1),td:nth-child(1) { width:2em; }
 th:nth-child(2),td:nth-child(2) { width:auto; }
 th:nth-child(3),td:nth-child(3) { width:18%; }
-th:nth-child(4),td:nth-child(4) { width:3.6em; white-space:nowrap; }
-th:nth-child(5),td:nth-child(5) { width:26%; }
+th:nth-child(4),td:nth-child(4) { width:4.4em; white-space:nowrap; text-align:right;
+                                  padding-right:12px; }
+th:nth-child(5),td:nth-child(5) { width:26%; padding-left:14px; }
 td:nth-child(5) .dev { white-space:nowrap; }
 tr.total td { border-top:2px solid var(--dim); border-bottom:none; font-weight:600; }
 tr.orch td { border-bottom:none; font-weight:400; }
@@ -298,7 +299,7 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
                 out.append('<tr class="orch"><td></td>'
                            '<td class="dim">Between-subtask orchestration</td>'
                            '<td class="dim"></td><td></td>'
-                           '<td class="dim">%s</td></tr>' % esc(fmt_min_s(orch)))
+                           '<td>%s</td></tr>' % esc(fmt_min_s(orch)))
             out.append('<tr class="total"><td></td><td>Total</td>'
                        '<td class="dim"></td><td></td><td>%s</td></tr>'
                        % esc(fmt_min_s(elapsed)))
@@ -315,9 +316,9 @@ def task_rows(tasks, tmap, now, job_status=None, elapsed=None, orch=None):
             if plain_acts:
                 parts.append("Actual %s" % fmt_min_s(sum(plain_acts)))
             if parts:
-                out.append('<tr><td></td><td class="dim">%s</td>'
-                           '<td class="dim"></td><td></td><td></td></tr>'
-                           % esc("agent-minutes across parallel tasks: "
+                out.append('<tr><td></td><td class="dim" colspan="4">%s</td></tr>'
+                           % esc("total agent time (each subtask summed; the wall-clock"
+                                 " totals count a parallel group once): "
                                  + " · ".join(parts)))
     return "\n".join(out)
 
