@@ -8,7 +8,7 @@ the next job's estimate. The statistics are computed outside the model.
 ## Quickstart
 
 ```bash
-git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.8.1 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"run with
@@ -242,13 +242,13 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
 ## Install
 
 ```bash
-git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.8.1 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 Windows PowerShell:
 
 ```powershell
-git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.8.1 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 **Windows:** verified live end-to-end twice. On 2026-08-13 (Windows 11, Python 3.13,
