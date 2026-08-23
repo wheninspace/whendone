@@ -78,8 +78,14 @@ calibrated:
 | Source | What it is | ETA |
 |---|---|---|
 | **A** | Lead/subagent runs — a plan execution, a fan-out of subtasks | **Calibrated** — every finished subtask logs estimate vs. actual and corrects the next job |
-| **B** | Workflow-engine runs, declared at launch (**experimental — single dogfood 2026-07-18**) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
+| **B** | Workflow-engine runs, declared at launch (re-verified live 2026-08-22) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
 | **C** | Plain solo / todo-list work — **requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate); none found → a quick Source-A declaration instead | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
+
+<img src="assets/source-b-progress.png" width="440" alt="WhenDone artifact mid-run on a Source B Workflow job: live ETA with an asymmetric −4/+9 min interval widened to measured spread, progress bar, two of three phases done with per-phase agent counts, and 8/9 workflow agents finished">
+
+*A Source B run mid-flight (the 2026-08-22 re-verification run itself): live ETA with an
+honest asymmetric interval, the progress bar, and per-phase agent counts
+([image provenance](docs/design.md#readme-asset-provenance)).*
 
 ## What you get
 
@@ -370,11 +376,15 @@ max-of-group ETA rule instead. Full rationale: [docs/design.md](docs/design.md).
 ## Alternatives
 
 [pocket-watch](https://github.com/MiguelDotL/pocket-watch) calibrates conversational estimates
-via hooks but doesn't monitor runs; [task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar)
+via hooks (Bayesian per-category correction) but scopes itself to interactive sessions and
+doesn't monitor runs; [claude-code-time-estimator](https://github.com/arte-ermel/claude-code-time-estimator)
+closes a loop deterministically but manually — you type in the actual time, and the correction
+factor is global, not per-category; [task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar)
 renders a terminal bar without recording estimates; [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
 estimates in tool-call rounds without logging actuals. Usage dashboards show telemetry, not
-task ETAs. None of them close the estimate→actual→correction loop for agent runs — that gap is
-why whendone exists ([anthropics/claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)).
+task ETAs. None of them close the estimate→actual→correction loop **automatically for
+unattended agent runs** — that gap is why whendone exists
+([anthropics/claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)).
 
 ## Credits
 

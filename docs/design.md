@@ -219,7 +219,17 @@ predates the group-aware totals it displays. The run used the dev working tree (
 skill dir is a symlink to this repo) — not a fresh clone at the tag. The previous hero (the
 2026-07-17 14-subtask hardening run, recorded in
 [docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17))
-was a manually captured screenshot. To confirm the screenshot is faithful,
+was a manually captured screenshot.
+
+The second README image (`assets/source-b-progress.png`, since v0.8.0) is a manually captured
+screenshot of the live artifact mid-run during the Source B re-verification run (jobId
+20260822T2155, 2026-08-22 22:06 — the run that dropped Source B's experimental label; state
+archived in the maintainer's local run-evidence directory). Unlike the hero it is NOT a
+re-render: it shows the running page exactly as published (RUNNING banner, live ETA
+−4/+9 min widened to measured spread, progress bar, per-phase agent counts, 8/9 workflow
+agents).
+
+To confirm the hero screenshot is faithful,
 open [`assets/real-run-artifact.html`](../assets/real-run-artifact.html) — the actual rendered
 page. A simpler constructed example lives in
 [`assets/demo-artifact.html`](../assets/demo-artifact.html), generated (not hand-edited) from

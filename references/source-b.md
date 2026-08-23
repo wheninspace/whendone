@@ -1,9 +1,9 @@
 # Source B — Workflow-engine runs: declare at authoring, tail the journal
 
-**Status: experimental — single dogfood 2026-07-18.** Task D4b re-verifies Source B before it
-ships as first-class in the flip; if D4b fails or shows journal drift, this label stays and
-Source B is excluded from the announcement's feature list. No new Source B features either way
-until after the flip.
+**Status: first-class.** Re-verified live 2026-08-22 (a real 9-agent, 3-phase Workflow run:
+clean journal parsing, exact per-tag agent counts, all phases finalized with observed spans,
+calibration rows logged, artifact updated through every phase) — after the original
+2026-07-18 dogfood.
 
 The lead authors the workflow script and declares its phases once, before launch; a journal
 tailer (`scripts/tail_progress.py`, same entry point as Source A) then observes agent
