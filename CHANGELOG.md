@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.8.1] — 2026-08-23
+
+Patch release folding in the post-v0.8.0 verification results and release automation — no
+behavior changes to the skill's monitoring loop.
+
+- **Source B is first-class:** the D4b re-dogfood (a real 9-agent, 3-phase Workflow run,
+  2026-08-22) passed all five gates — clean journal parsing, exact per-tag agent counts, all
+  phases finalized with observed spans, calibration rows logged, artifact updated through
+  every phase. The "experimental — single dogfood" label is dropped from README and
+  source-b.md.
+- **Alternatives claim narrowed** per the flip-positioning research: no rival closes the
+  estimate→actual→correction loop *automatically for unattended agent runs* (two close
+  narrower loops — claude-code-time-estimator manually with a global factor, pocket-watch
+  for interactive sessions only); claude-code-time-estimator added as the fourth cited
+  alternative.
+- **Second README screenshot:** a live mid-run capture of the Source B verification run
+  (ETA with asymmetric interval, progress bar, per-phase agent counts).
+- **Release automation:** `scripts/release.py` (maintainer tool) bumps the README install
+  lines, commits, and tags in one motion; CI gains a `tag-consistency` job that fails any
+  tag whose README install pins disagree with it; the release process and patch-tag norm are
+  documented in design.md. Two leftover release-TODO comments removed from README.
+
 ## [0.8.0] — 2026-08-22
 
 Flip-readiness wave, driven by a 10-subtask adversarial self-review (6 perspective audits →
