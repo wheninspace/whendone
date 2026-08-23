@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+README only. The hero image is now the Source A verification run mid-flight (short enough
+not to push the quickstart below the fold; shows the live mechanism — parallel subtasks,
+logged deviations, calibrated ETA, progress bar) instead of the tall 12-subtask DONE-state
+render, which is retired (recoverable from git history; its full rendered page stays at
+`assets/real-run-artifact.html`). The mid-run image no longer repeats in the Three sources
+section. Provenance chain updated in `docs/design.md`.
+
 ## [0.8.2] — 2026-08-23
 
 Artifact polish from watching the Source A external verification run (a real 6-subtask job

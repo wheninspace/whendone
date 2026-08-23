@@ -209,38 +209,37 @@ proves misleading in practice.
 
 ## README asset provenance
 
-The README's hero image (since v0.8.0) is the DONE-state artifact of the 2026-08-22 run that
-executed the v0.8.0 flip-readiness plan itself (jobId 20260822T1611, 12 subtasks, monitored
-by the then-installed whendone; state and closes archived in the maintainer's local
-run-evidence directory). The page was re-rendered from that run's final state file with the
-v0.8.0 renderer (`render_artifact.py`, `--now` = the run's own end timestamp) and captured
-with headless Chrome (620 CSS px, device scale 2) — same data, current renderer; the live run
-predates the group-aware totals it displays. The run used the dev working tree (the installed
-skill dir is a symlink to this repo) — not a fresh clone at the tag. The previous hero (the
-2026-07-17 14-subtask hardening run, recorded in
-[docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17))
-was a manually captured screenshot.
+The README's hero image (`assets/source-a-parallel-progress.png`; hero since v0.8.3, in the
+README since v0.8.2) is a manually captured screenshot of the live artifact mid-run during
+the Source A external verification run (jobId 20260823T1904 on train-puzzle, 2026-08-23
+19:14 — the D4 release-gate run; state, closes, and verification NOTE archived in the
+maintainer's local run-evidence directory). It was captured on the v0.8.1 renderer, before
+that run's own layout feedback landed (v0.8.2: right-aligned Est column, full-size
+orchestration value, "total agent time" label) — the content is real; the column alignment
+differs slightly from the current renderer. Chosen as hero for being short enough to not
+push the fold and for showing the live mechanism (parallel subtasks in flight, deviations
+logged, ETA + bar); the owner intends to re-capture when a run with tighter calibrated
+estimates comes along.
 
-The Source A mid-run image (`assets/source-a-parallel-progress.png`, since v0.8.2) is a
-manually captured screenshot of the live artifact during the Source A external verification
-run (jobId 20260823T1904 on train-puzzle, 2026-08-23 19:14 — the D4 release-gate run; state,
-closes, and verification NOTE archived in the maintainer's local run-evidence directory). It
-was captured on the v0.8.1 renderer, before that release-gate run's own layout feedback
-landed (v0.8.2: right-aligned Est column, full-size orchestration value, "total agent time"
-label) — the content is real; the column alignment differs slightly from the current
-renderer.
+Previous heroes: v0.8.0–v0.8.2 used the DONE-state artifact of the 2026-08-22 run that
+executed the v0.8.0 flip-readiness plan itself (jobId 20260822T1611, 12 subtasks; the page
+was re-rendered from the final state file with the v0.8.0 renderer and captured with
+headless Chrome at 620 CSS px, device scale 2; retired as too tall for the fold —
+recoverable from git history as `assets/progress-artifact.png`, and its full rendered page
+remains at [`assets/real-run-artifact.html`](../assets/real-run-artifact.html)). Before
+that, a manually captured screenshot of the 2026-07-17 14-subtask hardening run, recorded in
+[docs/test-log.md](test-log.md#real-end-to-end-run-under-whendone-monitoring--2026-07-17).
 
 The Source B mid-run image (`assets/source-b-progress.png`, since v0.8.0) is a manually captured
 screenshot of the live artifact mid-run during the Source B re-verification run (jobId
 20260822T2155, 2026-08-22 22:06 — the run that dropped Source B's experimental label; state
-archived in the maintainer's local run-evidence directory). Unlike the hero it is NOT a
-re-render: it shows the running page exactly as published (RUNNING banner, live ETA
-−4/+9 min widened to measured spread, progress bar, per-phase agent counts, 8/9 workflow
-agents).
+archived in the maintainer's local run-evidence directory). Like the hero it shows the
+running page exactly as published (RUNNING banner, live ETA −4/+9 min widened to measured
+spread, progress bar, per-phase agent counts, 8/9 workflow agents).
 
-To confirm the hero screenshot is faithful,
-open [`assets/real-run-artifact.html`](../assets/real-run-artifact.html) — the actual rendered
-page. A simpler constructed example lives in
+For a complete rendered page to inspect (not a screenshot),
+open [`assets/real-run-artifact.html`](../assets/real-run-artifact.html) — the v0.8.0
+renderer's full DONE-state page of the 12-subtask run described above. A simpler constructed example lives in
 [`assets/demo-artifact.html`](../assets/demo-artifact.html), generated (not hand-edited) from
 [`assets/demo-state.json`](../assets/demo-state.json); regenerate it with
 `python3 scripts/render_artifact.py assets/demo-state.json - assets/demo-artifact.html --now

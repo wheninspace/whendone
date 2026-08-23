@@ -15,10 +15,11 @@ Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"r
 whendone"** when you kick off a long job — a plan execution, a 6+ subtask fan-out, anything
 you'd walk away from. Full install/update/uninstall details further down.
 
-<img src="assets/progress-artifact.png" width="440" alt="WhenDone progress artifact: the DONE state of a real 12-subtask job — task table with actual-vs-estimate and per-task model and token counts, group-aware totals with a +59% overrun, and the between-subtask orchestration split">
+<img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone progress artifact mid-run on a real 6-subtask job: two subtasks closed with actual-vs-estimate deviations, three executing in parallel (spinner icons), live ETA of −9/+8 minutes, progress bar, and per-task model and token counts">
 
-*The actual DONE-state artifact from a real 12-subtask job — the 2026-08-22 run that built
-v0.8.0 itself, monitored by whendone
+*The live artifact mid-run on a real 6-subtask job: two closed with their deviation against
+estimate, three running in parallel, calibrated ETA and progress bar. Every deviation shown
+is logged and sharpens the next job's estimate
 ([image provenance](docs/design.md#readme-asset-provenance)).*
 
 ## Do you need this?
@@ -79,12 +80,6 @@ calibrated:
 | **A** | Lead/subagent runs — a plan execution, a fan-out of subtasks | **Calibrated** — every finished subtask logs estimate vs. actual and corrects the next job |
 | **B** | Workflow-engine runs, declared at launch (re-verified live 2026-08-22) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
 | **C** | Plain solo / todo-list work — **requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate); none found → a quick Source-A declaration instead | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
-
-<img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone artifact mid-run on a Source A job: three subtasks executing in parallel (spinner icons), two already closed with actual-vs-estimate deviations, live ETA of −9/+8 minutes, progress bar, and per-task token counts">
-
-*A Source A job mid-flight (the 2026-08-23 external verification run): two subtasks closed
-with their deviations, three more executing in parallel, ETA and progress bar live
-([image provenance](docs/design.md#readme-asset-provenance)).*
 
 <img src="assets/source-b-progress.png" width="440" alt="WhenDone artifact mid-run on a Source B Workflow job: live ETA with an asymmetric −4/+9 min interval widened to measured spread, progress bar, two of three phases done with per-phase agent counts, and 8/9 workflow agents finished">
 
@@ -351,9 +346,9 @@ resumed fresh, once per calibrated source — and each found and fixed a real bu
 display bug; a killed Workflow run's leftover record falsely finalizing a job) — see
 [docs/test-log.md](docs/test-log.md). What remains untested: a resume from a fresh clone at
 the tag (both drills ran in the dev tree, where the installed skill dir is a symlink to this
-repo). The 12-subtask run behind the hero image also used the dev tree; the image is its
-final state re-rendered with the v0.8.0 renderer and captured headlessly
-([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
+repo). The 6-subtask run behind the hero image also used the dev tree (a symlink install on
+another project, not a fresh clone at the tag); the image is a manual capture of its live
+page ([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
 and threat model in [docs/design.md](docs/design.md).
 
 Windows was verified live on 2026-08-13 (Windows 11, Python 3.13): a real 8-subtask Source-A
