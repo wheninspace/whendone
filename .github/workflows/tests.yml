@@ -3,6 +3,7 @@ name: tests
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -20,3 +21,20 @@ jobs:
       - name: Run test suite
         working-directory: scripts
         run: python -W error::ResourceWarning -m unittest discover -p "test_*.py"
+
+  # Release guard: a tag's own README must point installs at that tag.
+  # scripts/release.py guarantees this by construction; this is the backstop
+  # for hand-cut tags.
+  tag-consistency:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: README install lines must pin the pushed tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          pins=$(grep -oE -- '--branch v[0-9]+\.[0-9]+\.[0-9]+' README.md | sort -u)
+          echo "pushed tag: $tag"
+          echo "README pins: $pins"
+          test -n "$pins" || { echo "no install pin found in README.md"; exit 1; }
+          test "$pins" = "--branch $tag" || { echo "README install pin(s) disagree with tag $tag"; exit 1; }

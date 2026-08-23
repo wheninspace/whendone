@@ -10,7 +10,6 @@ the next job's estimate. The statistics are computed outside the model.
 ```bash
 git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
-<!-- TODO(D2): update to the real tag at release -->
 
 Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"run with
 whendone"** when you kick off a long job — a plan execution, a 6+ subtask fan-out, anything
@@ -241,8 +240,6 @@ unattended runs, be deliberate about what you allowlist in `.claude/settings.jso
   exercise the same code.
 
 ## Install
-
-<!-- TODO(D2): update to the real tag at release -->
 
 ```bash
 git clone --branch v0.8.0 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone

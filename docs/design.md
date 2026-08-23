@@ -478,6 +478,26 @@ docs. Existing inline glosses already in reference docs (`(P2, ...)`, `(P3)`, `(
 similar) stay as-is until the passage they annotate is next touched for another reason, then
 convert to plain language rather than picking up a fresh code.
 
+## Release process (2026-08-23)
+
+The README's install lines pin a release tag deliberately: a skill is instructions an agent
+executes with the user's permissions, so "install an immutable, reviewed snapshot — the exact
+tree the test-log and CI evidence describe" is a security and evidence property, not
+versioning vanity (the Update section's tag-to-tag rule is the same posture). The known cost
+is bookkeeping: hardcoded version strings and main-vs-tag drift. Three mechanisms keep that
+cost near zero:
+
+1. **One atomic motion:** `python3 scripts/release.py vX.Y.Z` bumps every README install
+   line, commits, and tags that commit — so the tag's own install text names the tag by
+   construction. It refuses dirty trees, non-main branches, and existing tags; `--dry-run`
+   previews; pushing stays a separate owner action (or `--push`).
+2. **CI backstop:** on any tag push, the `tag-consistency` job fails unless the README's
+   install pins equal the pushed tag — a hand-cut tag that skips the script fails loudly.
+3. **Patch-tag norm:** any user-visible change that lands on main after a tag (docs included)
+   gets a cheap patch tag (vX.Y.Z+1) rather than living as drift — the GitHub-rendered README
+   must describe the tool the install line delivers. Tags are free; drift is not. Published
+   tags still never move.
+
 ## Appendix: trigger-figure measurement history
 
 The README's Overhead table is the single current-state home for the trigger-path token figure
