@@ -1,11 +1,13 @@
 # WhenDone
 
-LLMs misjudge how long their own work takes: pre-task estimates overshoot actual duration 4–7×
-across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An Empirical
-Investigation"](https://arxiv.org/abs/2604.00010), arXiv:2604.00010). WhenDone measures instead.
-Every finished subtask logs estimate against actual, and a stdlib Python script — not the model —
-turns that history into per-category correction factors for the next job's ETA. You get a
-calibrated finish time on a live page that opens on any device, and a clean stop at a boundary.
+Three questions matter when Claude Code runs something long: what is it doing, how big is the
+job, and when will it be done? Statuslines answer the first with a heartbeat and a todo counter;
+nothing answers the other two — LLM self-estimates are uncalibrated, overshooting actual duration
+4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
+Empirical Investigation"](https://arxiv.org/abs/2604.00010)). WhenDone measures instead: every
+finished subtask logs estimate against actual, and a stdlib Python script — not the model — turns
+that history into per-category correction factors. You get the job's live shape and a calibrated
+finish time on a page that opens on any device, and a clean, resumable stop at a subtask boundary.
 
 <img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone progress artifact mid-run on a real 6-subtask job: two subtasks closed with actual-vs-estimate deviations, three executing in parallel (spinner icons), live ETA of −9/+8 minutes, progress bar, and per-task model and token counts">
 
@@ -31,6 +33,8 @@ with a calibrated ETA, not the model's guess; and if it doesn't fit, it stops th
 a subtask boundary, resumably. Beyond that case:
 
 - **Job sizing** — calibrated per-category estimates show a job's size before it starts.
+- **Limit triage** — near a session or weekly cap: size a job before committing, watch live
+  per-subtask spend, pause cleanly to give the rest of your window to what matters most.
 - **Delegation transparency** — a per-subtask receipt of which model ran what, and what it cost.
 - **Time-boxing** — a graceful stop, or a hard end time declared up front (one dogfooded run).
 - **Walk-away visibility** — the live page opens on any device on your claude.ai account.
