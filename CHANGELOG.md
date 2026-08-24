@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.4] — 2026-08-24
+
+Docs only — no change to the skill's behavior, protocol or scripts. The release cut for the
+public flip: this tag is the first the repo carries as a public repository.
+
+- **Artifact-panel tip reframed.** The Overhead tip now leads with the zero-cost pattern
+  (watch progress on a phone or in a browser tab) and scopes the re-injection cost
+  (~0.6–2k tokens per wake) to the IDE-embedded artifact panel, matching the fuller version
+  in `docs/design.md`. The old one-liner read as "don't watch the progress page."
+- **Workflow-engine screenshot restored.** `assets/source-b-progress.png` returns to the
+  README under *What you get*, next to the Workflow-engine sentence, with its caption
+  matched to the README's current vocabulary (no internal "Source B" naming). It had been
+  dropped as collateral of the 0.8.3 length budget, leaving it referenced nowhere.
+
 ## [0.8.3] — 2026-08-24
 
 Docs only — no change to the skill's behavior, protocol or scripts.
