@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.3] — 2026-08-24
 
 Docs only — no change to the skill's behavior, protocol or scripts.
 
