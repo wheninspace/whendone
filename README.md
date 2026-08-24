@@ -1,10 +1,12 @@
 # WhenDone
 
 Three questions matter when Claude Code runs something long: what is it doing, how big is the
-job, and when will it be done? Statuslines answer the first with a heartbeat and a todo counter;
-nothing answers the other two — LLM self-estimates are uncalibrated, overshooting actual duration
+job, and when will it be done? Statuslines answer the first with a heartbeat and a todo counter,
+nothing answers the other two. LLM self-estimates are uncalibrated, overshooting actual duration
 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
-Empirical Investigation"](https://arxiv.org/abs/2604.00010)). WhenDone measures instead: every
+Empirical Investigation"](https://arxiv.org/abs/2604.00010)). 
+
+WhenDone measures instead: every
 finished subtask logs estimate against actual, and a stdlib Python script — not the model — turns
 that history into per-category correction factors. You get the job's live shape and a calibrated
 finish time on a page that opens on any device, and a clean, resumable stop at a subtask boundary.
@@ -21,7 +23,7 @@ the next job's ETA ([provenance](docs/design.md#readme-asset-provenance)).*
 git clone --branch v0.8.4 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
-That clone is the whole install. Then say **"run with whendone"** when you kick off a long job —
+That clone is the whole install. Then say **"run with whendone"** when you kick off a long job, like
 a plan execution, a 6+ subtask fan-out, anything you'd walk away from.
 
 ## Do you need this?
@@ -29,7 +31,7 @@ a plan execution, a 6+ subtask fan-out, anything you'd walk away from.
 The strongest case: **you have to leave, and the job can't come with you.** Internal systems the
 cloud can't reach, a laptop that goes in the bag at a fixed time, a machine shut down at end of
 day. WhenDone answers what that asks — *how big is this job, does it fit the time I have left?* —
-with a calibrated ETA, not the model's guess; and if it doesn't fit, it stops the job cleanly at
+with a calibrated ETA, not the model's guess. And if it doesn't fit, it stops the job cleanly at
 a subtask boundary, resumably. Beyond that case:
 
 - **Job sizing** — calibrated per-category estimates show a job's size before it starts.
@@ -40,7 +42,7 @@ a subtask boundary, resumably. Beyond that case:
 - **Walk-away visibility** — the live page opens on any device on your claude.ai account.
 
 If you live in the terminal and never leave it, maybe not: a statusline (claude-hud) and
-`/workflows` already show what's running where you're looking. Three things they can't — a
+`/workflows` already show what's running where you're looking. Three things they can't: A
 *calibrated* finish time, a link that **leaves the machine**, a per-subtask model/token ledger.
 
 ## What you get
@@ -52,7 +54,7 @@ If you live in the terminal and never leave it, maybe not: a statusline (claude-
 - **Push notifications via Remote Control** — job done, job stopped, ETA slipping past 150 %.
 
 The page carries the task table with actual vs. estimate, executor model, tokens per task and per
-job, and an ETA with an honest interval — no dollar figures, since subscribers don't pay per
+job, and an ETA with an honest interval. No dollar figures, since subscribers don't pay per
 token. Interrupted subtasks are excluded from calibration rather than guessed. Notifications are
 best-effort and fire at subtask boundaries, so a single hung subtask cannot alert. Run one is a
 frozen default inside a nominal ±50 % band that can be off severalfold and is not yet a coverage
@@ -76,7 +78,7 @@ agent counts ([provenance](docs/design.md#readme-asset-provenance)).*
 - **"how accurate is whendone?"** — a script-computed accuracy report from your own history.
 
 The explicit phrase is the interface: bare hints ("how long will this take?") don't reliably
-trigger it. For routine plan runs, one CLAUDE.md line does it — `When executing a plan of 6+
+trigger it. For routine plan runs, one CLAUDE.md line does it. `When executing a plan of 6+
 tasks, also invoke the whendone skill to monitor progress.` To skip publishing for a whole
 project, drop in an empty `<project>/.claude/whendone-no-publish` file or set
 `"publish": false` in the state file.
@@ -89,8 +91,8 @@ model names), published to claude.ai as a **default-private** page in your
 check for person/client/secret-looking names is a best-effort model judgment call — review before
 sharing. Either off-switch stops publishing entirely (the `.claude/whendone-no-publish` marker, or
 `"publish": false`); the page then renders locally at 0600 for the in-chat table. Each job adds a
-gallery page and there is no delete API, so old pages — findable by their fixed "WhenDone progress
-monitor" subtitle — are yours to delete from the artifact's menu. Everything else stays local:
+gallery page and there is no delete API, so old pages, findable by their fixed "WhenDone progress
+monitor" subtitle, are yours to delete from the artifact's menu. Everything else stays local:
 state file in `<project>/.claude/` (gitignore enforced before first write), calibration log in
 `~/.claude/whendone-data/`, transcripts read for usage numbers, never content. The six scripts are
 stdlib-only with no network access, untrusted strings are data and HTML-escaped, and resuming a
@@ -102,7 +104,7 @@ found state file needs your confirmation. Threat model:
 The mechanism is context spend: ~140 tokens in every session whether or not it fires, ≈12–14k
 when it does, ~0.1–2k per subtask boundary, ~1k at job end. That amortizes at roughly **6+
 subtasks or 30+ minutes**, and the skill declines smaller jobs itself. Tip: watch progress on
-your phone or in a browser tab — that costs nothing. Only the IDE-embedded artifact panel adds
+your phone or in a browser tab, that costs nothing. Only the IDE-embedded artifact panel adds
 cost: keeping it open makes the harness re-inject the rendered page (~0.6–2k tokens) at every
 watcher wake. Per-row figures, method, provenance:
 [docs/design.md](docs/design.md#appendix-overhead-figures-and-measurement-history).
@@ -111,8 +113,8 @@ watcher wake. Per-row figures, method, provenance:
 
 Claude Code signed in to claude.ai (the live page needs the Artifact tool); API-key-only / Bedrock
 / Vertex degrade to a chat table, Cowork is expected to work but untested, claude.ai chat can't
-work at all. Python 3 (`python3`, `python`, or `py`) for statistics, tokens and rendering —
-without it those degrade off, and whendone never does statistics in the model. No todo tool needed
+work at all. Python 3 (`python3`, `python`, or `py`) for statistics, tokens and rendering. 
+Without it those degrade off, and whendone never does statistics in the model. No todo tool needed
 on the calibrated paths: a lead-written `completed` marker in `.claude/whendone-closes.jsonl` is
 always available as close authority.
 
@@ -142,7 +144,7 @@ git diff HEAD v0.x.y -- SKILL.md scripts/
 git merge v0.x.y   # when the diff looks right, using the new release's actual tag name
 ```
 
-Uninstall removes four things (published artifacts stay in your claude.ai gallery — delete those
+Uninstall removes four things (published artifacts stay in your claude.ai gallery. Delete those
 there yourself):
 
 ```bash
