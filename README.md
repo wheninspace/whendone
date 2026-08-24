@@ -91,8 +91,9 @@ found state file needs your confirmation. Threat model:
 
 The mechanism is context spend: ~140 tokens in every session whether or not it fires, ≈12–14k
 when it does, ~0.1–2k per subtask boundary, ~1k at job end. That amortizes at roughly **6+
-subtasks or 30+ minutes**, and the skill declines smaller jobs itself. Tip: keep the artifact
-panel closed between checks — an open panel makes the harness re-inject the rendered page at every
+subtasks or 30+ minutes**, and the skill declines smaller jobs itself. Tip: watch progress on
+your phone or in a browser tab — that costs nothing. Only the IDE-embedded artifact panel adds
+cost: keeping it open makes the harness re-inject the rendered page (~0.6–2k tokens) at every
 watcher wake. Per-row figures, method, provenance:
 [docs/design.md](docs/design.md#appendix-overhead-figures-and-measurement-history).
 
