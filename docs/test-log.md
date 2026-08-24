@@ -9,6 +9,14 @@ Date: 2026-07-16
 
 ## Environment
 
+> **Scope note (2026-08-24):** the list below describes the 2026-07-16 headless trigger-test
+> harness only — a `claude -p` CLI process driven from inside an interactive session. Every
+> later entry names its own environment. Read across the whole log, the *interactive* dogfood
+> runs ran under Claude Code in the Claude Desktop app (macOS and Windows) or the VSCode
+> extension (macOS); no live run has been recorded from a plain terminal session. CLI build
+> numbers quoted anywhere here (2.1.209, 2.1.215) are the recorded harness version — the
+> engine is the same on every surface — not a claim that the run happened in a terminal.
+
 - Claude Code CLI 2.1.209 (`~/.local/bin/claude`), macOS (Darwin 25.5.0)
 - Headless harness: `claude -p ... --output-format stream-json --verbose`, run from a scratch
   project directory outside the pacekeeper repo
@@ -1130,3 +1138,118 @@ deviations, `~/.claude/whendone-data/` was empty before); wipe the directory bef
 use so the factors start unskewed. Sources B and C remain macOS-only verified; the three
 symlink-containment tests have still never executed on Windows. Suite at this entry:
 **366 tests, warning-clean.**
+
+## v0.6.0 + v0.7.0 live verification — Source-A no-todo-tool dogfood — 2026-08-22
+
+macOS. First live run of the background-dispatch rework (v0.6.0) and the close-authority
+rework (v0.7.0), on the exact harness build the bug they fix reproduces in: a build shipping
+**no todo tool at all** (TodoWrite, TaskCreate and TaskUpdate all absent), so the
+lead-written close-marker channel (`.claude/whendone-closes.jsonl`) was the only close
+authority available.
+
+**The job:** "WhenDone self-review: adversarial project audit + verdict" — a real 10-subtask
+Source-A job (6 perspective audits → 2 opposed debaters → 1 claim verifier), monitored
+end-to-end.
+
+- **Marker-based closes confirmed mid-run** — closes landed on marker evidence throughout;
+  no hand-set task status anywhere in the run.
+- **Versioned executor model names** rendered in the task table ("Sonnet 5").
+- **Per-task actuals against estimate** with the delegated/lead split.
+- **Live ETA:** 46-minute headline total (`estimateTotalMin: 46.0`), whose interval tightened
+  to ±13 minutes as the job progressed and to ±1 minute at the end. Final render:
+  "Done — took 27 m 35 s (estimated 46 m)".
+- **Calibration:** 4 rows logged live — 2 synthetic `parallel-group` rows (pre-P2 behavior,
+  excluded from factors), 1 `review`, 1 `documentation`.
+- Suite at this commit: **408 tests, warning-clean**.
+
+Evidence archived in the maintainer's local run-evidence directory (jobId 20260822T1334):
+the final DONE artifact render, the job-end token report, and the run's calibration rows.
+**Gap in the evidence set:** the state file and closes file lived at the repo's `.claude/`
+and were overwritten by the next same-day dogfood run before they were archived; the
+46 → ±13 → ±1 interval figures were recovered from the session transcript, which also
+confirms the 46 was the headline total estimate, not a ±46 interval. Windows re-run of these
+two reworks: still open.
+
+## v0.8.0 flip-readiness execution dogfood — 2026-08-22
+
+macOS, same day, later. The v0.8.0 flip-readiness plan executing itself under monitoring: a
+**12-subtask Source-A job** ("WhenDone v0.8.0 flip-readiness (Sessions A-C)"), subagent-driven
+execution watched by the then-installed v0.7.0-era watcher (group-free topology).
+Live-verified: marker closes (24 marker lines across the job), artifact progress updates at
+every boundary, and an ETA **slip alert**. Final state `status: "done"`, 12 tasks;
+**12 calibration rows logged live** (16:19–20:29). Evidence archived (jobId 20260822T1611):
+final state file, closes file, job-end token report. The v0.8.0–v0.8.2 hero screenshot was
+re-rendered from this state file — see
+[README asset provenance](design.md#readme-asset-provenance).
+
+## Source-B re-verification (D4b) — live 9-agent Workflow run — 2026-08-22
+
+The re-dogfood that dropped Source B's "experimental — single dogfood" label. A real
+Workflow-engine run (runId `wf_7ee4c2d3-5b7`, 9 agents, 3 phases) monitored end-to-end by
+Source B, launched from another project's working directory. Job finished in **11 m 27 s
+against a 39 m estimate** — both research-category phases ran far under their cold-start
+defaults, `research` having had zero calibration data points before this job (a cold-start
+miss of exactly the kind the README's cold-start caveat describes).
+
+All five gates passed:
+
+1. **Journal parsing** — zero `journal-format-drift` events in the watcher's full event
+   stream; `wfDriftNotified` stayed `false` for the whole job. Journal v2 parsed cleanly.
+2. **Per-tag agent counts exact** — `[wd:survey]` declared 5, counted 5 started / 5 done,
+   artifact "5/5 agents"; `[wd:deepread]` 3/3; `[wd:synth]` 1/1. Job level
+   `wfAgentsStarted: 9` / `wfAgentsDone: 9`, matching the Workflow engine's own usage report
+   (9 agents, 0 errors, 0 skips). No untagged agents.
+3. **Per-phase finalization** — all three task rows carry `bFinalized: true` with observed
+   spans (Survey 5.4 min, Deep-read 1.9, Synthesize 1.5) and real start/finish timestamps,
+   landed at the run's completion record per the Source-B lifecycle.
+4. **Calibration** — 3 rows appended, one per phase (counted with `grep -c`; the log itself
+   was never read into model context), summary regenerated at job end.
+5. **Artifact updated through all phases** — republished at every watcher wake on the same
+   URL: five updates during the Survey fan-out (agents 0→1→2→3→4/5), the Survey-done
+   boundary, two during Deep-read, the Deep-read-done boundary, the Synthesize dispatch, and
+   the final DONE render.
+
+Two documented behaviors confirmed in passing: a stale `whendone-tail.lock` left by the
+same-day earlier Source-A job was taken over cleanly (dead pid), and the ETA interval label
+transitioned as designed — "(widened to measured spread)" while running, "(default band —
+little history)" once only the low-history phases remained. `whendone-closes.jsonl` does not
+exist for this job, as expected: Source B tails the workflow journal instead of markers.
+Evidence archived (jobId 20260822T2155): final state file plus the verification notes.
+
+## Source-A external release gate (D4) — 6-subtask run on another repo — 2026-08-23
+
+The v0.8.0 release gate: whendone monitoring an unrelated project's plan (6 subtasks
+including a 3-member parallel group), Source A, subagent-driven, on a harness with no todo
+tool (marker-file close authority). Install was the dev tree as usual (the installed skill
+dir is a symlink to this repo), **not a fresh clone at the tag**, so this run does not close
+the fresh-clone gap. Result: DONE, 6/6 —
+"Done — took 17 m 15 s (estimated 34 m)". All six checks passed:
+
+1. **Confirmed closes** — `whendone-closes.jsonl` carries an `in_progress` and a `completed`
+   line for all 6 declared task names; `grep -c '"unconfirmed"'` on the final state file = 0.
+2. **Versioned models** — final rows show "Sonnet 5" (×4) and "Fable 5" (×2). Mid-run,
+   still-running rows briefly showed the bare dispatch alias "Sonnet"; each was upgraded to
+   the versioned name at that task's close, as designed.
+3. **Group-aware totals** — Sum of subtasks 14 m 10 s + Between-subtask orchestration
+   3 m 9 s = Total 17 m 19 s (the headline `took 17 m 15 s` is the same figure rendered a few
+   seconds earlier). Est sum 34 m matches the headline ETA's basis (`originalTotalMin` 33.6).
+   The dim parallel line read "agent-minutes across parallel tasks: Est 50 m ·
+   Actual 20 m 51 s" — 20 m 51 s summed against 14 m 10 s wall-clock confirms the
+   MAX-aggregation split for the 3-member `verify` group.
+4. **Progress bar** — theme-aware, present and sensible in every render; fill tracked elapsed
+   share (9.2 % → 31.0 → 37.3 → 44.5 → 50.3 → 51.6 % at completion) and the ± band narrowed
+   as tasks closed (41.9 % → 39.9 → 32.6 → 19.3 → gone at DONE).
+5. **Calibration** — `calibration.jsonl` went 41 → 47 lines (counted with `wc -l`, never read
+   into context): 6 new rows, one per task, so each of the three parallel `verify` members
+   logged its own row (P2 behavior; no synthetic group row). Summary regenerated at job end.
+6. **Watcher events** — none of the failure-mode events fired: no stale, no demotion, no
+   marker-missing, no L1 relaunch, no idle, no slip. L1 (Monitor) ran the whole job as a
+   single instance and exited on its own at all-done. Only `progress` ×5 and `all-done` ×1.
+
+Push status was honest-labeled "uncertain delivery — requires Remote Control" in the artifact
+footer. This run is also the hero image's source and the source of v0.8.2's artifact layout
+fixes (right-aligned Est column, full-size orchestration value, relabeled parallel line) —
+the layout feedback came from watching this page live. Evidence archived
+(jobId 20260823T1904): final state file, closes file, verification notes, and the mid-run
+screenshot the README hero is cropped from — see
+[README asset provenance](design.md#readme-asset-provenance).

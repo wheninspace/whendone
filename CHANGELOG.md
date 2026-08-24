@@ -2,12 +2,40 @@
 
 ## [Unreleased]
 
-README only. The hero image is now the Source A verification run mid-flight (short enough
-not to push the quickstart below the fold; shows the live mechanism — parallel subtasks,
-logged deviations, calibrated ETA, progress bar) instead of the tall 12-subtask DONE-state
-render, which is retired (recoverable from git history; its full rendered page stays at
-`assets/real-run-artifact.html`). The mid-run image no longer repeats in the Three sources
-section. Provenance chain updated in `docs/design.md`.
+Docs only — no change to the skill's behavior, protocol or scripts.
+
+**README rewritten as a product page (402 → 178 lines).** The calibrated-ETA USP now leads
+the first paragraph (the 4–7× overshoot citation stays), and the engineering evidence is
+relocated, not deleted:
+
+- **Overhead:** the README keeps the headline figures, the amortization threshold and the
+  artifact-panel tip. The per-row measurement table, method note, exclusions and the
+  ~6-subtask derivation moved to `docs/design.md`'s appendix, which is now the single
+  current-state home for those numbers (it previously pointed back at the README table).
+- **Cold start:** the README keeps a one-line candid version; the full account (nominal band
+  rules, the `testing`-ran-0.28×-default example, "labeling convention, not a coverage
+  guarantee") moved to a new *Cold start* subsection in `docs/design.md`.
+- **Run evidence:** the 2026-08-22 and 2026-08-23 dogfood runs that earlier releases cited
+  only in this changelog now have their own `docs/test-log.md` entries — the v0.6.0/v0.7.0
+  no-todo-tool verification, the v0.8.0 flip-readiness execution run, the Source-B D4b
+  re-verification, and the Source-A D4 release gate, each with its checks and its evidence
+  gaps.
+- **Sections dropped as README material:** Three sources (now one sentence), Maturity
+  version archaeology (CHANGELOG's job), the standalone How-the-calibration-works and
+  Security sections (folded into the pitch and into Privacy), and the What-it-touches table
+  (folded into Privacy, which is now promoted above Overhead).
+- **Tested surfaces stated accurately:** dogfooding ran under Claude Code in the Claude
+  Desktop app (macOS and Windows) and the VSCode extension (macOS). The plain-terminal CLI
+  runs the same engine and should behave identically but has no recorded interactive run;
+  the CLI build numbers in the test log are recorded harness versions, not surfaces. The
+  test log's Environment preamble carries the same scope note.
+- **Version drift closed structurally:** the only `vX.Y.Z` strings left in README.md are the
+  two `--branch` install lines that `scripts/release.py` rewrites and CI's `tag-consistency`
+  job guards. No standalone status/maturity version line to go stale.
+
+Also in this pass: the hero caption reframes the deviation column as the calibration
+mechanism rather than a scorecard, and the hero's provenance now records that its run used
+the dev tree, not a fresh clone at the tag.
 
 ## [0.8.2] — 2026-08-23
 

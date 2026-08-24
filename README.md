@@ -1,9 +1,17 @@
 # WhenDone
 
-WhenDone gives a long, unattended Claude Code job a calibrated finish-time ETA and a live
-progress page you can open anywhere — your phone included. Declared once at job start, kept
-current by a background watcher; every finished subtask feeds the calibration that sharpens
-the next job's estimate. The statistics are computed outside the model.
+LLMs misjudge how long their own work takes: pre-task estimates overshoot actual duration 4–7×
+across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An Empirical
+Investigation"](https://arxiv.org/abs/2604.00010), arXiv:2604.00010). WhenDone measures instead.
+Every finished subtask logs estimate against actual, and a stdlib Python script — not the model —
+turns that history into per-category correction factors for the next job's ETA. You get a
+calibrated finish time on a live page that opens on any device, and a clean stop at a boundary.
+
+<img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone progress artifact mid-run on a real 6-subtask job: two subtasks closed with actual-vs-estimate deviations, three executing in parallel (spinner icons), live ETA of −9/+8 minutes, progress bar, and per-task model and token counts">
+
+*Mid-run on a real 6-subtask job: two closed, three in parallel, calibrated ETA and progress bar.
+The deviation column is the mechanism, not a scorecard — each close's estimate-vs-actual corrects
+the next job's ETA ([provenance](docs/design.md#readme-asset-provenance)).*
 
 ## Quickstart
 
@@ -11,264 +19,109 @@ the next job's estimate. The statistics are computed outside the model.
 git clone --branch v0.8.2 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
-Cloning it straight into `~/.claude/skills/` is the whole install. Then say **"run with
-whendone"** when you kick off a long job — a plan execution, a 6+ subtask fan-out, anything
-you'd walk away from. Full install/update/uninstall details further down.
-
-<img src="assets/source-a-parallel-progress.png" width="440" alt="WhenDone progress artifact mid-run on a real 6-subtask job: two subtasks closed with actual-vs-estimate deviations, three executing in parallel (spinner icons), live ETA of −9/+8 minutes, progress bar, and per-task model and token counts">
-
-*The live artifact mid-run on a real 6-subtask job: two closed with their deviation against
-estimate, three running in parallel, calibrated ETA and progress bar. Every deviation shown
-is logged and sharpens the next job's estimate
-([image provenance](docs/design.md#readme-asset-provenance)).*
+That clone is the whole install. Then say **"run with whendone"** when you kick off a long job —
+a plan execution, a 6+ subtask fan-out, anything you'd walk away from.
 
 ## Do you need this?
 
-The strongest case: **you have to leave, and the job can't come with you.** Internal systems
-the cloud can't reach, a laptop that goes in the bag at a fixed time, a machine that must be
-shut down at the end of the day. WhenDone answers the two questions that situation actually
-poses — *how big is this job, and does it fit in the time I have left?* — with a calibrated
-finish-time ETA, not the model's own guess (which overshoots; see below). And if it doesn't
-fit, it stops the job cleanly at a subtask boundary, with state a later session resumes.
+The strongest case: **you have to leave, and the job can't come with you.** Internal systems the
+cloud can't reach, a laptop that goes in the bag at a fixed time, a machine shut down at end of
+day. WhenDone answers what that asks — *how big is this job, does it fit the time I have left?* —
+with a calibrated ETA, not the model's guess; and if it doesn't fit, it stops the job cleanly at
+a subtask boundary, resumably. Beyond that case:
 
-Useful beyond that case too:
+- **Job sizing** — calibrated per-category estimates show a job's size before it starts.
+- **Delegation transparency** — a per-subtask receipt of which model ran what, and what it cost.
+- **Time-boxing** — a graceful stop, or a hard end time declared up front (one dogfooded run).
+- **Walk-away visibility** — the live page opens on any device on your claude.ai account.
 
-- **Job sizing** — the declared plan with calibrated per-category estimates shows how big a
-  job actually is and how long to expect it to take, whether or not you walk away.
-- **Delegation transparency** — the task table records which model executed each subtask
-  (full version, e.g. "Haiku 4.5") and what it consumed in tokens, per subtask and per job.
-  If you tier work across models to protect quota, this is the after-the-fact receipt of
-  what the orchestrator actually chose for each type of work and what each piece cost —
-  attribution a session total can't give you.
-- **Time-boxing** — "stop after the current subtask", a `.claude/STOP` file, or an up-front
-  instruction like "don't start a new subtask after 16:45" (one dogfooded run so far — it's
-  the declared plan plus subtask-boundary discipline that makes such an instruction
-  followable).
-- **Walk-away visibility** — the live page opens on any device signed in to your claude.ai
-  account, phone included, and push notifications reach you via Remote Control.
-
-If you live in the terminal and never leave it, maybe not. A statusline (e.g. claude-hud) and
-`/workflows` already show you what's running, in the same window you're already watching —
-that's real, and for a lot of jobs it's enough. Three things a statusline can't give you: a
-*calibrated* finish-time ETA; a link that **leaves the machine** — open the live page from
-a VSCode extension, a desktop app, or your phone; and a per-subtask ledger of which model
-ran each subtask and what it consumed, in the same table as the estimates. If none of those
-matter to you, you probably don't need whendone.
-
-LLMs misjudge how long their own work will take — pre-task estimates overshoot actual duration
-by 4–7× across 68 tasks and four model families (Garikaparthi, ["Can LLMs Perceive Time? An
-Empirical Investigation"](https://arxiv.org/abs/2604.00010), arXiv:2604.00010). WhenDone closes
-that loop empirically: every finished subtask logs its raw estimate against its actual duration,
-per category, and a small stdlib Python script — not the model — turns that history into
-per-category correction factors for the next job's ETA.
-
-**Status:** v0.8.0 (2026-08-22), single author. **The core loop — declared estimates ×
-calibrated correction factors, marker-based closes, and self-widening intervals — was
-live-verified end-to-end by a 2026-08-22 dogfood run on a harness shipping no todo tool at
-all.** Every v0.5.0-and-earlier feature claim has its own recorded live run too, in
-[docs/test-log.md](docs/test-log.md) — macOS throughout, Windows verified 2026-08-13, and
-v0.5.0's time-attribution rework verified live on Windows 2026-08-15, on the machine where the
-bug it fixes was observed. What remains untested is listed in [Maturity](#maturity) below.
-
-## Three sources
-
-WhenDone attaches to a job in one of three ways, and which one it is decides whether the ETA is
-calibrated:
-
-| Source | What it is | ETA |
-|---|---|---|
-| **A** | Lead/subagent runs — a plan execution, a fan-out of subtasks | **Calibrated** — every finished subtask logs estimate vs. actual and corrects the next job |
-| **B** | Workflow-engine runs, declared at launch (re-verified live 2026-08-22) | **Calibrated** — the same estimate→actual→correction loop, task list known up front |
-| **C** | Plain solo / todo-list work — **requires a harness with a todo tool** (TodoWrite or TaskCreate/TaskUpdate); none found → a quick Source-A declaration instead | **Pace-based only** — visibly uncalibrated, and *never* calibrated: there's no per-subtask estimate to correct against |
-
-<img src="assets/source-b-progress.png" width="440" alt="WhenDone artifact mid-run on a Source B Workflow job: live ETA with an asymmetric −4/+9 min interval widened to measured spread, progress bar, two of three phases done with per-phase agent counts, and 8/9 workflow agents finished">
-
-*A Source B run mid-flight (the 2026-08-22 re-verification run itself): live ETA with an
-honest asymmetric interval, the progress bar, and per-phase agent counts
-([image provenance](docs/design.md#readme-asset-provenance)).*
+If you live in the terminal and never leave it, maybe not: a statusline (claude-hud) and
+`/workflows` already show what's running where you're looking. Three things they can't — a
+*calibrated* finish time, a link that **leaves the machine**, a per-subtask model/token ledger.
 
 ## What you get
 
-- **A progress artifact** — task table, actual vs. estimate per task, which model ran
-  each subtask (full version, e.g. "Sonnet 5" — live-verified by the 2026-08-22 dogfood run —
-  plus reasoning effort when explicitly set),
-  total ETA with an honest interval, and token consumption per task and per job. The same
-  account-scoped page throughout — one URL, republished at every subtask boundary. It's a
-  claude.ai page (listed in your `claude.ai/code/artifacts` gallery), so it's on your desktop
-  while you work and opens on any other device signed in to the same account — including your
-  phone (on iOS via the browser: the mobile app's Artifacts tab doesn't list Code artifacts
-  yet, so use the URL whendone posts in chat, or bookmark the gallery in Safari; on Android
-  the same browser route is expected but untested).
-- **Self-calibrating ETAs, honest cold start** — first runs use a frozen default table at
-  ±50 %; correction factors move from your first logged data point and carry the label
-  low/medium/high confidence as history accumulates. The interval ramps slower than the
-  point estimate: until a category reaches high confidence (20 logged subtasks), the band is
-  a flat nominal ±50/±30 % — widened to the measured spread once 5 data points exist, and
-  marked "(default band — little history)" in the artifact so you can tell a default band
-  from an earned one. Cold-start candor: for a category unlike the defaults (this repo's own
-  `testing` ran 0.28× its default), the first-run point estimate can be off severalfold and
-  the ±50 % band is a labeling convention, not a coverage guarantee — it tightens only as
-  your own history accrues. No manual tuning, no cloud: the log is a local JSONL, the
-  statistics are a 200-line stdlib script.
-- **Graceful stop/resume — including session death** — "stop after the current subtask" or a
-  `.claude/STOP` file stops cleanly; a crashed session resumes in a new one (interrupted
-  subtasks are excluded from calibration, never guessed).
-- **Token visibility** — output + fresh input vs. cache reads, measured from the session
-  transcript by a script, shown in the artifact. No dollar figures: subscribers don't pay per
-  token, so whendone won't pretend to know your bill.
-- **Push notifications via Remote Control** — run Claude Code with Remote Control and the
-  session mirrors to the Claude mobile app: whendone's pings (job done, job stopped, ETA
-  slipping past 150 %) reach your phone and the artifact link rides along in the mirrored
-  session. Best-effort — Claude decides when to push; needs the Claude app signed in with
-  `/config` push enabled. Alerts fire at subtask boundaries — a single hung subtask cannot
-  alert.
+- **A progress artifact** — one claude.ai page, republished at every subtask boundary.
+- **Self-calibrating ETAs, candid cold start** — factors move from your first logged data point.
+- **Stop and resume, session death included** — a killed session picks up in a new one.
+- **Token and model attribution per subtask** — read from the transcript by a script.
+- **Push notifications via Remote Control** — job done, job stopped, ETA slipping past 150 %.
 
-## Overhead — read this first if you pay per token or watch your quota
+The page carries the task table with actual vs. estimate, executor model, tokens per task and per
+job, and an ETA with an honest interval — no dollar figures, since subscribers don't pay per
+token. Interrupted subtasks are excluded from calibration rather than guessed. Notifications are
+best-effort and fire at subtask boundaries, so a single hung subtask cannot alert. Run one is a
+frozen default inside a nominal ±50 % band that can be off severalfold and is not yet a coverage
+guarantee ([what the first runs promise](docs/design.md#cold-start--what-the-first-runs-actually-promise)).
+Lead/subagent and Workflow-engine runs get the calibrated loop; plain todo-list work gets a
+visibly uncalibrated pace estimate and needs a harness with a todo tool.
 
-The mechanism IS context spend, so here is the short version: ~140 tokens every session,
-~12k as read when it fires, ~0.1–2k per subtask boundary, ~1k at job end. Worth it for jobs
-of **~6+ subtasks or ~30 minutes-plus** that you actually walk away from; the skill itself
-declines smaller jobs — the trigger cost alone is hard to amortize below that. The arithmetic:
-trigger-to-first-publish runs ≈12.5–12.7k as-read (table below) plus ~1.5–2k for the first
-write, ≈14k total before any subtask even closes; spread across 6 subtasks that's
-~2.3k/subtask — just above the top of the ~0.1–2k per-boundary range above. Fewer subtasks
-than that, and the fixed cost dominates before the job's own work can amortize it.
+## Usage
 
-| When | Cost |
-|---|---|
-| Every session, used or not | ~140-token trigger description |
-| When it triggers (incl. each resume session) | 11,054 cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 at the v0.8.0 release re-measure (was ≈10.9k/≈12.4–12.5k before Session C's user-facing copy additions). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
-| Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,331 tokens) / `source-c.md` (1,085) are read only once that source is detected |
-| Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](docs/test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
-| Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
-| Per resume (additionally) | + `references/resume.md` (≈1.6k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
-| After a compaction notice | One re-read of SKILL.md's Invariants section + the state file ≈ ~1–1.8k tokens; recurs only on a compaction notice, not on any fixed schedule |
-
-> **Tip:** Keep the artifact panel closed between checks if you're minding tokens. An open
-> panel makes the harness re-inject the rendered page HTML at every watcher wake (the "Per
-> watcher wake" row above); the phone/browser walk-away pattern this skill is built for
-> measured **zero** of those echoes in a controlled experiment.
-
-Rows marked measured are real `tiktoken` `cl100k_base` runs on this repo's actual files and
-real session transcripts; the rest are `char/4` proxies. All counts are cl100k — Claude's own
-tokenizer typically runs ~10–25 % higher on markdown/JSON like this. Full methodology,
-per-row provenance, and the measurement history:
-[docs/design.md](docs/design.md#appendix-trigger-figure-measurement-history).
-
-**What's excluded:** the model's own task-execution tokens — only whendone's bookkeeping is
-counted — and each wake's inference cost: a wake is one extra model turn whose full session
-context is re-read at cache-read rates. For API-key users that volume (roughly wakes ×
-context size) typically dominates whendone-attributable dollar cost; subscription users pay
-it in latency, not money. Statistics never run in the model — calibration summaries and
-accuracy reports come from the script.
-
-## Usage — say "run with whendone"
-
-- **"run with whendone"** / "run without whendone" — force it on or off for this job. Treat
-  the explicit phrase as the interface: bare mentions ("how long will this take?") have not
-  reliably auto-triggered the skill, while explicit plan-anchored invocation has worked every
-  time it's been tried — single recorded runs either way, not a proven rate
-  ([trigger retest](docs/test-log.md#post-rename-trigger-retest-whendone--2026-07-17)).
-- Run plan executions routinely? Add one line to your CLAUDE.md:
-  `When executing a plan of 6+ tasks, also invoke the whendone skill to monitor progress.`
-- **"stop after the current subtask"** — graceful stop (or create `.claude/STOP` in the
-  project root). For a hard end time, say it up front instead: "don't start a new subtask
-  after 16:45".
+- **"run with whendone"** / **"run without whendone"** — force it on or off for this job.
+- **"stop after the current subtask"** — or create `.claude/STOP` in the project root.
+- **"don't start a new subtask after 16:45"** — a hard end time, said up front.
 - **"resume the job"** — pick a paused or crashed job back up, new session included.
-- **"run without the artifact"** — chat-table-only mode: keep calibration logging and the
-  in-chat progress table, skip the claude.ai publish entirely. For NDA/confidential repos
-  where nothing should leave the machine, or you just don't want a gallery entry for this job.
-- Set-once, per project: create an empty `<project>/.claude/whendone-no-publish` marker file
-  (commit it to an NDA-repo template if you like) or put `"publish": false` in
-  `.claude/whendone-state.json` — every whendone job in that project then runs chat-table-only,
-  no per-session phrase needed. The artifact's gallery description is a fixed constant either
-  way, never job text.
+- **"run without the artifact"** — chat-table-only, nothing published.
 - **"how accurate is whendone?"** — a script-computed accuracy report from your own history.
 
-## What it touches
+The explicit phrase is the interface: bare hints ("how long will this take?") don't reliably
+trigger it. For routine plan runs, one CLAUDE.md line does it — `When executing a plan of 6+
+tasks, also invoke the whendone skill to monitor progress.` To skip publishing for a whole
+project, drop in an empty `<project>/.claude/whendone-no-publish` file or set
+`"publish": false` in the state file.
 
-| Data | Where it goes |
-|---|---|
-| Progress artifact (task names, timings, token counts, model names) | claude.ai — default-private, shareable by link; a shared link shows all future updates. Names that look like a person/client/secret get a best-effort model judgment call before first publish and when the task list changes — not a guarantee, so review before sharing a link. Hard off-switch: the `.claude/whendone-no-publish` marker or `"publish": false` (see Usage) — then nothing is published at all; the tailer still renders locally (0600) for the in-chat table. HTML-escaping applied in code by the render script. Housekeeping: each job adds one page to your gallery (there is no delete API, so whendone can't clean up for you); old WhenDone pages — findable by their fixed "WhenDone progress monitor" subtitle — are safe to delete from the artifact's own menu |
-| State file | `<project>/.claude/whendone-state.json` — gitignore enforced before first write |
-| Calibration log + summary | `~/.claude/whendone-data/` — never leaves your machine, survives skill updates |
-| Session transcript | read locally by the token script — usage numbers only, never content |
+## Privacy
 
-## Security
+One thing leaves your machine by default: the progress artifact (task names, timings, tokens,
+model names), published to claude.ai as a **default-private** page in your
+`claude.ai/code/artifacts` gallery. A shared link shows every future update, and the pre-publish
+check for person/client/secret-looking names is a best-effort model judgment call — review before
+sharing. Either off-switch stops publishing entirely (the `.claude/whendone-no-publish` marker, or
+`"publish": false`); the page then renders locally at 0600 for the in-chat table. Each job adds a
+gallery page and there is no delete API, so old pages — findable by their fixed "WhenDone progress
+monitor" subtitle — are yours to delete from the artifact's menu. Everything else stays local:
+state file in `<project>/.claude/` (gitignore enforced before first write), calibration log in
+`~/.claude/whendone-data/`, transcripts read for usage numbers, never content. The six scripts are
+stdlib-only with no network access, untrusted strings are data and HTML-escaped, and resuming a
+found state file needs your confirmation. Threat model:
+[docs/design.md](docs/design.md#safety-decisions).
 
-The six shipped scripts (`scripts/calibration_summary.py`, `scripts/token_usage.py`,
-`scripts/append_calibration.py`, `scripts/render_artifact.py`, `scripts/tail_progress.py`,
-`scripts/workflow_journal.py`) are stdlib-only Python with no
-network access — the only thing that leaves your machine is the artifact you can see. Untrusted
-strings (plan files, state files, log entries) are treated as data, never instructions, and are
-HTML-escaped before entering the published page. Resuming from a found
-state file requires your confirmation — a cloned repo can't silently start attacker-authored
-work. The statistics script whitelists categories and sanitizes every string it re-emits, so a
-poisoned log line can't plant instructions in the summary future sessions read. Install is
-pinned to a release tag; updating a skill means updating instructions your agent will follow —
-review the diff (see Update below). Full threat model: [docs/design.md](docs/design.md).
+## Overhead
 
-## Requirements
+The mechanism is context spend: ~140 tokens in every session whether or not it fires, ≈12–14k
+when it does, ~0.1–2k per subtask boundary, ~1k at job end. That amortizes at roughly **6+
+subtasks or 30+ minutes**, and the skill declines smaller jobs itself. Tip: keep the artifact
+panel closed between checks — an open panel makes the harness re-inject the rendered page at every
+watcher wake. Per-row figures, method, provenance:
+[docs/design.md](docs/design.md#appendix-overhead-figures-and-measurement-history).
 
-- Claude Code (CLI or desktop) signed in to claude.ai — the live artifact needs the Artifact
-  tool. API-key-only / Bedrock / Vertex setups: whendone degrades to a progress table in
-  chat. Cowork (Claude Code's collaborative/desktop-cloud mode) is expected to work but untested.
-- Python 3 (`python3`, `python`, or `py`) for calibration statistics, token display, and
-  artifact rendering. Without it these degrade off — whendone never does statistics in the model.
-- It does not work in claude.ai chat — there's no file system there.
-- No todo tool required for Source A — a lead-written `completed` marker in
-  `.claude/whendone-closes.jsonl` is always available as the close authority, on every
-  harness, and TodoWrite/TaskCreate/TaskUpdate, where present, are equivalent evidence for the
-  same close. Source C is the one mode that needs a todo tool (see Three sources above).
+## Requirements and first run
 
-## First run — what it will ask you
+Claude Code signed in to claude.ai (the live page needs the Artifact tool); API-key-only / Bedrock
+/ Vertex degrade to a chat table, Cowork is expected to work but untested, claude.ai chat can't
+work at all. Python 3 (`python3`, `python`, or `py`) for statistics, tokens and rendering —
+without it those degrade off, and whendone never does statistics in the model. No todo tool needed
+on the calibrated paths: a lead-written `completed` marker in `.claude/whendone-closes.jsonl` is
+always available as close authority.
 
-Expect these prompts the first time: creating `~/.claude/whendone-data/` (outside the
-project), adding the state file to your `.gitignore`, Bash `date` calls, a log append at each
-checkpoint, and the artifact publish to claude.ai. To pre-approve the recurring ones for
-unattended runs, be deliberate about what you allowlist in `.claude/settings.json`:
+First run asks about creating `~/.claude/whendone-data/`, the `.gitignore` line, `date` calls, a
+log append per checkpoint, and the publish. `Bash(date:*)` is fine to allowlist broadly. Do **not**
+allowlist `Bash(python3:*)` or `Bash(printf:*)`: either pre-approves arbitrary Python or shell
+execution in every project, far beyond whendone's six scripts. Scope it, e.g. `Bash(python3
+~/.claude/skills/whendone/scripts/*)` — and read the test suites beside those scripts first, short
+stdlib Python exercising the same code.
 
-- `Bash(date:*)` is low-risk and fine to allowlist broadly.
-- Do **not** allowlist `Bash(python3:*)` or `Bash(printf:*)`. Either pattern pre-approves
-  arbitrary Python (or arbitrary shell tricks via `printf`) execution for every tool call in
-  every project — far beyond whendone's own six scripts. Scope the rule to the exact path
-  instead, e.g. `Bash(python3 ~/.claude/skills/whendone/scripts/*)`.
-- Before approving even the scoped pattern, review what you're approving: the shipped test
-  suites (`python3 ~/.claude/skills/whendone/scripts/test_calibration_summary.py`,
-  `test_token_usage.py`, `test_append_calibration.py`, `test_render_artifact.py`,
-  `test_tail_progress.py`, `test_workflow_journal.py`) are stdlib
-  Python and quick to read — that's the review path for all six scripts, since the tests
-  exercise the same code.
+## Install, update, uninstall
 
-## Install
-
-```bash
-git clone --branch v0.8.2 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
-```
-
-Windows PowerShell:
+Install on Windows (PowerShell); macOS/Linux is the Quickstart line above:
 
 ```powershell
 git clone --branch v0.8.2 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
-**Windows:** verified live end-to-end twice. On 2026-08-13 (Windows 11, Python 3.13,
-fresh-clone install): declare-once watcher, artifact publish with live updates, per-task
-token accounting, calibration logging, full job-end sequence, and stale-lock recovery after
-a hard process kill — see the
-[test log](docs/test-log.md#windows-verification-pass--ci-matrix--live-dogfood--2026-08-13).
-Then on 2026-08-15, v0.5.0's time-attribution rework specifically, including watcher survival
-across deletion of the linked worktree the job was started from — see the
-[v0.5.0 entry](docs/test-log.md#windows-verification-of-the-v050-time-attribution-rework--2026-08-15).
-The full suite also runs on Linux/macOS/Windows in CI on every push. One known gap: the
-three symlink-containment tests skip on Windows without Developer Mode (the behavior they
-guard is POSIX-verified).
-
-## Update
-
-A skill update is an instruction update for your agent — look before you merge. Update tag to
-tag, never against `origin/main`: a moving branch can carry unreviewed work-in-progress commits
-you'd otherwise merge sight unseen.
+A skill update is an instruction update for your agent: update tag to tag and read the diff, never
+against `origin/main`. Calibration data lives outside the skill dir and survives untouched.
 
 ```bash
 cd ~/.claude/skills/whendone
@@ -278,9 +131,8 @@ git diff HEAD v0.x.y -- SKILL.md scripts/
 git merge v0.x.y   # when the diff looks right, using the new release's actual tag name
 ```
 
-Calibration data lives outside the skill directory and survives updates untouched.
-
-## Uninstall
+Uninstall removes four things (published artifacts stay in your claude.ai gallery — delete those
+there yourself):
 
 ```bash
 rm -rf ~/.claude/skills/whendone       # the skill itself
@@ -289,8 +141,6 @@ rm <project>/.claude/whendone-state.json  # this project's job state, if present
 rm <project>/.claude/whendone-tail.lock   # the watcher's single-instance lock, if present
 ```
 
-Windows PowerShell equivalents:
-
 ```powershell
 Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\skills\whendone"
 Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\whendone-data"
@@ -298,104 +148,30 @@ Remove-Item "<project>\.claude\whendone-state.json"
 Remove-Item "<project>\.claude\whendone-tail.lock"
 ```
 
-None of this touches claude.ai: any progress artifact you published stays in your
-`claude.ai/code/artifacts` gallery after uninstall, still reachable by anyone holding a shared
-link. Delete it there yourself if you want it gone.
+## Status & maturity
 
-## Maturity
+Single-author side project; issues welcome, best-effort, no SLA. Dogfooded live on macOS and
+Windows under Claude Code in the Claude Desktop app and the VSCode extension (macOS); the plain
+terminal CLI runs the same engine and should behave identically, but has no recorded interactive
+run. A 445-test suite runs on Linux, macOS and Windows in CI on every push (three symlink tests
+skip on Windows without Developer Mode). Untested: resume from a fresh clone at the tag (both
+drills ran in a dev tree), Cowork, the Android browser route, other Claude Code builds. Evidence
+per run: [test-log](docs/test-log.md); rationale and threat model: [design](docs/design.md);
+releases: [CHANGELOG](CHANGELOG.md).
 
-v0.8.0 (2026-08-22), single author, tested against Claude Code CLI 2.1.209 (the exact
-environment recorded for every test run in [docs/test-log.md](docs/test-log.md)); other
-versions are untested, not necessarily unsupported. Since 2026-08-13 the full test suite
-runs in CI on Linux, macOS, and Windows on every push. v0.5.0 and v0.6.0 were merged
-(2026-08-15 and 2026-08-16) but never tagged, and v0.7.0 shipped untagged the same morning
-v0.8.0 was built — v0.8.0 is the first git tag since v0.4.0.
+## Alternatives & credits
 
-**v0.6.0's background-dispatch rework and v0.7.0's close-authority rework were live-verified
-on macOS by a 2026-08-22 dogfood run** — a real 10-subtask Source-A job on a harness shipping
-no todo tool at all (the exact environment the bug this release fixes reproduces in):
-confirmed marker-based closes mid-run, versioned executor model names, per-task actuals
-against estimate with the delegated/lead split, a live ETA — 46-minute headline estimate —
-whose interval tightened to ±13 minutes as the job progressed, and calibration rows logged
-from it. The 445-test suite plus the CI matrix back that up. The Windows re-run of the same
-two reworks is still open, tracked in the maintainer's local verification checklist.
-
-**v0.5.0's live evidence is Windows-only, Source A only.** The time-attribution rework —
-todo-transition close authority, `unconfirmed` display closes, the delegated-span split, the
-`idle`/`publishLag` wakes — was dogfooded end-to-end on Windows on 2026-08-15
-([test-log](docs/test-log.md#windows-verification-of-the-v050-time-attribution-rework--2026-08-15)),
-which is also the first Windows execution of two of its code paths (`os.path.normcase`
-artifact matching, the `OpenProcess` liveness probe — both no-ops or unused on macOS). On
-macOS it has the unit suite and the CI matrix only. The Source B and Source C runs recorded
-below predate it; both were deliberately excluded from the new `idle`/`publishLag` behavior,
-but neither has been re-dogfooded against this release.
-
-All three job sources were dogfooded live end-to-end (v0.3.1/v0.4.0 code; Source A again
-under v0.5.0, per the Windows entry above):
-
-- **Source A** — lead/subagent runs: live tailer/watcher run, render/publish/calibration
-  end-to-end ([test-log](docs/test-log.md#stage-3--source-a-tailerwatcher-dogfood--monitoring-run--2026-07-18)).
-- **Source B** — Workflow-engine runs: a live Workflow run monitored end-to-end
-  ([test-log](docs/test-log.md#stage-4--source-b-workflow-engine-dogfood--live-monitor-monitoring-run--2026-07-18)).
-- **Source C** — plain solo / todo-list work (TodoWrite or the newer TaskCreate/TaskUpdate
-  task tools — both observed): pace-only live dogfood
-  ([test-log](docs/test-log.md#stage-5--source-c-pace-only-live-dogfood--2026-07-19)).
-
-Both cross-session resume drills were run live on 2026-07-19 — a session killed mid-job and
-resumed fresh, once per calibrated source — and each found and fixed a real bug (a local-time
-display bug; a killed Workflow run's leftover record falsely finalizing a job) — see
-[docs/test-log.md](docs/test-log.md). What remains untested: a resume from a fresh clone at
-the tag (both drills ran in the dev tree, where the installed skill dir is a symlink to this
-repo). The 6-subtask run behind the hero image also used the dev tree (a symlink install on
-another project, not a fresh clone at the tag); the image is a manual capture of its live
-page ([image provenance](docs/design.md#readme-asset-provenance)). Design rationale
-and threat model in [docs/design.md](docs/design.md).
-
-Windows was verified live on 2026-08-13 (Windows 11, Python 3.13): a real 8-subtask Source-A
-job run from a fresh-clone install — watcher, artifact updates at every boundary, per-task
-token accounting, cold-start calibration, full job-end sequence — plus a stale-lock recovery
-drill (the job's own watcher hard-killed mid-run; the relaunch took over the stale lock
-cleanly). That drill exercised a real Windows-only bug CI's first run had caught the same day
-(`os.kill(pid, 0)` is a console Ctrl-C on Windows, not a liveness probe — fixed with an
-`OpenProcess` check). Sources B and C are macOS-verified only; the three symlink-containment
-tests skip on Windows without Developer Mode
-([test log](docs/test-log.md#windows-verification-pass--ci-matrix--live-dogfood--2026-08-13)).
-
-## How the calibration works
-
-Raw estimates come from a frozen default table FIRST; only then is the per-category correction
-factor applied — that ordering means the estimate never sees the factor (anchoring
-protection). Completed subtasks feed a 20 %-winsorized mean of actual/estimate ratios per
-category, shrunk toward 1.0 by `(n·observed + 5)/(n + 5)` — factors move from the first data
-point, converge to your observed reality, and never jump. Parallel subtasks are never pooled
-(overlapping wall-clock lies); each parallel group logs one synthetic row that validates the
-max-of-group ETA rule instead. Full rationale: [docs/design.md](docs/design.md).
-
-## Alternatives
-
-[pocket-watch](https://github.com/MiguelDotL/pocket-watch) calibrates conversational estimates
-via hooks (Bayesian per-category correction) but scopes itself to interactive sessions and
-doesn't monitor runs; [claude-code-time-estimator](https://github.com/arte-ermel/claude-code-time-estimator)
-closes a loop deterministically but manually — you type in the actual time, and the correction
-factor is global, not per-category; [task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar)
-renders a terminal bar without recording estimates; [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
-estimates in tool-call rounds without logging actuals. Usage dashboards show telemetry, not
-task ETAs. None of them close the estimate→actual→correction loop **automatically for
-unattended agent runs** — that gap is why whendone exists
-([anthropics/claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)).
-
-## Credits
-
-Ideas adapted from three MIT-licensed projects: [pocket-watch](https://github.com/MiguelDotL/pocket-watch)
-(shrinkage-toward-prior, anchoring protection), [task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar)
-(compute outside the model), [agent-estimation](https://github.com/ZhangHanDong/agent-estimation)
-(max-of-parallel-group ETA). WhenDone deviates deliberately where noted in
+[pocket-watch](https://github.com/MiguelDotL/pocket-watch) calibrates conversational estimates,
+interactive sessions only; [claude-code-time-estimator](https://github.com/arte-ermel/claude-code-time-estimator)
+closes the loop manually with one global factor;
+[task-progress-bar](https://github.com/PRAFULREDDYM/task-progress-bar) renders a bar without
+recording estimates; [agent-estimation](https://github.com/ZhangHanDong/agent-estimation) counts
+tool-call rounds without logging actuals. None close the estimate→actual→correction loop
+automatically for unattended runs — that gap is why whendone exists
+([claude-code#24666](https://github.com/anthropics/claude-code/issues/24666)). Ideas adapted from
+pocket-watch (shrinkage toward prior, anchoring protection), task-progress-bar (compute outside the
+model) and agent-estimation (max-of-parallel-group ETA), all MIT; deviations in
 [docs/design.md](docs/design.md).
-
-## Project status
-
-Single-author side project — issues welcome, best-effort response, no SLA. See
-[CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

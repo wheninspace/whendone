@@ -114,6 +114,28 @@ Mirrors the docstring in `scripts/calibration_summary.py`:
   factor is read; a table that showed both columns side by side would let that ordering be
   shortcut by reading one file instead of two.
 
+### Cold start — what the first runs actually promise
+
+Relocated from the README on 2026-08-24 (the README keeps the one-line version and links here).
+
+A fresh install has no history, so run one's numbers come entirely from the frozen default table
+in SKILL.md, displayed inside a flat nominal band — ±50 %, or ±30 % where the table is tighter —
+marked "(default band — little history)" in the artifact so a default band stays distinguishable
+from an earned one. The band widens to the category's measured spread once 5 data points exist,
+and only reaches high confidence at 20 (same `n` thresholds as the confidence labels above). Two
+honest consequences:
+
+- **The point estimate can be off severalfold on run one** for a category unlike the defaults —
+  this repo's own `testing` work ran 0.28× its default estimate.
+- **The default band is a labeling convention, not a coverage guarantee.** Nothing has been
+  measured yet, so ±50 % describes the display, not observed dispersion; it becomes a real
+  interval only as your own history accrues.
+
+The correction factors themselves move from the first logged data point (continuous shrinkage,
+above), so the loop starts working immediately even while the interval is still nominal. No
+manual tuning and no cloud is involved: the log is a local JSONL and the statistics are a
+~200-line stdlib script.
+
 ## Anchoring protection
 
 The raw estimate must be produced before the category factor is read, not after. If the model
@@ -212,11 +234,13 @@ proves misleading in practice.
 The README's hero image (`assets/source-a-parallel-progress.png`; hero since v0.8.3, in the
 README since v0.8.2) is a manually captured screenshot of the live artifact mid-run during
 the Source A external verification run (jobId 20260823T1904 on train-puzzle, 2026-08-23
-19:14 — the D4 release-gate run; state, closes, and verification NOTE archived in the
-maintainer's local run-evidence directory). It was captured on the v0.8.1 renderer, before
-that run's own layout feedback landed (v0.8.2: right-aligned Est column, full-size
-orchestration value, "total agent time" label) — the content is real; the column alignment
-differs slightly from the current renderer. Chosen as hero for being short enough to not
+19:14 — the D4 release-gate run, recorded in
+[docs/test-log.md](test-log.md#source-a-external-release-gate-d4--6-subtask-run-on-another-repo--2026-08-23);
+state, closes, and verification NOTE archived in the maintainer's local run-evidence
+directory; that run used the dev tree, not a fresh clone at the tag). It was captured on the
+v0.8.1 renderer, before that run's own layout feedback landed (v0.8.2: right-aligned Est
+column, full-size orchestration value, "total agent time" label) — the content is real; the
+column alignment differs slightly from the current renderer. Chosen as hero for being short enough to not
 push the fold and for showing the live mechanism (parallel subtasks in flight, deviations
 logged, ETA + bar); the owner intends to re-capture when a run with tighter calibrated
 estimates comes along.
@@ -506,14 +530,53 @@ cost near zero:
    must describe the tool the install line delivers. Tags are free; drift is not. Published
    tags still never move.
 
-## Appendix: trigger-figure measurement history
+## Appendix: overhead figures and measurement history
 
-The README's Overhead table is the single current-state home for the trigger-path token figure
-(P10) — read the number there, not here. This appendix instead records how that number moved
-across the measurements that produced it, for anyone auditing the trend rather than just the
-current value.
+This appendix is the single current-state home for whendone's own context cost (P10 — moved
+here from the README's Overhead table on 2026-08-24, when the README was cut back to the
+headline figures and a link). The README states the headline; the per-row detail, provenance,
+and the measurement trend live here.
 
-Fifteen movements, each under an identical raw `tiktoken cl100k_base` sum unless noted:
+### Current figures
+
+| When | Cost |
+|---|---|
+| Every session, used or not | ~140-token trigger description |
+| When it triggers (incl. each resume session) | 11,054 cl100k tokens raw, ≈12.5–12.7k as read with Read-tool line prefixes — measured 2026-08-22 at the v0.8.0 release re-measure (was ≈10.9k/≈12.4–12.5k before Session C's user-facing copy additions). Covers SKILL.md, the three Source-A reference files, and the calibration-summary allowance; add ~1.5–2k for the first artifact/state writes |
+| Source-B / Source-C addition | ~0 marginal at trigger — `source-b.md` (2,331 tokens) / `source-c.md` (1,085) are read only once that source is detected |
+| Per watcher wake | One compact event line, **~54–341 tokens, median ~120** (measured across six real runs). When the harness re-injects the published artifact into context — in practice, when you keep the artifact panel open in the IDE — add an echo of the page HTML: ~0.6–0.8k on small jobs, ~1.7–2.0k on a 13-task job. The walk-away scenario whendone is built for (phone/browser viewing, nothing open locally) measured **zero** echoes in a controlled run — mechanism pinned by experiment, [test-log](test-log.md#per-wake-re-injection-mechanism--forensics--controlled-experiment-2026-07-19) |
+| Job end | ~0.8–1k tokens (final publish + full-table token script + calibration regen), scaling mildly with task count |
+| Per resume (additionally) | + `references/resume.md` (≈1.6k tokens, read ONLY when resuming) + ~0.9–1.5k artifact rebuild. Deliberate trade: the rare resume path pays a little extra so every non-resume trigger stays slim |
+| After a compaction notice | One re-read of SKILL.md's Invariants section + the state file ≈ ~1–1.8k tokens; recurs only on a compaction notice, not on any fixed schedule |
+
+**Where the ~6-subtask / ~30-minute threshold comes from:** trigger-to-first-publish runs
+≈12.5–12.7k as-read plus ~1.5–2k for the first write — ≈14k before any subtask closes. Spread
+across 6 subtasks that is ~2.3k/subtask, just above the top of the ~0.1–2k per-boundary range.
+Below that, the fixed cost dominates before the job's own work can amortize it, which is why
+the skill declines smaller jobs itself.
+
+**Method:** rows marked measured are real `tiktoken` `cl100k_base` runs on this repo's actual
+files and real session transcripts; the rest are `char/4` proxies. All counts are cl100k —
+Claude's own tokenizer typically runs ~10–25 % higher on markdown/JSON like this.
+
+**What's excluded:** the model's own task-execution tokens — only whendone's bookkeeping is
+counted — and each wake's inference cost: a wake is one extra model turn whose full session
+context is re-read at cache-read rates. For API-key users that volume (roughly wakes ×
+context size) typically dominates whendone-attributable dollar cost; subscription users pay it
+in latency, not money. Statistics never run in the model — calibration summaries and accuracy
+reports come from the script.
+
+**Operational tip (the README carries the one-line version):** keep the artifact panel closed
+between checks if you are minding tokens. An open panel makes the harness re-inject the
+rendered page HTML at every watcher wake (the "Per watcher wake" row above); the phone/browser
+walk-away pattern this skill is built for measured **zero** of those echoes in a controlled
+experiment.
+
+### Measurement history
+
+How the trigger figure moved across the measurements that produced it, for anyone auditing the
+trend rather than the current value. Sixteen movements, each under an identical raw
+`tiktoken cl100k_base` sum unless noted:
 
 1. Between the stage-5 release (12,313) and the next pass, on-path commits (local-time policy,
    renderer display overhaul) grew `file-formats.md` and `artifact-template.md`, taking the
@@ -629,30 +692,31 @@ Fifteen movements, each under an identical raw `tiktoken cl100k_base` sum unless
     artifact-template.md 651 → 644 [−7] + calibration-summary allowance 826 unchanged), ≈12,387–
     12,522 as-read (452 on-path reference lines × 3.3–3.6, thirteen fewer than movement 13) —
     161 tokens of headroom under the Session B exit criterion (11,056 raw, movement 12's value),
-    1,478–1,613 to spare under the 14,000 as-read budget. This pass also re-stamped the README
-    Overhead table and converted design.md's own current-state statements (this appendix's
-    overview and its Method note below) to point at that stamp instead of restating it, per P10.
+    1,478–1,613 to spare under the 14,000 as-read budget. This pass also re-stamped the
+    then-current README Overhead table (relocated to Current figures above on 2026-08-24) and
+    converted design.md's own current-state statements to point at that single stamp instead
+    of restating it, per P10.
 15. **Task C3 (2026-08-22, P13 — five prescribed user-facing say-so sentences)** added four
     verbatim sentences to `references/source-a.md` (watcher-demotion, L1-relaunch,
     ownership-lost, no-todo-tool marker note) and one to `SKILL.md` (artifact-tool-absent):
     +136 → 11,031 raw (SKILL.md 3,175 → 3,200 [+25] + source-a.md 2,907 → 3,018 [+111] +
     file-formats.md 3,343 unchanged + artifact-template.md 644 unchanged + calibration-summary
-    allowance 826 unchanged) — 25 tokens under the 11,056 ceiling. See the README Overhead
-    table (P10's single current-state home) for the as-read figure this movement produced,
-    rather than a range restated here.
+    allowance 826 unchanged) — 25 tokens under the 11,056 ceiling. See Current figures above
+    (P10's single current-state home) for the as-read figure this movement produced, rather
+    than a range restated here.
 16. **v0.8.0 release polish (2026-08-22, two small waves):** the final-review fix wave
     (P4 false-positive fix, softened topology claim, P10 restamp) added +11 to
     `references/source-a.md` (3,018 → 3,029), and Session D's interpreter-fallback robustness
     wording (fallback on failure, not only absence — Windows Store `python3` stub) added +12
     (SKILL.md 3,200 → 3,202 [+2] + source-a.md 3,029 → 3,039 [+10]): 11,031 → 11,054 raw
     (file-formats.md 3,343, artifact-template.md 644, calibration-summary allowance 826 all
-    unchanged) — 2 tokens under the 11,056 ceiling. Current as-read figure: README Overhead
-    table.
+    unchanged) — 2 tokens under the 11,056 ceiling. Current as-read figure: Current figures
+    above.
 
 **Method note (for reproduction):** the figures above are a raw token sum of the file contents
 on the trigger path (no Read-tool line-number prefixes) plus the calibration-summary output;
 reconstructing the stage-5 commit this way reads 12,385 vs the 12,313 recorded at the time — a
 ~0.6% additive reconstruction variance that cancels out in the 913-token delta between
-movements 1 and 2. Current headroom against the 14,000 as-read budget: see the README Overhead
-table (P10's single current-state home) rather than a number restated here — movement 15 above
+movements 1 and 2. Current headroom against the 14,000 as-read budget: see Current figures
+above (P10's single current-state home) rather than a number restated here — movement 15 above
 records the pass that produced it.
