@@ -16,7 +16,7 @@ the next job's ETA ([provenance](docs/design.md#readme-asset-provenance)).*
 ## Quickstart
 
 ```bash
-git clone --branch v0.8.3 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
+git clone --branch v0.8.4 --depth 1 https://github.com/WhenInSpace/whendone ~/.claude/skills/whendone
 ```
 
 That clone is the whole install. Then say **"run with whendone"** when you kick off a long job —
@@ -124,7 +124,7 @@ stdlib Python exercising the same code.
 Install on Windows (PowerShell); macOS/Linux is the Quickstart line above:
 
 ```powershell
-git clone --branch v0.8.3 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
+git clone --branch v0.8.4 --depth 1 https://github.com/WhenInSpace/whendone "$env:USERPROFILE\.claude\skills\whendone"
 ```
 
 A skill update is an instruction update for your agent: update tag to tag and read the diff, never
