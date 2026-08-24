@@ -56,6 +56,12 @@ guarantee ([what the first runs promise](docs/design.md#cold-start--what-the-fir
 Lead/subagent and Workflow-engine runs get the calibrated loop; plain todo-list work gets a
 visibly uncalibrated pace estimate and needs a harness with a todo tool.
 
+<img src="assets/source-b-progress.png" width="440" alt="WhenDone artifact mid-run on a Workflow-engine job: live ETA with an asymmetric −4/+9 min interval widened to measured spread, progress bar, two of three phases done with per-phase agent counts, and 8/9 workflow agents finished">
+
+*A Workflow-engine run mid-flight (the 2026-08-22 re-verification run itself): live ETA with an
+honest asymmetric interval — widened to the measured spread, not a fixed band — and per-phase
+agent counts ([provenance](docs/design.md#readme-asset-provenance)).*
+
 ## Usage
 
 - **"run with whendone"** / **"run without whendone"** — force it on or off for this job.
