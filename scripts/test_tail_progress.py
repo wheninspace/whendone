@@ -130,6 +130,18 @@ def resume_result_entry(ts, tool_id, agent_id):
                                          "resumedAgentId": agent_id})}]}}
 
 
+def handback_entry(ts, agent_id):
+    """Opus 5.5+ SubagentHandback delivery (issue #1). The body is prose the
+    tailer must never read -- the sentinel lets tests prove it."""
+    return {"type": "user", "timestamp": ts,
+            "origin": {"kind": "peer", "from": agent_id, "senderTaskId": agent_id,
+                       "handback": True, "body": "SENTINEL-REPORT-PROSE"},
+            "message": {"role": "user", "content":
+                        "Another Claude session sent a message:\n"
+                        '<agent-message from="%s">\n[Subagent hand-back] '
+                        "SENTINEL-REPORT-PROSE</agent-message>" % agent_id}}
+
+
 def item(content, status):
     return {"content": content, "status": status, "activeForm": content}
 
@@ -1019,6 +1031,77 @@ class AgentResumeObserveTest(unittest.TestCase):
             enqueue_entry(T3, notif_body("a-1", "tu-2")),
         ]), self.IDX)[1]
         self.assertEqual(o["spans"], [(iso(T1), iso(T2)), (iso(self.R1), iso(T3))])
+
+
+class HandbackObserveTest(unittest.TestCase):
+    """Issue #1: the hand-back is the agent's true finish (1-8 s before its
+    notification). It closes an open round; it never extends one."""
+    IDX = {"alpha": 1}
+    ACK = "2026-07-18T10:05:01.000Z"
+    HB = "2026-07-18T10:12:00.000Z"
+    NOTIF = "2026-07-18T10:12:02.000Z"
+
+    def _ev(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
+
+    def _launch(self):
+        return [dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                long_ack_result_entry(self.ACK, "tu-1", "a-1")]
+
+    def test_handback_payload_is_metadata_only(self):
+        ev = self._ev([handback_entry(self.HB, "a-1")])
+        self.assertEqual([p for _, _, p in ev],
+                         [{"tool_use_id": None, "agent_id": "a-1", "handback": True}])
+        self.assertNotIn("SENTINEL", repr(ev))
+
+    def test_handback_closes_and_paired_notification_does_not_extend(self):
+        o = tp.observe(self._ev(self._launch() + [
+            handback_entry(self.HB, "a-1"),
+            enqueue_entry(self.NOTIF, notif_body("a-1", "tu-1")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(self.HB))])
+        self.assertEqual(o["open"], 0)
+
+    def test_late_round1_notification_does_not_close_round2(self):
+        """Review Focus 1: the lead resumes inside the hand-back -> notification gap."""
+        o = tp.observe(self._ev(self._launch() + [
+            handback_entry(self.HB, "a-1"),
+            sendmessage_entry("2026-07-18T10:12:00.500Z", "tu-2", "a-1"),
+            resume_result_entry("2026-07-18T10:12:01.000Z", "tu-2", "a-1"),
+            enqueue_entry(self.NOTIF, notif_body("a-1", "tu-1")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)                       # round 2 still running
+        self.assertEqual(o["spans"], [(iso(T1), iso(self.HB))])
+
+    def test_second_round_closes_on_its_own_handback(self):
+        o = tp.observe(self._ev(self._launch() + [
+            handback_entry(self.HB, "a-1"),
+            enqueue_entry(self.NOTIF, notif_body("a-1", "tu-1")),
+            sendmessage_entry("2026-07-18T10:14:00.000Z", "tu-2", "a-1"),
+            resume_result_entry("2026-07-18T10:14:01.000Z", "tu-2", "a-1"),
+            handback_entry(T3, "a-1"),
+            enqueue_entry("2026-07-18T10:20:02.000Z", notif_body("a-1", "tu-2")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(self.HB)),
+                                      (iso("2026-07-18T10:14:00.000Z"), iso(T3))])
+        self.assertEqual(o["open"], 0)
+
+    def test_handback_from_unknown_sender_is_ignored(self):
+        o = tp.observe(self._ev(self._launch() + [handback_entry(self.HB, "a-stranger")]),
+                       self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+        self.assertEqual(o["spans"], [])
+
+    def test_handback_after_notification_does_not_extend(self):
+        o = tp.observe(self._ev(self._launch() + [
+            enqueue_entry(self.HB, notif_body("a-1", "tu-1")),
+            handback_entry(self.NOTIF, "a-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(self.HB))])
 
 
 class SourceCObserveUnitTest(unittest.TestCase):

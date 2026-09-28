@@ -117,6 +117,17 @@ def extract_events(paths, aux_paths=()):
                             continue
                         content = (e.get("message") or {}).get("content")
                         if etype == "user" and isinstance(content, str):
+                            # Issue #1 (Opus 5.5+ SubagentHandback): origin METADATA
+                            # only -- origin.body and the message text are report
+                            # prose and are never read.
+                            origin = e.get("origin")
+                            if isinstance(origin, dict) and origin.get("kind") == "peer" \
+                                    and origin.get("handback") is True \
+                                    and isinstance(origin.get("from"), str) and origin["from"]:
+                                events.append((ts, "agent-done", {
+                                    "tool_use_id": None, "agent_id": origin["from"],
+                                    "handback": True}))
+                                continue
                             ev = _notification_event(content, "user")
                             if ev:
                                 events.append((ts, "agent-done", ev))
@@ -419,9 +430,16 @@ def observe(events, idx):
     SendMessage's tool_use id (which its notification carries). Anything else
     a SendMessage does opens nothing -- fewer spans, never wrong ones.
     `closed` remembers which slot/span index a tool_use id closed so a legacy
-    repeat notification (same id, no visible resume) extends that span's end."""
+    repeat notification (same id, no visible resume) extends that span's end.
+
+    A hand-back (Opus 5.5+) resolves by agentId, not tool_use id: it closes
+    the agent's open round at its true finish (1-8 s before the notification)
+    and its paired notification -- same round, same tool_use id -- is then
+    consumed without extending the span. Notifications always resolve by
+    tool_use id, never by agent, so a round-1 notification that lands after
+    the lead already sent a fix round cannot close round 2."""
     obs, dispatch_open, closed = {}, {}, {}
-    agent_task, agent_open, pending_msg = {}, {}, {}
+    agent_task, agent_open, pending_msg, handback_closed = {}, {}, {}, set()
 
     def slot(nr):
         return obs.setdefault(nr, {"startedAt": None, "todoFinishedAt": None,
@@ -492,9 +510,18 @@ def observe(events, idx):
                     slot(nr)["open"] += 1
         elif kind == "agent-done":
             tid, aid = payload.get("tool_use_id"), payload.get("agent_id")
-            if tid in dispatch_open:
+            if tid is None:
+                # hand-back: agent-keyed; closes the agent's open round at its
+                # true finish and never extends a closed one
+                otid = agent_open.get(aid)
+                if otid in dispatch_open:
+                    close(otid, ts, aid)
+                    handback_closed.add(otid)
+            elif tid in dispatch_open:
                 close(tid, ts, aid)
-            elif tid in closed:                     # repeat notification: extend, last wins
+            elif tid in handback_closed:
+                handback_closed.discard(tid)        # the hand-back's own notification
+            elif tid in closed:                     # legacy repeat: extend, last wins
                 nr, i = closed[tid]
                 start, end = obs[nr]["spans"][i]
                 if ts > token_usage.parse_ts(end):
