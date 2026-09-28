@@ -50,6 +50,9 @@ MARKER_MISSING_MIN = 3
 _ORDINAL = re.compile(r"^\s*(?:task\s+)?\d+\s*[.):]\s*", re.IGNORECASE)
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
 _NOTIF_TASK_RE = re.compile(r"<task-id>\s*([^<\s]+)\s*</task-id>")
+_AGENT_ID_RE = re.compile(r"\bagentId:\s*([A-Za-z0-9_-]+)")
+_RESUMED_RE = re.compile(r'"resumedAgentId"\s*:\s*"([A-Za-z0-9_-]+)"')
+RESUMED_SCAN_CHARS = 500
 _ACK_RE = re.compile(r"^\s*Async agent launched\b")
 
 
@@ -146,6 +149,12 @@ def extract_events(paths, aux_paths=()):
                                         "description": inp.get("description"),
                                         "model": inp.get("model") if isinstance(inp.get("model"), str) else None,
                                         "background": bool(inp.get("run_in_background"))}))
+                                elif b.get("name") == "SendMessage":
+                                    # Issue #1: a fix round resumes an agent via
+                                    # SendMessage; only the tool_use id is kept --
+                                    # the result's resumedAgentId decides whether
+                                    # it was a resume at all.
+                                    events.append((ts, "sendmessage", {"id": b.get("id")}))
                                 elif b.get("name") == "Artifact":
                                     # D4: the model's OWN publish action -- evidence for the
                                     # publishLag backstop, never acted on as an instruction.
@@ -156,9 +165,12 @@ def extract_events(paths, aux_paths=()):
                         elif etype == "user":
                             for b in content:
                                 if isinstance(b, dict) and b.get("type") == "tool_result":
-                                    events.append((ts, "result",
-                                                   {"tool_use_id": b.get("tool_use_id"),
-                                                    "text": _result_text(b.get("content"))}))
+                                    full = _result_text(b.get("content"), limit=None)
+                                    events.append((ts, "result", {
+                                        "tool_use_id": b.get("tool_use_id"),
+                                        "text": full[:120],
+                                        "agent_id": _ack_agent_id(full),
+                                        "resumed_agent_id": _resumed_agent_id(full)}))
                     except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
                         continue
         except OSError:
@@ -183,14 +195,37 @@ def extract_events(paths, aux_paths=()):
     return synthesize_task_snapshots(_dedupe_channels(events)), last_ts
 
 
-def _result_text(content):
+def _result_text(content, limit=120):
     """tool_result content is a string or a list of blocks; anything else is ''.
-    Truncated — only the leading 'Task #<id> created ...' line is ever consumed."""
+    Truncated to `limit` chars; limit=None returns the full text, which callers
+    use only transiently (ack agentId, resumedAgentId) and never store -- only
+    the leading 'Task #<id> created ...' line and the ack prefix are kept."""
     if isinstance(content, list):
         content = " ".join(p.get("text") for p in content
                            if isinstance(p, dict) and p.get("type") == "text"
                            and isinstance(p.get("text"), str))
-    return content[:120] if isinstance(content, str) else ""
+    if not isinstance(content, str):
+        return ""
+    return content if limit is None else content[:limit]
+
+
+def _ack_agent_id(text):
+    """agentId from a background launch ack. Real acks are ~9.7k chars with the
+    id near char 2,600, past the stored prefix. Only a result that STARTS like
+    an ack (_ACK_RE is anchored) can bind, so a report that merely mentions
+    'agentId:' never does."""
+    if not _ACK_RE.search(text):
+        return None
+    m = _AGENT_ID_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _resumed_agent_id(text):
+    """resumedAgentId from a SendMessage resume result (short JSON). Scanned in
+    the first RESUMED_SCAN_CHARS only, so long tool results cost nothing;
+    observe() honours it only for a pending SendMessage tool_use id."""
+    m = _RESUMED_RE.search(text[:RESUMED_SCAN_CHARS])
+    return m.group(1) if m else None
 
 
 def _notification_event(content, channel):
@@ -375,17 +410,35 @@ def observe(events, idx):
     the agent's finish — recognized either by the dispatch's own
     `run_in_background` flag or, flag-less, by the ack text itself
     (`_ACK_RE`). Such a result never closes the span; only a later
-    `agent-done` event (parsed from a `<task-notification>` transcript
-    entry, same tool_use id) does. `closed` remembers which slot/span index
-    a tool_use id closed so a repeat notification (resume) can extend that
-    span's end instead of opening a new one."""
+    `agent-done` event (a `<task-notification>`, same tool_use id) does.
+
+    Issue #1: the ack's agentId binds agent -> task (`agent_task`) and marks
+    the open round (`agent_open`: agentId -> open tool_use id). A SendMessage
+    whose result carries `resumedAgentId` for a bound agent with no open round
+    is a fix round: it opens a NEW span on the same task, keyed by the
+    SendMessage's tool_use id (which its notification carries). Anything else
+    a SendMessage does opens nothing -- fewer spans, never wrong ones.
+    `closed` remembers which slot/span index a tool_use id closed so a legacy
+    repeat notification (same id, no visible resume) extends that span's end."""
     obs, dispatch_open, closed = {}, {}, {}
+    agent_task, agent_open, pending_msg = {}, {}, {}
 
     def slot(nr):
         return obs.setdefault(nr, {"startedAt": None, "todoFinishedAt": None,
                                    "todoSeen": False, "spans": [], "open": 0,
                                    "model": None, "_todoStart": None,
                                    "_dispatchStart": None})
+
+    def close(tid, ts, aid=None):
+        nr, dts, _bg = dispatch_open.pop(tid)
+        s = slot(nr)
+        s["open"] -= 1
+        s["spans"].append((dts.isoformat(), ts.isoformat()))
+        closed[tid] = (nr, len(s["spans"]) - 1)
+        if aid:
+            agent_task.setdefault(aid, nr)
+        for a in [a for a, t in agent_open.items() if t == tid]:
+            del agent_open[a]
 
     for ts, kind, payload in events:
         if kind == "todos":
@@ -412,6 +465,9 @@ def observe(events, idx):
                     s["_dispatchStart"] = ts.isoformat()
                 if s["model"] is None and payload.get("model"):
                     s["model"] = payload["model"]
+        elif kind == "sendmessage":
+            if payload.get("id"):
+                pending_msg[payload["id"]] = ts
         elif kind == "result":
             tid = payload.get("tool_use_id")
             pair = dispatch_open.get(tid)
@@ -419,21 +475,25 @@ def observe(events, idx):
                 nr, dts, background = pair
                 # N2: a background dispatch's tool_result is the launch ack, never
                 # the agent's result -- the span stays open until agent-done.
-                if not (background or _ACK_RE.search(payload.get("text") or "")):
-                    del dispatch_open[tid]
-                    s = slot(nr)
-                    s["open"] -= 1
-                    s["spans"].append((dts.isoformat(), ts.isoformat()))
-                    closed[tid] = (nr, len(s["spans"]) - 1)
+                if background or _ACK_RE.search(payload.get("text") or ""):
+                    aid = payload.get("agent_id")
+                    if aid:
+                        agent_task.setdefault(aid, nr)
+                        agent_open[aid] = tid
+                else:
+                    close(tid, ts)
+            elif tid in pending_msg:
+                mts = pending_msg.pop(tid)
+                aid = payload.get("resumed_agent_id")
+                nr = agent_task.get(aid) if aid else None
+                if nr is not None and aid not in agent_open:
+                    dispatch_open[tid] = (nr, mts, True)
+                    agent_open[aid] = tid
+                    slot(nr)["open"] += 1
         elif kind == "agent-done":
-            tid = payload.get("tool_use_id")
-            pair = dispatch_open.pop(tid, None)
-            if pair is not None:
-                nr, dts, _bg = pair
-                s = slot(nr)
-                s["open"] -= 1
-                s["spans"].append((dts.isoformat(), ts.isoformat()))
-                closed[tid] = (nr, len(s["spans"]) - 1)
+            tid, aid = payload.get("tool_use_id"), payload.get("agent_id")
+            if tid in dispatch_open:
+                close(tid, ts, aid)
             elif tid in closed:                     # repeat notification: extend, last wins
                 nr, i = closed[tid]
                 start, end = obs[nr]["spans"][i]

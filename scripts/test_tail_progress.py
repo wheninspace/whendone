@@ -100,6 +100,36 @@ def user_notification_entry(ts, content):
             "message": {"role": "user", "content": content}}
 
 
+def long_ack_result_entry(ts, tool_id, agent_id):
+    """Real launch acks run ~9.7k chars with the agentId near char 2,600 -- far
+    past the 120-char stored prefix (measured 2026-09-28). agent_id=None omits it."""
+    text = ("Async agent launched successfully. (This tool result is internal) "
+            + "x" * 2500
+            + (" agentId: %s " % agent_id if agent_id else " ")
+            + "y" * 7000)
+    return {"type": "user", "timestamp": ts,
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "content": [{"type": "text", "text": text}]}]}}
+
+
+def sendmessage_entry(ts, tool_id, to):
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"id": "m-" + tool_id, "usage": {},
+                        "content": [{"type": "tool_use", "id": tool_id,
+                                     "name": "SendMessage",
+                                     "input": {"to": to, "message": "..."}}]}}
+
+
+def resume_result_entry(ts, tool_id, agent_id):
+    """SendMessage resume result, shape from issue #1."""
+    return {"type": "user", "timestamp": ts,
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "content": json.dumps({
+                                         "success": True,
+                                         "message": "Resuming agent %s" % agent_id,
+                                         "resumedAgentId": agent_id})}]}}
+
+
 def item(content, status):
     return {"content": content, "status": status, "activeForm": content}
 
@@ -902,6 +932,93 @@ class QueuedNotificationTest(unittest.TestCase):
             enqueue_entry(T3, "<task-notification>no ids</task-notification>"),
         ])
         self.assertEqual(ev, [])
+
+
+class AgentResumeObserveTest(unittest.TestCase):
+    """Issue #1: the agentId (launch ack) is the stable key; a SendMessage fix
+    round's notification carries the SendMessage's tool-use id."""
+    IDX = {"alpha": 1}
+    R1 = "2026-07-18T10:14:00.000Z"          # resume sent
+    R1A = "2026-07-18T10:14:01.000Z"         # resume result
+
+    def _ev(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
+
+    def _round1(self, agent_id="a-1"):
+        return [dispatch_entry(T1, "tu-1", "Alpha", background=True),
+                long_ack_result_entry("2026-07-18T10:05:01.000Z", "tu-1", agent_id),
+                enqueue_entry(T2, notif_body("a-1", "tu-1"))]
+
+    def test_long_ack_binds_agent_id_and_keeps_text_short(self):
+        ev = [p for _, k, p in self._ev(self._round1()) if k == "result"]
+        self.assertEqual(ev[0]["agent_id"], "a-1")
+        self.assertLessEqual(len(ev[0]["text"]), 120)
+
+    def test_non_ack_result_mentioning_agent_id_never_binds(self):
+        ev = [p for _, k, p in self._ev([
+            {"type": "user", "timestamp": T1,
+             "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-9",
+                                      "content": "Report: agentId: zzz was mentioned"}]}}])
+              if k == "result"]
+        self.assertIsNone(ev[0]["agent_id"])
+        self.assertIsNone(ev[0]["resumed_agent_id"])
+
+    def test_resume_opens_a_new_span_on_the_same_task(self):
+        o = tp.observe(self._ev(self._round1() + [
+            sendmessage_entry(self.R1, "tu-2", "a-1"),
+            resume_result_entry(self.R1A, "tu-2", "a-1"),
+            enqueue_entry(T3, notif_body("a-1", "tu-2")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(T2)), (iso(self.R1), iso(T3))])
+        self.assertEqual(o["open"], 0)
+
+    def test_open_resume_keeps_task_open(self):
+        o = tp.observe(self._ev(self._round1() + [
+            sendmessage_entry(self.R1, "tu-2", "a-1"),
+            resume_result_entry(self.R1A, "tu-2", "a-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+
+    def test_sendmessage_without_resumed_id_opens_no_span(self):
+        o = tp.observe(self._ev(self._round1() + [
+            sendmessage_entry(self.R1, "tu-2", "a-1"),
+            {"type": "user", "timestamp": self.R1A,
+             "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-2",
+                                      "content": '{"success": false, "error": "no such agent"}'}]}},
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(len(o["spans"]), 1)
+
+    def test_resume_of_unknown_agent_is_ignored(self):
+        o = tp.observe(self._ev(self._round1() + [
+            sendmessage_entry(self.R1, "tu-2", "peer-session"),
+            resume_result_entry(self.R1A, "tu-2", "a-other"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(len(o["spans"]), 1)
+
+    def test_message_to_running_agent_opens_no_second_span(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            long_ack_result_entry("2026-07-18T10:05:01.000Z", "tu-1", "a-1"),
+            sendmessage_entry(self.R1, "tu-2", "a-1"),
+            resume_result_entry(self.R1A, "tu-2", "a-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+
+    def test_agent_bound_from_notification_when_ack_lacks_id(self):
+        """Ack without an agentId: the notification's <task-id> binds the agent
+        when it closes the span, so a later fix round still attributes."""
+        o = tp.observe(self._ev(self._round1(agent_id=None) + [
+            sendmessage_entry(self.R1, "tu-2", "a-1"),
+            resume_result_entry(self.R1A, "tu-2", "a-1"),
+            enqueue_entry(T3, notif_body("a-1", "tu-2")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(T2)), (iso(self.R1), iso(T3))])
 
 
 class SourceCObserveUnitTest(unittest.TestCase):
