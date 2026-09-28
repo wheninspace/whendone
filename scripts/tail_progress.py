@@ -167,8 +167,10 @@ def extract_events(paths, aux_paths=()):
                                     # Issue #1: a fix round resumes an agent via
                                     # SendMessage; only the tool_use id is kept --
                                     # the result's resumedAgentId decides whether
-                                    # it was a resume at all.
-                                    events.append((ts, "sendmessage", {"id": b.get("id")}))
+                                    # it was a resume at all. A non-string id
+                                    # contributes nothing (fail-soft).
+                                    if isinstance(b.get("id"), str):
+                                        events.append((ts, "sendmessage", {"id": b.get("id")}))
                                 elif b.get("name") == "Artifact":
                                     # D4: the model's OWN publish action -- evidence for the
                                     # publishLag backstop, never acted on as an instruction.

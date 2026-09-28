@@ -979,6 +979,16 @@ class AgentResumeObserveTest(unittest.TestCase):
         self.assertIsNone(ev[0]["agent_id"])
         self.assertIsNone(ev[0]["resumed_agent_id"])
 
+    def test_non_string_sendmessage_id_is_skipped(self):
+        odd = sendmessage_entry(self.R1, "tu-2", "a-1")
+        odd["message"]["content"][0]["id"] = ["x"]
+        o = tp.observe(self._ev(self._round1() + [
+            odd,
+            resume_result_entry(self.R1A, "tu-2", "a-1"),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(len(o["spans"]), 1)
+
     def test_resume_opens_a_new_span_on_the_same_task(self):
         o = tp.observe(self._ev(self._round1() + [
             sendmessage_entry(self.R1, "tu-2", "a-1"),
