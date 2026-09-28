@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+**Agent completions are observed again (issue #1).** The tailer only recognised a
+`<task-notification>` delivered as a `type:"user"` entry. Every notification is also written
+as a `queue-operation` enqueue, and one that arrives mid-turn exists only there — so
+completions were already being missed on earlier builds (4 of 28 seen in one Opus 5
+session), and under Opus 5.5's subagent hand-back none were seen at all. Visible effects:
+`delegatedMin` stayed null on every task, and the close-on-last-agent display fallback never
+fired.
+
+- Notifications are read from the enqueue entry and the legacy delivery; a copy seen on both
+  counts once.
+- The launch ack's agentId now binds an agent to its task, so a `SendMessage` fix round opens
+  a new span on the same task instead of going unattributed.
+- The Opus 5.5+ hand-back ends an agent's round (its true finish, a few seconds before the
+  notification). Only its origin metadata is read, never the report.
+- **Docs:** the L1 Monitor watcher uses `timeout_ms: 1800000` and is re-armed on each expiry;
+  the old `persistent: true` never existed in the tool.
+
 ## [0.8.4] — 2026-08-24
 
 Docs only — no change to the skill's behavior, protocol or scripts. The release cut for the

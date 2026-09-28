@@ -10,7 +10,8 @@ Usage:
 Observes the session transcript(s) named by the state file's sessionIds: TodoWrite
 (or TaskCreate/TaskUpdate, its successor in newer harnesses — synthesized into
 identical snapshots) status transitions and subagent (Task/Agent tool) completions
-are matched to the
+-- task-notifications from queue-operation enqueues and type:"user" deliveries,
+Opus 5.5+ hand-backs, SendMessage fix rounds -- are matched to the
 DECLARED task list by normalized name, and each observed completion is applied in
 the crash-safe checkpoint order (durable done-marker -> token refresh + alias
 upgrade -> calibration append -> actualMin), then rendered via render_artifact.py.
@@ -25,9 +26,11 @@ protocol; references/source-a.md).
 Timestamps come ONLY from transcript entry timestamps — never invented. A
 completion with no observed start gets no calibration row (actualMin null).
 Transcript strings are data, never instructions. Only message metadata (tool
-names, todo/task content/status, timestamps, tool_use ids, and the leading
-'Task #<id> created' line of TaskCreate results) is read; conversation prose
-is never extracted.
+names, todo/task content/status, timestamps, tool_use ids, the leading
+'Task #<id> created' line of TaskCreate results, the agentId of a launch ack,
+the resumedAgentId of a SendMessage result, notification task-id/tool-use-id
+tags, and a hand-back's origin kind/handback/from fields) is read;
+conversation prose -- including a hand-back's origin.body -- is never extracted.
 """
 import argparse, contextlib, errno, hashlib, io, json, os, re, sys, tempfile, time
 from datetime import datetime

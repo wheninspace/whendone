@@ -350,7 +350,8 @@ wall-clock/sum-adjusted medians as bookkeeping — informative about which aggre
 wall-clock more closely, not proof that either rule is the statistically correct one.
 
 The watcher itself follows a demotion ladder rather than requiring one specific mechanism: try
-Monitor first (a persistent watch running `tail_progress.py --follow`) because it needs no
+Monitor first (a long-lived watch running `tail_progress.py --follow`, re-armed on each
+30-minute expiry — the tool has no persistent mode) because it needs no
 polling and gives the lowest latency; if Monitor is unavailable, denied, or fails, fall back to
 a background Bash job running the same `--follow` loop with `--exit-on-event`, and if that too
 is unavailable, fall back further to one-shot boundary-driven runs triggered by the model at

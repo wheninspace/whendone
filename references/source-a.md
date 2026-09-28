@@ -87,9 +87,14 @@ continue." The ladder never blocks the job (Global Constraint 2) — a dead or a
 degrades visibility, never the work.
 
 - **L1 Monitor:** `python3 <skill-dir>/scripts/tail_progress.py
-  <project-root>/.claude/whendone-state.json --follow`, `persistent: true`, description
-  `whendone progress watcher`. (Interpreter fallback chain as usual; remember whichever
-  interpreter succeeds.)
+  <project-root>/.claude/whendone-state.json --follow`, `timeout_ms: 1800000`, description
+  `whendone progress watcher`. Monitor has no persistent mode: every watch expires after at
+  most 30 minutes (the tool's cap). On the expiry notice, re-arm L1 at once with the same
+  command — the killed tailer's lock is reclaimed from its dead pid, so no cleanup is needed.
+  Expiry is routine, not a demotion: don't announce it in chat. If the re-arm answers
+  `already-running`, the old process hasn't exited yet — don't loop; L1 death detection (P4)
+  below covers it. (Interpreter fallback chain as usual; remember whichever interpreter
+  succeeds.)
 - **L2 background Bash** (Monitor absent, denied, or fails): same command plus
   `--exit-on-event`, `run_in_background: true`. Each background-completion notification is one
   wake: handle its event lines, then RELAUNCH the same command. One relaunch attempt on

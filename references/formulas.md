@@ -206,12 +206,20 @@ whole-lifecycle task spans introduced in v0.5.0 widen the window in which a stop
 - **A dispatch's span end depends on whether it runs in the background.** A dispatch counts as
   background when its input carries a truthy `run_in_background`, or, flag-less, when its
   `tool_result` text matches the launch-acknowledgment shape ("Async agent launched"). For a
-  foreground dispatch the span ends on that `tool_result`, same as before. For a background
-  dispatch the `tool_result` is only the launch ack — it never ends the span; the span ends on
-  the agent's own completion notification (a `<task-notification>` transcript entry),
-  correlated back to the dispatch by `tool_use` id. A repeat notification for the same id (a
-  resumed/relaunched agent) extends that span's end rather than opening a new one, and only
-  forward in time — last wins, monotonically. There is no fallback if a notification is lost:
+  foreground dispatch the span ends on that `tool_result`, same as before. For a background dispatch the `tool_result` is only the launch ack — it never ends the span;
+  the span ends on the agent's first completion signal of the round: its hand-back (Opus 5.5+:
+  a `type:"user"` entry whose `origin` has `kind:"peer"`, `handback:true` and `from` = the
+  agentId read from the launch ack — only those three fields are read, never `origin.body`), or
+  its `<task-notification>`. Notifications are read from the `queue-operation` `enqueue` entry
+  (every notification lands there; mid-turn ones land nowhere else) and from the legacy
+  `type:"user"` delivery; a copy seen on both channels is paired by identical content and
+  counts once, at the earlier timestamp. Notifications correlate by `tool_use` id, hand-backs by
+  agentId. A `SendMessage` whose result carries `resumedAgentId` for an agent already bound to
+  the task, with no round open, is a fix round: it opens a NEW span on the task (agent time, not
+  the lead's time between rounds), keyed by the SendMessage's own `tool_use` id, which its
+  notification carries. A hand-back's paired notification is consumed without extending the
+  span. A repeat notification for an already-closed id with no hand-back and no visible resume
+  (legacy harnesses) extends that span's end, forward in time only — last wins, monotonically. There is no fallback if every completion signal for a round is lost:
   `open` for that task never decrements, which is more consequential than a missing
   `delegatedMin`. The task can never display-close while `open` stays truthy, and if it was
   already display-closed by an earlier (matched) dispatch, this still-open one reopens it
