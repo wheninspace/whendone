@@ -69,6 +69,37 @@ def artifact_entry(ts, file_path, description="WhenDone progress monitor"):
                                                "description": description}}]}}
 
 
+def iso(s):
+    return tp.token_usage.parse_ts(s).isoformat()
+
+
+def notif_body(task_id, tool_id, status="completed", summary="Agent finished"):
+    """<task-notification> body, shape from issue #1 (2026-09-28 run)."""
+    return ("<task-notification>\n<task-id>%s</task-id>\n"
+            "<tool-use-id>%s</tool-use-id>\n<status>%s</status>\n"
+            "<summary>%s</summary>\n</task-notification>"
+            % (task_id, tool_id, status, summary))
+
+
+def enqueue_entry(ts, content, operation="enqueue"):
+    """queue-operation entry: every <task-notification> is enqueued, whether or
+    not it is later also delivered as a type:"user" entry (issue #1)."""
+    return {"type": "queue-operation", "timestamp": ts,
+            "operation": operation, "content": content}
+
+
+def queued_attachment_entry(ts, content):
+    """Mid-turn delivery of a queued notification; duplicates the enqueue."""
+    return {"type": "attachment", "timestamp": ts,
+            "attachment": {"type": "queued_command", "prompt": content}}
+
+
+def user_notification_entry(ts, content):
+    """Turn-starting delivery: a type:"user" string entry with task-notification origin."""
+    return {"type": "user", "timestamp": ts, "origin": {"kind": "task-notification"},
+            "message": {"role": "user", "content": content}}
+
+
 def item(content, status):
     return {"content": content, "status": status, "activeForm": content}
 
@@ -800,6 +831,77 @@ class BackgroundDispatchObserveTest(unittest.TestCase):
         break the shape it exists to recognize."""
         self.assertTrue(tp._ACK_RE.search(
             "Async agent launched successfully. (internal metadata) agentId: a38211c56e7a"))
+
+
+class QueuedNotificationTest(unittest.TestCase):
+    """Issue #1: agent completions that arrive mid-turn exist only as a
+    queue-operation enqueue (older builds sometimes, Opus 5.5+ hand-back always)."""
+    IDX = {"alpha": 1}
+
+    def _ev(self, entries):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.jsonl")
+            write_jsonl(p, entries)
+            events, _ = tp.extract_events([p])
+        return events
+
+    def test_enqueue_only_notification_closes_background_span(self):
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            ack_result_entry(T2, "tu-1"),
+            enqueue_entry(T3, notif_body("a-1", "tu-1")),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 0)
+        self.assertEqual(o["spans"], [(iso(T1), iso(T3))])
+
+    def test_enqueue_payload_carries_agent_id(self):
+        ev = [e for e in self._ev([enqueue_entry(T3, notif_body("a-1", "tu-1"))])
+              if e[1] == "agent-done"]
+        self.assertEqual([p for _, _, p in ev], [{"tool_use_id": "tu-1", "agent_id": "a-1"}])
+
+    def test_same_content_on_both_channels_counts_once_at_earlier_ts(self):
+        body = notif_body("a-1", "tu-1")
+        later = "2026-07-18T10:20:00.066Z"
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            user_notification_entry(later, body),      # written first on disk
+            enqueue_entry(T3, body),
+        ]), self.IDX)[1]
+        self.assertEqual(o["spans"], [(iso(T1), iso(T3))])   # not extended to .066
+
+    def test_same_channel_identical_copies_both_survive(self):
+        """Legacy repeats are same-channel; only cross-channel copies pair up."""
+        body = notif_body("a-1", "tu-1")
+        ev = self._ev([enqueue_entry(T2, body), enqueue_entry(T4, body),
+                       user_notification_entry(T3, body)])
+        self.assertEqual([k for _, k, _ in ev], ["agent-done", "agent-done"])
+        self.assertEqual([ts for ts, _, _ in ev],
+                         [tp.token_usage.parse_ts(T2), tp.token_usage.parse_ts(T4)])
+
+    def test_attachment_and_remove_entries_are_ignored(self):
+        body = notif_body("a-1", "tu-1")
+        ev = self._ev([queued_attachment_entry(T2, body),
+                       enqueue_entry(T3, body, operation="remove")])
+        self.assertEqual([k for _, k, _ in ev], [])
+
+    def test_monitor_stream_end_never_closes_an_agent_span(self):
+        body = notif_body("MON-1", "tu-mon", summary='Monitor "whendone progress watcher" stream ended')
+        o = tp.observe(self._ev([
+            dispatch_entry(T1, "tu-1", "Alpha", background=True),
+            enqueue_entry(T2, body),
+            user_notification_entry("2026-07-18T10:12:00.066Z", body),
+        ]), self.IDX)[1]
+        self.assertEqual(o["open"], 1)
+        self.assertEqual(o["spans"], [])
+
+    def test_malformed_queue_operations_are_skipped(self):
+        ev = self._ev([
+            {"type": "queue-operation", "timestamp": T1, "operation": "enqueue", "content": 7},
+            {"type": "queue-operation", "operation": "enqueue", "content": notif_body("a", "tu")},
+            {"type": "queue-operation", "timestamp": T2, "content": notif_body("a", "tu")},
+            enqueue_entry(T3, "<task-notification>no ids</task-notification>"),
+        ])
+        self.assertEqual(ev, [])
 
 
 class SourceCObserveUnitTest(unittest.TestCase):

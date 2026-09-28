@@ -29,7 +29,7 @@ names, todo/task content/status, timestamps, tool_use ids, and the leading
 'Task #<id> created' line of TaskCreate results) is read; conversation prose
 is never extracted.
 """
-import argparse, contextlib, errno, io, json, os, re, sys, tempfile, time
+import argparse, contextlib, errno, hashlib, io, json, os, re, sys, tempfile, time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,6 +49,7 @@ MARKER_MISSING_MIN = 3
 
 _ORDINAL = re.compile(r"^\s*(?:task\s+)?\d+\s*[.):]\s*", re.IGNORECASE)
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
+_NOTIF_TASK_RE = re.compile(r"<task-id>\s*([^<\s]+)\s*</task-id>")
 _ACK_RE = re.compile(r"^\s*Async agent launched\b")
 
 
@@ -101,13 +102,21 @@ def extract_events(paths, aux_paths=()):
                         if last_ts is None or ts > last_ts:
                             last_ts = ts
                         etype = e.get("type")
+                        if etype == "queue-operation":
+                            # Issue #1: EVERY <task-notification> is enqueued here;
+                            # mid-turn ones exist nowhere else (attachment/remove
+                            # entries duplicate it and are ignored).
+                            qc = e.get("content")
+                            if e.get("operation") == "enqueue" and isinstance(qc, str):
+                                ev = _notification_event(qc, "queue")
+                                if ev:
+                                    events.append((ts, "agent-done", ev))
+                            continue
                         content = (e.get("message") or {}).get("content")
                         if etype == "user" and isinstance(content, str):
-                            if "<task-notification>" in content:
-                                m = _NOTIF_ID_RE.search(content)
-                                if m:
-                                    events.append((ts, "agent-done",
-                                                   {"tool_use_id": m.group(1)}))
+                            ev = _notification_event(content, "user")
+                            if ev:
+                                events.append((ts, "agent-done", ev))
                             continue
                         if not isinstance(content, list):
                             continue
@@ -171,7 +180,7 @@ def extract_events(paths, aux_paths=()):
         except OSError:
             continue
     events.sort(key=lambda ev: ev[0])
-    return synthesize_task_snapshots(events), last_ts
+    return synthesize_task_snapshots(_dedupe_channels(events)), last_ts
 
 
 def _result_text(content):
@@ -182,6 +191,45 @@ def _result_text(content):
                            if isinstance(p, dict) and p.get("type") == "text"
                            and isinstance(p.get("text"), str))
     return content[:120] if isinstance(content, str) else ""
+
+
+def _notification_event(content, channel):
+    """A <task-notification> string -> agent-done payload, else None. Only the
+    tool-use id and task-id tags are read. Notifications without a tool-use id
+    (Monitor events) are dropped here; a Monitor stream-end notice carries one
+    but never matches a dispatch. `_key`/`_channel` are scratch for
+    _dedupe_channels (a digest, so no notification text is retained)."""
+    if "<task-notification>" not in content:
+        return None
+    m = _NOTIF_ID_RE.search(content)
+    if not m:
+        return None
+    a = _NOTIF_TASK_RE.search(content)
+    return {"tool_use_id": m.group(1), "agent_id": a.group(1) if a else None,
+            "_key": hashlib.sha256(content.encode("utf-8", "replace")).hexdigest(),
+            "_channel": channel}
+
+
+def _dedupe_channels(events):
+    """The same notification can land on both channels -- a queue-operation
+    enqueue AND a type:"user" delivery -- with identical content and different
+    timestamps (66 ms apart in issue #1's run). Pair the k-th copy on one channel
+    with the k-th on the other and keep the earlier (events are ts-sorted);
+    identical copies on the SAME channel are distinct events (legacy repeats)
+    and all survive."""
+    counts, out = {}, []
+    for ev in events:
+        payload = ev[2]
+        if ev[1] != "agent-done" or "_key" not in payload:
+            out.append(ev)
+            continue
+        key, ch = payload.pop("_key"), payload.pop("_channel")
+        c = counts.setdefault(key, {"queue": 0, "user": 0})
+        c[ch] += 1
+        if c[ch] <= c["user" if ch == "queue" else "queue"]:
+            continue                        # pairs with an already-kept copy
+        out.append(ev)
+    return out
 
 
 def read_close_markers(state_path, not_before):
