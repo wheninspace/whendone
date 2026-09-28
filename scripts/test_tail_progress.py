@@ -1437,6 +1437,65 @@ class BackgroundDisplayCloseTest(unittest.TestCase):
             env.cleanup()
 
 
+class Issue1ReplayTest(unittest.TestCase):
+    """The issue #1 lifecycle through one_shot: dispatch -> ack (agentId deep in
+    the text) -> hand-back -> enqueue/attachment/remove -> SendMessage fix
+    round -> hand-back -> enqueue. Agent time: 10:05->10:12 (7) + 10:14->10:20 (6)."""
+
+    def setUp(self):
+        self.calib = tempfile.TemporaryDirectory()
+        os.environ["WHENDONE_DATA_DIR"] = self.calib.name
+
+    def tearDown(self):
+        os.environ["WHENDONE_DATA_DIR"] = _MODULE_CALIB.name
+        self.calib.cleanup()
+
+    def _entries(self):
+        n1, n2 = notif_body("a-1", "tu-1"), notif_body("a-1", "tu-2")
+        return [
+            dispatch_entry(T1, "tu-1", "Alpha", model="sonnet", background=True),
+            long_ack_result_entry("2026-07-18T10:05:01.000Z", "tu-1", "a-1"),
+            handback_entry(T2, "a-1"),
+            enqueue_entry("2026-07-18T10:12:02.000Z", n1),
+            enqueue_entry("2026-07-18T10:12:08.000Z", n1, operation="remove"),
+            queued_attachment_entry("2026-07-18T10:12:02.000Z", n1),   # after later ts on disk
+            sendmessage_entry("2026-07-18T10:14:00.000Z", "tu-2", "a-1"),
+            resume_result_entry("2026-07-18T10:14:01.000Z", "tu-2", "a-1"),
+            handback_entry(T3, "a-1"),
+            enqueue_entry("2026-07-18T10:20:02.000Z", n2),
+        ]
+
+    def test_marker_close_now_carries_delegated_min(self):
+        env = SyncEnv(self._entries(), mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            p = os.path.join(os.path.dirname(env.state_path), "whendone-closes.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"task": "Alpha", "status": "in_progress", "ts": T1}) + "\n")
+                f.write(json.dumps({"task": "Alpha", "status": "completed",
+                                    "ts": "2026-07-18T10:25:00.000Z"}) + "\n")
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertNotIn("unconfirmed", t)
+            self.assertEqual(t["delegatedMin"], 13.0)
+            self.assertIsNotNone(t["actualMin"])
+        finally:
+            env.cleanup()
+
+    def test_display_close_fallback_fires_without_markers(self):
+        env = SyncEnv(self._entries(), mkstate(tasks=[mktask(1, name="Alpha")]))
+        try:
+            env.run_one_shot()
+            t = env.state()["tasks"][0]
+            self.assertEqual(t["status"], "done")
+            self.assertTrue(t.get("unconfirmed"))
+            self.assertEqual(t["finishedAt"], iso(T3))
+            self.assertEqual(t["delegatedMin"], 13.0)
+            self.assertIsNone(t["actualMin"])            # display close never logs
+        finally:
+            env.cleanup()
+
+
 def usage_entry(ts, model, out_tokens, mid):
     return {"type": "assistant", "timestamp": ts,
             "message": {"id": mid, "model": model,
